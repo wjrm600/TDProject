@@ -1,0 +1,52 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+.vscode/
+*.VC.db
+*.opensdf
+*.sdf
+*.sln
+*.sln.DotSettings
+
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Unreal specific
+Plugins/Marketplace/
+Plugins/Runtime/*/Binaries
+Plugins/Runtime/*/Intermediate
+
+# Build output logs
+build_output*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.bak
