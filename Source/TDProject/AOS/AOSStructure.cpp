@@ -93,26 +93,29 @@ void AAOSStructure::SetupTowerMesh()
 		// 타워 스케일 설정
 		MeshComponent->SetRelativeScale3D(FVector(1.0f, 1.0f, 2.0f));
 
-		// 기본 머티리얼 생성 및 색상 설정
+		// 동적 머티리얼 생성
 		UMaterial* BaseMaterial = LoadObject<UMaterial>(nullptr, TEXT("Material'/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial'"));
+
+		FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+
 		if (BaseMaterial)
 		{
 			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, MeshComponent);
-			FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
-			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), TowerColor);
-			MeshComponent->SetMaterial(0, DynamicMaterial);
 
-			UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
+			// BaseColor 파라미터 시도
+			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), TowerColor);
+
+			// 더불어 Emissive도 설정 (밝게 표시)
+			DynamicMaterial->SetVectorParameterValue(FName("Emissive"), TowerColor * 0.5f);
+
+			MeshComponent->SetMaterial(0, DynamicMaterial);
+			UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup with dynamic material: Team=%d, Color=(%.1f,%.1f,%.1f)"),
 				static_cast<int32>(OwnerTeam), TowerColor.R, TowerColor.G, TowerColor.B);
 		}
 		else
 		{
-			// 머티리얼 로드 실패 시 기본 색상만 설정
-			FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
-			MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(TowerColor));
-
-			UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup (no dynamic material): Team=%d, Color=(%.1f,%.1f,%.1f)"),
-				static_cast<int32>(OwnerTeam), TowerColor.R, TowerColor.G, TowerColor.B);
+			// 머티리얼 로드 실패 - 기본 엔진 머티리얼로 폴백
+			UE_LOG(LogTemp, Warning, TEXT("BasicShapeMaterial not found, using default material for tower"));
 		}
 	}
 	else
@@ -138,26 +141,29 @@ void AAOSStructure::SetupCommandCenterMesh()
 		// 커맨드 센터 스케일 설정 (더 크게)
 		MeshComponent->SetRelativeScale3D(FVector(2.0f, 2.0f, 3.0f));
 
-		// 기본 머티리얼 생성 및 색상 설정
+		// 동적 머티리얼 생성
 		UMaterial* BaseMaterial = LoadObject<UMaterial>(nullptr, TEXT("Material'/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial'"));
+
+		FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
+
 		if (BaseMaterial)
 		{
 			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, MeshComponent);
-			FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
-			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), CenterColor);
-			MeshComponent->SetMaterial(0, DynamicMaterial);
 
-			UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
+			// BaseColor 파라미터 시도
+			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), CenterColor);
+
+			// 더불어 Emissive도 설정 (밝게 표시)
+			DynamicMaterial->SetVectorParameterValue(FName("Emissive"), CenterColor * 0.3f);
+
+			MeshComponent->SetMaterial(0, DynamicMaterial);
+			UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup with dynamic material: Team=%d, Color=(%.1f,%.1f,%.1f)"),
 				static_cast<int32>(OwnerTeam), CenterColor.R, CenterColor.G, CenterColor.B);
 		}
 		else
 		{
-			// 머티리얼 로드 실패 시 기본 색상만 설정
-			FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
-			MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(CenterColor));
-
-			UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup (no dynamic material): Team=%d, Color=(%.1f,%.1f,%.1f)"),
-				static_cast<int32>(OwnerTeam), CenterColor.R, CenterColor.G, CenterColor.B);
+			// 머티리얼 로드 실패 - 기본 엔진 머티리얼로 폴백
+			UE_LOG(LogTemp, Warning, TEXT("BasicShapeMaterial not found, using default material for command center"));
 		}
 	}
 	else
