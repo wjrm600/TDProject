@@ -93,12 +93,27 @@ void AAOSStructure::SetupTowerMesh()
 		// 타워 스케일 설정
 		MeshComponent->SetRelativeScale3D(FVector(1.0f, 1.0f, 2.0f));
 
-		// Team 색상에 따라 색상 설정
-		FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
-		MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(TowerColor));
+		// 기본 머티리얼 생성 및 색상 설정
+		UMaterial* BaseMaterial = LoadObject<UMaterial>(nullptr, TEXT("Material'/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial'"));
+		if (BaseMaterial)
+		{
+			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, MeshComponent);
+			FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), TowerColor);
+			MeshComponent->SetMaterial(0, DynamicMaterial);
 
-		UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
-			static_cast<int32>(OwnerTeam), TowerColor.R, TowerColor.G, TowerColor.B);
+			UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
+				static_cast<int32>(OwnerTeam), TowerColor.R, TowerColor.G, TowerColor.B);
+		}
+		else
+		{
+			// 머티리얼 로드 실패 시 기본 색상만 설정
+			FLinearColor TowerColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+			MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(TowerColor));
+
+			UE_LOG(LogTemp, Warning, TEXT("Tower mesh setup (no dynamic material): Team=%d, Color=(%.1f,%.1f,%.1f)"),
+				static_cast<int32>(OwnerTeam), TowerColor.R, TowerColor.G, TowerColor.B);
+		}
 	}
 	else
 	{
@@ -123,12 +138,27 @@ void AAOSStructure::SetupCommandCenterMesh()
 		// 커맨드 센터 스케일 설정 (더 크게)
 		MeshComponent->SetRelativeScale3D(FVector(2.0f, 2.0f, 3.0f));
 
-		// Team 색상에 따라 색상 설정 (더 밝게)
-		FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
-		MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(CenterColor));
+		// 기본 머티리얼 생성 및 색상 설정
+		UMaterial* BaseMaterial = LoadObject<UMaterial>(nullptr, TEXT("Material'/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial'"));
+		if (BaseMaterial)
+		{
+			UMaterialInstanceDynamic* DynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, MeshComponent);
+			FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
+			DynamicMaterial->SetVectorParameterValue(FName("BaseColor"), CenterColor);
+			MeshComponent->SetMaterial(0, DynamicMaterial);
 
-		UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
-			static_cast<int32>(OwnerTeam), CenterColor.R, CenterColor.G, CenterColor.B);
+			UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup: Team=%d, Color=(%.1f,%.1f,%.1f)"),
+				static_cast<int32>(OwnerTeam), CenterColor.R, CenterColor.G, CenterColor.B);
+		}
+		else
+		{
+			// 머티리얼 로드 실패 시 기본 색상만 설정
+			FLinearColor CenterColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) : FLinearColor(0.5f, 0.5f, 1.0f, 1.0f);
+			MeshComponent->SetVectorParameterValueOnMaterials(FName("BaseColor"), FVector(CenterColor));
+
+			UE_LOG(LogTemp, Warning, TEXT("Command Center mesh setup (no dynamic material): Team=%d, Color=(%.1f,%.1f,%.1f)"),
+				static_cast<int32>(OwnerTeam), CenterColor.R, CenterColor.G, CenterColor.B);
+		}
 	}
 	else
 	{
