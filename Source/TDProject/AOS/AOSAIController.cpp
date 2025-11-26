@@ -208,13 +208,17 @@ void AAOSAIController::CacheLaneInfo()
 
 	if (!MapManager)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Controller] MapManager not found!"));
 		return;
 	}
 
-	LaneStartPosition = MapManager->GetLaneStartPosition(DeployedLane, ControlledCharacter->GetTeam());
-	LaneEndPosition = MapManager->GetLaneEndPosition(DeployedLane, ControlledCharacter->GetTeam());
+	EAOSTeam CharacterTeam = ControlledCharacter->GetTeam();
+	LaneStartPosition = MapManager->GetLaneStartPosition(DeployedLane, CharacterTeam);
+	LaneEndPosition = MapManager->GetLaneEndPosition(DeployedLane, CharacterTeam);
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Cached lane info - Start: (%.1f, %.1f, %.1f), End: (%.1f, %.1f, %.1f)"),
+	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Cached lane info - Team: %d, Lane: %d"),
+		static_cast<int32>(CharacterTeam), static_cast<int32>(DeployedLane));
+	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Start: (%.1f, %.1f, %.1f), End: (%.1f, %.1f, %.1f)"),
 		LaneStartPosition.X, LaneStartPosition.Y, LaneStartPosition.Z,
 		LaneEndPosition.X, LaneEndPosition.Y, LaneEndPosition.Z);
 }

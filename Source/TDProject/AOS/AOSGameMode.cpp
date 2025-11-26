@@ -9,7 +9,8 @@
 
 AAOSGameMode::AAOSGameMode()
 {
-	DefaultPawnClass = AAOSCharacter::StaticClass();
+	// PlayerStart에서 자동 생성되는 캐릭터를 방지하기 위해 DefaultPawnClass를 설정하지 않음
+	// 대신 SpawnPoint에서만 캐릭터가 생성되도록 함
 	PlayerControllerClass = AAOSPlayerController::StaticClass();
 }
 
