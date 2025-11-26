@@ -266,13 +266,14 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 	if (Distance <= ArrivalDistance)
 	{
 		ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at target: (%.1f, %.1f, %.1f)"),
-			CurrentMoveTarget.X, CurrentMoveTarget.Y, CurrentMoveTarget.Z);
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at target! Distance: %.1f, NextTowerIndex before: %d"),
+			Distance, NextTowerIndex);
 
 		// 다음 목표 업데이트
 		if (!bAllTowersDestroyed)
 		{
 			NextTowerIndex++;
+			UE_LOG(LogTemp, Warning, TEXT("[AI] NextTowerIndex incremented to: %d"), NextTowerIndex);
 		}
 		CurrentMoveTarget = GetNextTargetLocation();
 		return;
