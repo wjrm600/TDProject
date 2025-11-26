@@ -9,8 +9,9 @@
 
 AAOSGameMode::AAOSGameMode()
 {
-	// PlayerStart에서 자동 생성되는 캐릭터를 방지하기 위해 DefaultPawnClass를 설정하지 않음
-	// 대신 SpawnPoint에서만 캐릭터가 생성되도록 함
+	// PlayerStart에서 자동 생성되는 캐릭터를 방지
+	// DefaultPawnClass를 nullptr로 명시적으로 설정하여 자동 생성 완전히 비활성화
+	DefaultPawnClass = nullptr;
 	PlayerControllerClass = AAOSPlayerController::StaticClass();
 }
 
@@ -44,6 +45,15 @@ void AAOSGameMode::Tick(float DeltaTime)
 		UpdateGameTime(DeltaTime);
 		CheckVictoryConditions();
 	}
+}
+
+// 🟢 NEW - PlayerStart에서 자동 캐릭터 생성 방지
+void AAOSGameMode::RestartPlayer(AController* NewPlayer)
+{
+	// PlayerStart에서 자동으로 Pawn을 생성하지 않음
+	// 모든 캐릭터는 SpawnPoint에서만 생성됨
+	// 따라서 이 함수는 아무것도 하지 않음
+	UE_LOG(LogTemp, Warning, TEXT("RestartPlayer called but disabled - using SpawnPoint spawning instead"));
 }
 
 // 🟡 MODIFIED - 캐릭터 자동 생성 로직 추가

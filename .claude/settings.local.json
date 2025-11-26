@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command:*)",
+      "Bash(dir \"C:\\UnrealProject\\TDProject\\Guides\")",
+      "Bash(dir:*)",
+      "Bash(timeout 30 bash:*)",
+      "Bash(\"C:\\Program Files\\Epic Games\\UE_5.6\\Engine\\Build\\BatchFiles\\Build.bat\" TDProject Win64 Development -Project=\"C:\\UnrealProject\\TDProject\\TDProject.uproject\")",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

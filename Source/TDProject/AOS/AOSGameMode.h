@@ -47,6 +47,9 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
+	// 🟢 NEW - PlayerStart에서 자동 캐릭터 생성 방지
+	virtual void RestartPlayer(AController* NewPlayer) override;
+
 	// 게임 시간 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void StartGame();
