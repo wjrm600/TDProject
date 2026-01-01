@@ -146,25 +146,28 @@ void AAOSGameMode::SpawnCharacter(AAOSCharacter* Character, EAOSTeam Team, EAOSL
 // 🟢 NEW - 모든 스폰 포인트에서 캐릭터 자동 생성
 void AAOSGameMode::SpawnCharactersAtAllSpawnPoints()
 {
-	if (!DefaultPawnClass)
+	// 🟡 MODIFIED - DefaultPawnClass 대신 CharacterClass 사용 (RTS 모드 지원)
+	if (!CharacterClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("DefaultPawnClass not set!"));
+		UE_LOG(LogTemp, Error, TEXT("CharacterClass not set! Please set CharacterClass in GameMode blueprint."));
 		return;
 	}
 
-	// DefaultPawnClass가 AAOSCharacter 파생 클래스인지 확인
-	if (!DefaultPawnClass->IsChildOf(AAOSCharacter::StaticClass()))
+	// CharacterClass가 AAOSCharacter 파생 클래스인지 확인
+	if (!CharacterClass->IsChildOf(AAOSCharacter::StaticClass()))
 	{
-		UE_LOG(LogTemp, Error, TEXT("DefaultPawnClass is not a valid AAOSCharacter class!"));
+		UE_LOG(LogTemp, Error, TEXT("CharacterClass is not a valid AAOSCharacter class!"));
 		return;
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Spawning characters at %d spawn points..."), AllSpawnPoints.Num());
 
 	for (AAOSSpawnPoint* SpawnPoint : AllSpawnPoints)
 	{
 		if (SpawnPoint)
 		{
 			// 스폰 포인트에서 캐릭터 생성
-			AAOSCharacter* NewCharacter = SpawnPoint->SpawnCharacterAtPoint(TSubclassOf<AAOSCharacter>(DefaultPawnClass));
+			AAOSCharacter* NewCharacter = SpawnPoint->SpawnCharacterAtPoint(CharacterClass);
 
 			if (NewCharacter)
 			{
@@ -180,6 +183,9 @@ void AAOSGameMode::SpawnCharactersAtAllSpawnPoints()
 			}
 		}
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("Character spawn complete - Team1: %d, Team2: %d"),
+		Team1Characters.Num(), Team2Characters.Num());
 }
 
 // 🟡 MODIFIED - 맵 매니저를 통한 타워 및 커맨드 센터 생성

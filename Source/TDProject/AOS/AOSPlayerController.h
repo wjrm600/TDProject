@@ -33,10 +33,19 @@ public:
 
 	// 🟢 NEW - 카메라 제어
 	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
-	void MoveCamera(float AxisValue);
+	void MoveCameraForward(float AxisValue);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	void MoveCameraRight(float AxisValue);
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
 	void SetCameraHeight(float Height);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	void SetCameraAngle(float Pitch, float Yaw);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	void ZoomCamera(float AxisValue);
 
 	// 캐릭터 배치 관련
 	UFUNCTION(BlueprintCallable, Category = "AOS|Deployment")
@@ -87,7 +96,22 @@ protected:
 	float CameraHeight = 3000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	float CameraPitch = -70.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	float CameraYaw = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float CameraMoveSpeed = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	float ZoomSpeed = 500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	float MinZoomHeight = 1000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	float MaxZoomHeight = 5000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float MapBoundaryX = 10000.0f;
@@ -96,5 +120,7 @@ protected:
 	float MapBoundaryY = 10000.0f;
 
 private:
-	FVector CameraDirection = FVector::ZeroVector;
+	// 🟡 MODIFIED - 카메라 이동 방향을 X, Y 분리
+	float CameraMoveForward = 0.0f;
+	float CameraMoveRight = 0.0f;
 };

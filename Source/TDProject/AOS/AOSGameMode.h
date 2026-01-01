@@ -75,6 +75,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Spawn")
 	void SpawnCharactersAtAllSpawnPoints();
 
+	// 🟢 NEW - RTS용 캐릭터 클래스 (DefaultPawnClass와 분리)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Spawn")
+	TSubclassOf<AAOSCharacter> CharacterClass;
+
 	// 구조물 생성 및 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
 	void InitializeStructures();

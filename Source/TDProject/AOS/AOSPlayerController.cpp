@@ -28,7 +28,7 @@ void AAOSPlayerController::BeginPlay()
 		RTSCamera = GetWorld()->SpawnActor<ACameraActor>(
 			ACameraActor::StaticClass(),
 			FVector(0.0f, 0.0f, CameraHeight),
-			FRotator(-70.0f, 0.0f, 0.0f),
+			FRotator(CameraPitch, CameraYaw, 0.0f),
 			SpawnParams
 		);
 
@@ -47,11 +47,13 @@ void AAOSPlayerController::SetupInputComponent()
 	if (!InputComponent)
 		return;
 
-	// 🟢 NEW - RTS 카메라 이동 입력
-	InputComponent->BindAxis("MoveForward", this, &AAOSPlayerController::MoveCamera);
+	// 🟡 MODIFIED - RTS 카메라 4방향 이동 및 줌 입력
+	InputComponent->BindAxis("MoveForward", this, &AAOSPlayerController::MoveCameraForward);
+	InputComponent->BindAxis("MoveRight", this, &AAOSPlayerController::MoveCameraRight);
+	InputComponent->BindAxis("CameraZoom", this, &AAOSPlayerController::ZoomCamera);
 	InputComponent->BindAction("LeftMouseClick", IE_Pressed, this, &AAOSPlayerController::HandleMouseClick);
 
-	UE_LOG(LogTemp, Warning, TEXT("Input bindings setup for RTS camera"));
+	UE_LOG(LogTemp, Warning, TEXT("Input bindings setup for RTS camera (4-directional movement + zoom)"));
 }
 
 void AAOSPlayerController::SetCharacterDeployment(const TArray<EAOSLane>& LaneAssignments)
@@ -106,33 +108,50 @@ void AAOSPlayerController::SetPlayerTeam(EAOSTeam Team)
 	PlayerTeam = Team;
 }
 
-// 🟢 NEW - Tick에서 카메라 이동 처리
+// 🟡 MODIFIED - Tick에서 카메라 방향 기준 4방향 이동 처리
 void AAOSPlayerController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 카메라 이동
-	if (RTSCamera && !CameraDirection.IsZero())
+	// 카메라 이동 (수평 방향 기준)
+	if (RTSCamera && (CameraMoveForward != 0.0f || CameraMoveRight != 0.0f))
 	{
-		FVector NewLocation = RTSCamera->GetActorLocation() + (CameraDirection * CameraMoveSpeed * DeltaTime);
+		FVector CurrentLocation = RTSCamera->GetActorLocation();
+
+		// 🟡 MODIFIED - Yaw(수평 회전)만 사용하여 방향 계산
+		// Pitch(상하 각도)는 무시하고 수평면에서만 이동
+		FRotator CameraRotation = RTSCamera->GetActorRotation();
+		FRotator YawOnlyRotation(0.0f, CameraRotation.Yaw, 0.0f);
+
+		// 수평면 기준 Forward/Right 방향 벡터
+		FVector ForwardDirection = FRotationMatrix(YawOnlyRotation).GetUnitAxis(EAxis::X);
+		FVector RightDirection = FRotationMatrix(YawOnlyRotation).GetUnitAxis(EAxis::Y);
+
+		// 입력에 따라 이동
+		FVector MovementDelta = FVector::ZeroVector;
+		MovementDelta += ForwardDirection * CameraMoveForward * CameraMoveSpeed * DeltaTime;
+		MovementDelta += RightDirection * CameraMoveRight * CameraMoveSpeed * DeltaTime;
+
+		CurrentLocation += MovementDelta;
 
 		// 맵 경계 체크
-		NewLocation.X = FMath::Clamp(NewLocation.X, -MapBoundaryX, MapBoundaryX);
-		NewLocation.Y = FMath::Clamp(NewLocation.Y, -MapBoundaryY, MapBoundaryY);
+		CurrentLocation.X = FMath::Clamp(CurrentLocation.X, -MapBoundaryX, MapBoundaryX);
+		CurrentLocation.Y = FMath::Clamp(CurrentLocation.Y, -MapBoundaryY, MapBoundaryY);
 
-		RTSCamera->SetActorLocation(NewLocation);
+		RTSCamera->SetActorLocation(CurrentLocation);
 	}
 }
 
-// 🟢 NEW - 카메라 이동 입력 처리 (WASD 또는 화살표)
-void AAOSPlayerController::MoveCamera(float AxisValue)
+// 🟡 MODIFIED - 카메라 Forward/Backward 이동 (W/S 또는 Up/Down)
+void AAOSPlayerController::MoveCameraForward(float AxisValue)
 {
-	// AxisValue는 -1.0 ~ 1.0 범위
-	if (AxisValue != 0.0f)
-	{
-		// Forward/Backward 입력 처리
-		CameraDirection.Y = AxisValue;  // Forward = Y축
-	}
+	CameraMoveForward = AxisValue;  // -1.0 (Backward) ~ 1.0 (Forward)
+}
+
+// 🟢 NEW - 카메라 Left/Right 이동 (A/D 또는 Left/Right)
+void AAOSPlayerController::MoveCameraRight(float AxisValue)
+{
+	CameraMoveRight = AxisValue;  // -1.0 (Left) ~ 1.0 (Right)
 }
 
 // 🟢 NEW - 마우스 클릭으로 캐릭터 선택
@@ -191,6 +210,40 @@ void AAOSPlayerController::SetCameraHeight(float Height)
 		Location.Z = Height;
 		RTSCamera->SetActorLocation(Location);
 	}
+}
+
+// 🟢 NEW - 카메라 각도 설정
+void AAOSPlayerController::SetCameraAngle(float Pitch, float Yaw)
+{
+	CameraPitch = Pitch;
+	CameraYaw = Yaw;
+	if (RTSCamera)
+	{
+		RTSCamera->SetActorRotation(FRotator(CameraPitch, CameraYaw, 0.0f));
+	}
+}
+
+// 🟢 NEW - 카메라 줌 인/아웃 (마우스 휠)
+void AAOSPlayerController::ZoomCamera(float AxisValue)
+{
+	if (!RTSCamera || AxisValue == 0.0f)
+		return;
+
+	// 현재 높이 가져오기
+	FVector CurrentLocation = RTSCamera->GetActorLocation();
+
+	// 줌 변경량 계산 (마우스 휠 위로 = 줌 인, 아래로 = 줌 아웃)
+	float ZoomDelta = -AxisValue * ZoomSpeed;
+
+	// 새로운 높이 계산 및 범위 제한
+	float NewHeight = FMath::Clamp(CurrentLocation.Z + ZoomDelta, MinZoomHeight, MaxZoomHeight);
+
+	// 높이만 변경
+	CurrentLocation.Z = NewHeight;
+	RTSCamera->SetActorLocation(CurrentLocation);
+
+	// CameraHeight 변수도 업데이트
+	CameraHeight = NewHeight;
 }
 
 // 🔴 REMOVED: SpawnPlayerCharacters() 함수는 더 이상 사용되지 않습니다.
