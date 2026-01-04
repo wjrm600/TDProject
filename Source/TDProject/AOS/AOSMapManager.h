@@ -16,24 +16,21 @@ struct FLaneInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EAOSLane LaneType;
 
+	// 🟡 MODIFIED - 각 팀의 스폰 위치
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Team1StartPosition;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team1EndPosition;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Team2StartPosition;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team2EndPosition;
-
+	// 라인의 타워 위치들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FVector> Team1TowerPositions;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FVector> Team2TowerPositions;
 
+	// 🟡 MODIFIED - 각 팀의 본진(최종 목표 지점)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Team1CommandCenterPosition;
 

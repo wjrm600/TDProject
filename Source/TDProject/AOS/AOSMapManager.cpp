@@ -45,14 +45,14 @@ void AAOSMapManager::OnConstruction(const FTransform& Transform)
 		FColor Team1Color = FColor::Cyan;    // Team1: 청록색
 		FColor Team2Color = FColor::Magenta; // Team2: 마젠타색
 
-		// 라인 경로 그리기
+		// 라인 경로 그리기 (스폰 지점 → 적 본진)
 		if (bShowLanePaths)
 		{
-			// Team1 라인 경로
+			// Team1 라인 경로: Team1 스폰 → Team2 본진
 			DrawDebugLine(
 				GetWorld(),
 				LaneInfo.Team1StartPosition,
-				LaneInfo.Team1EndPosition,
+				LaneInfo.Team2CommandCenterPosition,
 				Team1Color,
 				true,
 				-1.0f,
@@ -60,11 +60,11 @@ void AAOSMapManager::OnConstruction(const FTransform& Transform)
 				EditorVisualizationThickness
 			);
 
-			// Team2 라인 경로
+			// Team2 라인 경로: Team2 스폰 → Team1 본진
 			DrawDebugLine(
 				GetWorld(),
 				LaneInfo.Team2StartPosition,
-				LaneInfo.Team2EndPosition,
+				LaneInfo.Team1CommandCenterPosition,
 				Team2Color,
 				true,
 				-1.0f,
@@ -205,17 +205,19 @@ FVector AAOSMapManager::GetLaneStartPosition(EAOSLane Lane, EAOSTeam Team) const
 	}
 }
 
+// 🟡 MODIFIED - EndPosition 제거, 적 Command Center 위치 반환
 FVector AAOSMapManager::GetLaneEndPosition(EAOSLane Lane, EAOSTeam Team) const
 {
 	FLaneInfo Info = GetLaneInfo(Lane);
 
+	// 적 팀의 Command Center 위치를 반환
 	if (Team == EAOSTeam::Team1)
 	{
-		return Info.Team1EndPosition;
+		return Info.Team2CommandCenterPosition;  // Team1은 Team2 본진을 목표로
 	}
 	else
 	{
-		return Info.Team2EndPosition;
+		return Info.Team1CommandCenterPosition;  // Team2는 Team1 본진을 목표로
 	}
 }
 
@@ -373,9 +375,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo TopLane;
 		TopLane.LaneType = EAOSLane::Top;
 
-		// Team1 (왼쪽/아래)
+		// Team1 (왼쪽/아래) - 스폰 위치
 		TopLane.Team1StartPosition = FVector(2000, 2000, 0);
-		TopLane.Team1EndPosition = FVector(-2000, -2000, 0);
 		TopLane.Team1TowerPositions = {
 			FVector(1400, 1400, 0),
 			FVector(700, 700, 0),
@@ -383,9 +384,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		};
 		TopLane.Team1CommandCenterPosition = FVector(-2200, -2200, 0);
 
-		// Team2 (오른쪽/위)
+		// Team2 (오른쪽/위) - 스폰 위치
 		TopLane.Team2StartPosition = FVector(-2000, -2000, 0);
-		TopLane.Team2EndPosition = FVector(2000, 2000, 0);
 		TopLane.Team2TowerPositions = {
 			FVector(-1400, -1400, 0),
 			FVector(-700, -700, 0),
@@ -401,9 +401,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo MidLane;
 		MidLane.LaneType = EAOSLane::Mid;
 
-		// Team1
+		// Team1 - 스폰 위치
 		MidLane.Team1StartPosition = FVector(2000, 0, 0);
-		MidLane.Team1EndPosition = FVector(-2000, 0, 0);
 		MidLane.Team1TowerPositions = {
 			FVector(1400, 0, 0),
 			FVector(700, 0, 0),
@@ -411,9 +410,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		};
 		MidLane.Team1CommandCenterPosition = FVector(-2200, 0, 0);
 
-		// Team2
+		// Team2 - 스폰 위치
 		MidLane.Team2StartPosition = FVector(-2000, 0, 0);
-		MidLane.Team2EndPosition = FVector(2000, 0, 0);
 		MidLane.Team2TowerPositions = {
 			FVector(-1400, 0, 0),
 			FVector(-700, 0, 0),
@@ -429,9 +427,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo BottomLane;
 		BottomLane.LaneType = EAOSLane::Bottom;
 
-		// Team1
+		// Team1 - 스폰 위치
 		BottomLane.Team1StartPosition = FVector(2000, -2000, 0);
-		BottomLane.Team1EndPosition = FVector(-2000, 2000, 0);
 		BottomLane.Team1TowerPositions = {
 			FVector(1400, -1400, 0),
 			FVector(700, -700, 0),
@@ -439,9 +436,8 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		};
 		BottomLane.Team1CommandCenterPosition = FVector(-2200, 2200, 0);
 
-		// Team2
+		// Team2 - 스폰 위치
 		BottomLane.Team2StartPosition = FVector(-2000, 2000, 0);
-		BottomLane.Team2EndPosition = FVector(2000, -2000, 0);
 		BottomLane.Team2TowerPositions = {
 			FVector(-1400, 1400, 0),
 			FVector(-700, 700, 0),
