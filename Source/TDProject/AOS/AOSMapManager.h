@@ -96,7 +96,8 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Map")
 	TMap<EAOSTeam, AAOSStructure*> CommandCenters;
 
-	// 라인별 타워들 (런타임용, UPROPERTY 없음)
+	// 라인별 타워들 (런타임용)
+	UPROPERTY()
 	TArray<AAOSStructure*> AllTowers;
 
 	// 🟢 NEW - 디버그 설정
