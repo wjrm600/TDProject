@@ -335,10 +335,10 @@ LogTemp: Warning: [AI Controller] Deployment started on lane: 0
 ## 수정된 파일 목록
 
 1. [AOSMapManager.h](Source/TDProject/AOS/AOSMapManager.h) - 구조체 및 클래스 정의 변경
-2. [AOSMapManager.cpp](Source/TDProject/AOS/AOSMapManager.cpp) - 구조 개선, 시각화 개선
+2. [AOSMapManager.cpp](Source/TDProject/AOS/AOSMapManager.cpp) - 구조 개선, 시각화 개선, 실제 스폰된 타워 위치 디버그 표시
 3. [AOSStructure.cpp](Source/TDProject/AOS/AOSStructure.cpp) - 충돌 비활성화
-4. [AOSAIController.h](Source/TDProject/AOS/AOSAIController.h) - 웨이포인트 큐 시스템 변수 추가, Lane Offset 시스템 추가
-5. [AOSAIController.cpp](Source/TDProject/AOS/AOSAIController.cpp) - 웨이포인트 큐 로직 구현, Lane Offset 적용
+4. [AOSAIController.h](Source/TDProject/AOS/AOSAIController.h) - 웨이포인트 큐 시스템 변수 추가, 소멸자 추가
+5. [AOSAIController.cpp](Source/TDProject/AOS/AOSAIController.cpp) - 웨이포인트 큐 로직 구현, 메모리 정리
 6. [AOSSpawnPoint.cpp](Source/TDProject/AOS/AOSSpawnPoint.cpp) - 로그 개선
 
 ---
@@ -346,6 +346,7 @@ LogTemp: Warning: [AI Controller] Deployment started on lane: 0
 ## Git 커밋 내역
 
 ```bash
+f4a5f88 웨이포인트 큐 시스템 구현 및 디버그 시각화 개선
 cfedd83 AI 이동 디버그 로그 주석 처리 및 스폰 로그 개선
 a23286d 타워 및 커맨드 센터 콜리전 비활성화
 56a85ba AllTowers 배열에 UPROPERTY 추가하여 메모리 크래시 수정
@@ -450,13 +451,17 @@ void AAOSAIController::BuildWaypointQueue()
 }
 ```
 
-#### GetNextTargetLocation() 수정 ([AOSAIController.cpp:73-117](Source/TDProject/AOS/AOSAIController.cpp#L73-L117))
+#### GetNextTargetLocation() 수정 ([AOSAIController.cpp:68-112](Source/TDProject/AOS/AOSAIController.cpp#L68-L112))
 
 ```cpp
 FVector AAOSAIController::GetNextTargetLocation()
 {
+    if (!ControlledCharacter)
+        return FVector::ZeroVector;
+
+    // 웨이포인트 큐가 비어있으면 기본 위치 반환
     if (WaypointQueue.Num() == 0)
-        return ApplyLaneOffset(LaneEndPosition);
+        return LaneEndPosition;
 
     // 현재 웨이포인트가 유효한지 확인
     while (CurrentWaypointIndex < WaypointQueue.Num())
@@ -466,7 +471,8 @@ FVector AAOSAIController::GetNextTargetLocation()
         // 웨이포인트가 유효하고 파괴되지 않았으면 해당 위치로 이동
         if (CurrentWaypoint && !CurrentWaypoint->IsDestroyed())
         {
-            return ApplyLaneOffset(CurrentWaypoint->GetActorLocation());
+            // 디버그 로그 포함
+            return CurrentWaypoint->GetActorLocation();
         }
 
         // 파괴되었으면 다음으로 건너뛰기
@@ -475,11 +481,11 @@ FVector AAOSAIController::GetNextTargetLocation()
 
     // 모든 웨이포인트 완료
     bAllTowersDestroyed = true;
-    return ApplyLaneOffset(LaneEndPosition);
+    return LaneEndPosition;
 }
 ```
 
-#### MoveTowardsTarget() 수정 ([AOSAIController.cpp:365-378](Source/TDProject/AOS/AOSAIController.cpp#L365-L378))
+#### MoveTowardsTarget() 수정 ([AOSAIController.cpp:270-283](Source/TDProject/AOS/AOSAIController.cpp#L270-L283))
 
 ```cpp
 // 도착 판정
@@ -492,6 +498,25 @@ if (Distance <= ArrivalDistance)
     CurrentMoveTarget = GetNextTargetLocation();
     return;
 }
+
+// 목표 방향으로 이동
+ControlledCharacter->AddMovementInput(Direction, 1.0f);
+```
+
+#### 소멸자 추가 ([AOSAIController.cpp:13-21](Source/TDProject/AOS/AOSAIController.cpp#L13-L21))
+
+에디터 종료 시 메모리 에러 방지를 위한 명시적 정리:
+
+```cpp
+AAOSAIController::~AAOSAIController()
+{
+    // 웨이포인트 큐 정리
+    WaypointQueue.Empty();
+
+    // 참조 정리
+    ControlledCharacter = nullptr;
+    CurrentTarget = nullptr;
+}
 ```
 
 ### 7.4 제거된 코드
@@ -502,12 +527,70 @@ if (Distance <= ArrivalDistance)
 
 ---
 
+## 8. 디버그 시각화 개선 (런타임)
+
+### 8.1 문제
+
+**증상**:
+- 런타임 디버그 박스 위치가 실제 스폰된 타워/커맨드 센터 위치와 일치하지 않음
+
+**원인**:
+- DrawDebugTowerPositions()가 LanesInfo 설정 데이터를 기반으로 박스를 그림
+- 실제 스폰된 타워의 위치와 설정값이 다를 수 있음
+
+### 8.2 해결
+
+**수정 내용** ([AOSMapManager.cpp:497-533](Source/TDProject/AOS/AOSMapManager.cpp#L497-L533)):
+- `LanesInfo` 대신 `AllTowers` 배열을 순회
+- 각 타워의 실제 위치(`Tower->GetActorLocation()`)에 디버그 박스 표시
+
+```cpp
+void AAOSMapManager::DrawDebugTowerPositions()
+{
+    if (!GetWorld())
+        return;
+
+    // 실제 스폰된 타워들의 위치에 디버그 박스 표시
+    for (AAOSStructure* Tower : AllTowers)
+    {
+        if (!Tower)
+            continue;
+
+        FVector TowerPos = Tower->GetActorLocation();
+        EAOSTeam Team = Tower->GetOwnerTeam();
+        EAOSLane Lane = Tower->GetLane();
+
+        FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+        FString TeamName = (Team == EAOSTeam::Team1) ? TEXT("Team1") : TEXT("Team2");
+
+        DrawDebugBox(GetWorld(), TowerPos,
+            FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
+            BoxColor, true, -1.0f, 0, 10.0f);
+    }
+
+    // Command Center 박스 (노란색/주황색, 크기 1.5배)
+    DrawDebugBox(GetWorld(), Team1CommandCenterPosition,
+        FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
+        FColor::Yellow, true, -1.0f, 0, 10.0f);
+
+    DrawDebugBox(GetWorld(), Team2CommandCenterPosition,
+        FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
+        FColor::Orange, true, -1.0f, 0, 10.0f);
+}
+```
+
+**디버그 박스 색상**:
+- Team1 타워: 파란색
+- Team2 타워: 빨간색
+- Team1 커맨드 센터: 노란색 (크기 1.5배)
+- Team2 커맨드 센터: 주황색 (크기 1.5배)
+
 ---
 
 ## 다음 작업 예정
 
 1. **테스트 및 검증**: 웨이포인트 큐 시스템이 모든 라인에서 정상 작동하는지 확인
-2. **밸런스 조정**: ArrivalDistance 등 파라미터 조정
+2. **밸런스 조정**: ArrivalDistance, EnemyDetectionRange, AttackRange 등 파라미터 조정
 3. **캐릭터 분산**: 필요시 네비게이션 메시를 활용한 자연스러운 경로 이동 구현
 4. **보류**: 캐릭터 하이라이트 기능 (캐릭터 정보 UI와 함께 구현 예정)
 
@@ -518,15 +601,30 @@ if (Distance <= ArrivalDistance)
 ### 언리얼 에디터 시각화
 - `PostEditChangeProperty()`: 에디터에서 속성 변경 감지
 - `FlushPersistentDebugLines()`: 기존 디버그 라인 제거
-- `DrawDebugBox/Sphere`는 에디터 뷰포트에서 제대로 렌더링되지 않음
-- `DrawDebugLine`을 사용한 와이어프레임 구현이 더 안정적
+- `DrawDebugBox/Sphere`는 에디터 뷰포트에서 제대로 렌더링되지 않음 (에디터용)
+- `DrawDebugLine`을 사용한 와이어프레임 구현이 더 안정적 (에디터용)
+- 런타임 디버그 시각화는 `DrawDebugBox`가 정상 작동함
 
 ### 메모리 관리
 - `UPROPERTY()`는 단순히 블루프린트 노출이 아닌 가비지 컬렉션 관리에도 필수
 - UObject* 포인터 배열은 반드시 UPROPERTY로 선언해야 안전
+- AI 컨트롤러 소멸 시 명시적으로 배열 정리(`Empty()`)와 포인터 null 처리 필요
 
 ### 충돌 시스템
 - `ECollisionEnabled::NoCollision`: 완전히 충돌 끔
 - `ECollisionEnabled::QueryOnly`: 오버랩/트레이스만 가능 (물리 충돌 없음)
 - `ECollisionEnabled::PhysicsOnly`: 물리 시뮬레이션만
 - `ECollisionEnabled::QueryAndPhysics`: 모든 충돌 활성화
+
+### 웨이포인트 큐 시스템
+- 순차적 경로 이동을 위한 구조물 배열 관리
+- 람다 함수를 사용한 거리 기반 정렬
+- 파괴된 구조물 자동 건너뛰기 로직
+
+---
+
+## 개발 환경
+
+- **언리얼 엔진**: 5.7
+- **Visual Studio**: 2026
+- **빌드 시스템**: UnrealBuildTool (Unreal Build Accelerator 사용)
