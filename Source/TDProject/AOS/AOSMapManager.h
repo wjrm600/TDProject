@@ -16,7 +16,7 @@ struct FLaneInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EAOSLane LaneType;
 
-	// 🟡 MODIFIED - 각 팀의 스폰 위치
+	// 각 팀의 스폰 위치
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector Team1StartPosition;
 
@@ -29,13 +29,6 @@ struct FLaneInfo
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FVector> Team2TowerPositions;
-
-	// 🟡 MODIFIED - 각 팀의 본진(최종 목표 지점)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team1CommandCenterPosition;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team2CommandCenterPosition;
 };
 
 /**
@@ -56,6 +49,7 @@ public:
 	// 🟢 NEW - 에디터에서 시각화
 #if WITH_EDITOR
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 	// 맵 초기화
@@ -91,6 +85,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
 	TArray<FLaneInfo> LanesInfo;
 
+	// 팀별 Command Center 위치
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
+	FVector Team1CommandCenterPosition;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
+	FVector Team2CommandCenterPosition;
+
 	// 스폰된 구조물들
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Map")
 	TMap<EAOSTeam, AAOSStructure*> CommandCenters;
@@ -123,4 +124,8 @@ protected:
 
 private:
 	void SetupDefaultLaneInfo();
+
+#if WITH_EDITOR
+	void UpdateEditorVisualization();
+#endif
 };

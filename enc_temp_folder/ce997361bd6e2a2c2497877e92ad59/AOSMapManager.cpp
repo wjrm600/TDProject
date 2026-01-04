@@ -48,8 +48,6 @@ void AAOSMapManager::PostEditChangeProperty(FPropertyChangedEvent& PropertyChang
 		: NAME_None;
 
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, LanesInfo) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, Team1CommandCenterPosition) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, Team2CommandCenterPosition) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, bShowEditorVisualization) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, bShowLanePaths) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(AAOSMapManager, bShowTowerPositions) ||
@@ -81,7 +79,7 @@ void AAOSMapManager::UpdateEditorVisualization()
 			DrawDebugLine(
 				GetWorld(),
 				LaneInfo.Team1StartPosition,
-				Team2CommandCenterPosition,
+				LaneInfo.Team2CommandCenterPosition,
 				Team1Color,
 				true,
 				-1.0f,
@@ -93,7 +91,7 @@ void AAOSMapManager::UpdateEditorVisualization()
 			DrawDebugLine(
 				GetWorld(),
 				LaneInfo.Team2StartPosition,
-				Team1CommandCenterPosition,
+				LaneInfo.Team1CommandCenterPosition,
 				Team2Color,
 				true,
 				-1.0f,
@@ -123,19 +121,18 @@ void AAOSMapManager::UpdateEditorVisualization()
 					EditorVisualizationThickness
 				);
 
-				// 추가: X 마커로 타워 위치를 더 명확하게 표시
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(-100, -100, 0),
-					TowerPos + FVector(100, 100, 0),
-					Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(100, -100, 0),
-					TowerPos + FVector(-100, 100, 0),
-					Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(0, 0, 0),
-					TowerPos + FVector(0, 0, 200),
-					Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
+				// 타워 번호 표시 (위쪽 화살표)
+				DrawDebugDirectionalArrow(
+					GetWorld(),
+					TowerPos,
+					TowerPos + FVector(0, 0, 300),
+					50.0f,
+					Team1Color,
+					true,
+					-1.0f,
+					0,
+					EditorVisualizationThickness
+				);
 			}
 
 			// Team2 타워
@@ -155,71 +152,47 @@ void AAOSMapManager::UpdateEditorVisualization()
 					EditorVisualizationThickness
 				);
 
-				// 추가: X 마커로 타워 위치를 더 명확하게 표시
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(-100, -100, 0),
-					TowerPos + FVector(100, 100, 0),
-					Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(100, -100, 0),
-					TowerPos + FVector(-100, 100, 0),
-					Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-				DrawDebugLine(GetWorld(),
-					TowerPos + FVector(0, 0, 0),
-					TowerPos + FVector(0, 0, 200),
-					Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
+				DrawDebugDirectionalArrow(
+					GetWorld(),
+					TowerPos,
+					TowerPos + FVector(0, 0, 300),
+					50.0f,
+					Team2Color,
+					true,
+					-1.0f,
+					0,
+					EditorVisualizationThickness
+				);
 			}
 		}
-	}
 
-	// Command Center 위치 표시 (팀당 1개씩)
-	if (bShowCommandCenters)
-	{
-		FColor Team1Color = FColor::Cyan;
-		FColor Team2Color = FColor::Magenta;
-		float Size = 150.0f;
+		// Command Center 위치 표시
+		if (bShowCommandCenters)
+		{
+			// Team1 Command Center - 큰 박스
+			DrawDebugBox(
+				GetWorld(),
+				LaneInfo.Team1CommandCenterPosition,
+				FVector(150, 150, 150),
+				Team1Color,
+				true,
+				-1.0f,
+				0,
+				EditorVisualizationThickness * 2.0f
+			);
 
-		// Team1 Command Center - 박스 프레임으로 그리기
-		FVector CC1 = Team1CommandCenterPosition;
-
-		// 밑면
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, -Size, -Size), CC1 + FVector(Size, -Size, -Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, -Size, -Size), CC1 + FVector(Size, Size, -Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, Size, -Size), CC1 + FVector(-Size, Size, -Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, Size, -Size), CC1 + FVector(-Size, -Size, -Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-
-		// 윗면
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, -Size, Size), CC1 + FVector(Size, -Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, -Size, Size), CC1 + FVector(Size, Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, Size, Size), CC1 + FVector(-Size, Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, Size, Size), CC1 + FVector(-Size, -Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-
-		// 수직 연결선
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, -Size, -Size), CC1 + FVector(-Size, -Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, -Size, -Size), CC1 + FVector(Size, -Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(Size, Size, -Size), CC1 + FVector(Size, Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC1 + FVector(-Size, Size, -Size), CC1 + FVector(-Size, Size, Size), Team1Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-
-		// Team2 Command Center - 박스 프레임으로 그리기
-		FVector CC2 = Team2CommandCenterPosition;
-
-		// 밑면
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, -Size, -Size), CC2 + FVector(Size, -Size, -Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, -Size, -Size), CC2 + FVector(Size, Size, -Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, Size, -Size), CC2 + FVector(-Size, Size, -Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, Size, -Size), CC2 + FVector(-Size, -Size, -Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-
-		// 윗면
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, -Size, Size), CC2 + FVector(Size, -Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, -Size, Size), CC2 + FVector(Size, Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, Size, Size), CC2 + FVector(-Size, Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, Size, Size), CC2 + FVector(-Size, -Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-
-		// 수직 연결선
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, -Size, -Size), CC2 + FVector(-Size, -Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, -Size, -Size), CC2 + FVector(Size, -Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(Size, Size, -Size), CC2 + FVector(Size, Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
-		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, Size, -Size), CC2 + FVector(-Size, Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
+			// Team2 Command Center - 큰 박스
+			DrawDebugBox(
+				GetWorld(),
+				LaneInfo.Team2CommandCenterPosition,
+				FVector(150, 150, 150),
+				Team2Color,
+				true,
+				-1.0f,
+				0,
+				EditorVisualizationThickness * 2.0f
+			);
+		}
 	}
 }
 #endif
@@ -259,16 +232,19 @@ FVector AAOSMapManager::GetLaneStartPosition(EAOSLane Lane, EAOSTeam Team) const
 	}
 }
 
+// 🟡 MODIFIED - EndPosition 제거, 적 Command Center 위치 반환
 FVector AAOSMapManager::GetLaneEndPosition(EAOSLane Lane, EAOSTeam Team) const
 {
+	FLaneInfo Info = GetLaneInfo(Lane);
+
 	// 적 팀의 Command Center 위치를 반환
 	if (Team == EAOSTeam::Team1)
 	{
-		return Team2CommandCenterPosition;  // Team1은 Team2 본진을 목표로
+		return Info.Team2CommandCenterPosition;  // Team1은 Team2 본진을 목표로
 	}
 	else
 	{
-		return Team1CommandCenterPosition;  // Team2는 Team1 본진을 목표로
+		return Info.Team1CommandCenterPosition;  // Team2는 Team1 본진을 목표로
 	}
 }
 
@@ -334,45 +310,61 @@ void AAOSMapManager::SpawnStructures()
 		}
 	}
 
-	// 커맨드 센터 생성 (팀당 1개)
+	// 커맨드 센터 생성
 	UE_LOG(LogTemp, Warning, TEXT("=== Spawning Command Centers ==="));
-
-	// Team1 커맨드 센터
-	AAOSStructure* Team1Center = GetWorld()->SpawnActor<AAOSStructure>(
-		AAOSStructure::StaticClass(),
-		Team1CommandCenterPosition,
-		FRotator::ZeroRotator
-	);
-
-	if (Team1Center)
+	bool bMidLaneFound = false;
+	for (const FLaneInfo& LaneInfo : LanesInfo)
 	{
-		Team1Center->Initialize(EStructureType::CommandCenter, EAOSTeam::Team1, EAOSLane::Mid);
-		CommandCenters.Add(EAOSTeam::Team1, Team1Center);
-		UE_LOG(LogTemp, Warning, TEXT("Team1 Command Center spawned at (%.1f, %.1f, %.1f)"),
-			Team1CommandCenterPosition.X, Team1CommandCenterPosition.Y, Team1CommandCenterPosition.Z);
+		if (LaneInfo.LaneType == EAOSLane::Mid)
+		{
+			bMidLaneFound = true;
+			UE_LOG(LogTemp, Warning, TEXT("Mid Lane found, spawning command centers"));
+
+			// Team1 커맨드 센터
+			AAOSStructure* Team1Center = GetWorld()->SpawnActor<AAOSStructure>(
+				AAOSStructure::StaticClass(),
+				LaneInfo.Team1CommandCenterPosition,
+				FRotator::ZeroRotator
+			);
+
+			if (Team1Center)
+			{
+				Team1Center->Initialize(EStructureType::CommandCenter, EAOSTeam::Team1, EAOSLane::Mid);
+				CommandCenters.Add(EAOSTeam::Team1, Team1Center);
+				UE_LOG(LogTemp, Warning, TEXT("Team1 Command Center spawned at (%.1f, %.1f, %.1f)"),
+					LaneInfo.Team1CommandCenterPosition.X, LaneInfo.Team1CommandCenterPosition.Y, LaneInfo.Team1CommandCenterPosition.Z);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("Failed to spawn Team1 Command Center"));
+			}
+
+			// Team2 커맨드 센터
+			AAOSStructure* Team2Center = GetWorld()->SpawnActor<AAOSStructure>(
+				AAOSStructure::StaticClass(),
+				LaneInfo.Team2CommandCenterPosition,
+				FRotator::ZeroRotator
+			);
+
+			if (Team2Center)
+			{
+				Team2Center->Initialize(EStructureType::CommandCenter, EAOSTeam::Team2, EAOSLane::Mid);
+				CommandCenters.Add(EAOSTeam::Team2, Team2Center);
+				UE_LOG(LogTemp, Warning, TEXT("Team2 Command Center spawned at (%.1f, %.1f, %.1f)"),
+					LaneInfo.Team2CommandCenterPosition.X, LaneInfo.Team2CommandCenterPosition.Y, LaneInfo.Team2CommandCenterPosition.Z);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("Failed to spawn Team2 Command Center"));
+			}
+
+			break;
+		}
 	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to spawn Team1 Command Center"));
-	}
 
-	// Team2 커맨드 센터
-	AAOSStructure* Team2Center = GetWorld()->SpawnActor<AAOSStructure>(
-		AAOSStructure::StaticClass(),
-		Team2CommandCenterPosition,
-		FRotator::ZeroRotator
-	);
-
-	if (Team2Center)
+	if (!bMidLaneFound)
 	{
-		Team2Center->Initialize(EStructureType::CommandCenter, EAOSTeam::Team2, EAOSLane::Mid);
-		CommandCenters.Add(EAOSTeam::Team2, Team2Center);
-		UE_LOG(LogTemp, Warning, TEXT("Team2 Command Center spawned at (%.1f, %.1f, %.1f)"),
-			Team2CommandCenterPosition.X, Team2CommandCenterPosition.Y, Team2CommandCenterPosition.Z);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to spawn Team2 Command Center"));
+		UE_LOG(LogTemp, Error, TEXT("Mid Lane not found! Cannot spawn command centers."));
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("=== SpawnStructures Complete ==="));
@@ -405,10 +397,6 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 
 	LanesInfo.Empty();
 
-	// Command Center 위치 설정 (팀당 1개)
-	Team1CommandCenterPosition = FVector(-2200, 0, 0);  // Team1 본진 (왼쪽)
-	Team2CommandCenterPosition = FVector(2200, 0, 0);   // Team2 본진 (오른쪽)
-
 	// Top Lane
 	{
 		FLaneInfo TopLane;
@@ -421,6 +409,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(700, 700, 0),
 			FVector(-350, -350, 0)
 		};
+		TopLane.Team1CommandCenterPosition = FVector(-2200, -2200, 0);
 
 		// Team2 (오른쪽/위) - 스폰 위치
 		TopLane.Team2StartPosition = FVector(-2000, -2000, 0);
@@ -429,6 +418,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(-700, -700, 0),
 			FVector(350, 350, 0)
 		};
+		TopLane.Team2CommandCenterPosition = FVector(2200, 2200, 0);
 
 		LanesInfo.Add(TopLane);
 	}
@@ -445,6 +435,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(700, 0, 0),
 			FVector(-350, 0, 0)
 		};
+		MidLane.Team1CommandCenterPosition = FVector(-2200, 0, 0);
 
 		// Team2 - 스폰 위치
 		MidLane.Team2StartPosition = FVector(-2000, 0, 0);
@@ -453,6 +444,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(-700, 0, 0),
 			FVector(350, 0, 0)
 		};
+		MidLane.Team2CommandCenterPosition = FVector(2200, 0, 0);
 
 		LanesInfo.Add(MidLane);
 	}
@@ -469,6 +461,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(700, -700, 0),
 			FVector(-350, 350, 0)
 		};
+		BottomLane.Team1CommandCenterPosition = FVector(-2200, 2200, 0);
 
 		// Team2 - 스폰 위치
 		BottomLane.Team2StartPosition = FVector(-2000, 2000, 0);
@@ -477,6 +470,7 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 			FVector(-700, 700, 0),
 			FVector(350, -350, 0)
 		};
+		BottomLane.Team2CommandCenterPosition = FVector(2200, -2200, 0);
 
 		LanesInfo.Add(BottomLane);
 	}
@@ -539,35 +533,35 @@ void AAOSMapManager::DrawDebugTowerPositions()
 			UE_LOG(LogTemp, Warning, TEXT("[%s Lane] Team2 Tower %d: (%.1f, %.1f, %.1f) - RED BOX"),
 				*LaneName, i + 1, TowerPos.X, TowerPos.Y, TowerPos.Z);
 		}
+
+		// Command Center - 노란색 박스 (더 큰 사이즈)
+		DrawDebugBox(
+			GetWorld(),
+			LaneInfo.Team1CommandCenterPosition,
+			FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
+			FColor::Yellow,
+			true,
+			-1.0f,
+			0,
+			10.0f
+		);
+
+		DrawDebugBox(
+			GetWorld(),
+			LaneInfo.Team2CommandCenterPosition,
+			FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
+			FColor::Orange,
+			true,
+			-1.0f,
+			0,
+			10.0f
+		);
+
+		UE_LOG(LogTemp, Warning, TEXT("[%s Lane] Team1 Command Center: (%.1f, %.1f, %.1f) - YELLOW BOX"),
+			*LaneName, LaneInfo.Team1CommandCenterPosition.X, LaneInfo.Team1CommandCenterPosition.Y, LaneInfo.Team1CommandCenterPosition.Z);
+		UE_LOG(LogTemp, Warning, TEXT("[%s Lane] Team2 Command Center: (%.1f, %.1f, %.1f) - ORANGE BOX"),
+			*LaneName, LaneInfo.Team2CommandCenterPosition.X, LaneInfo.Team2CommandCenterPosition.Y, LaneInfo.Team2CommandCenterPosition.Z);
 	}
-
-	// Command Center - 노란색/주황색 박스 (더 큰 사이즈, 팀당 1개)
-	DrawDebugBox(
-		GetWorld(),
-		Team1CommandCenterPosition,
-		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		FColor::Yellow,
-		true,
-		-1.0f,
-		0,
-		10.0f
-	);
-
-	DrawDebugBox(
-		GetWorld(),
-		Team2CommandCenterPosition,
-		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		FColor::Orange,
-		true,
-		-1.0f,
-		0,
-		10.0f
-	);
-
-	UE_LOG(LogTemp, Warning, TEXT("Team1 Command Center: (%.1f, %.1f, %.1f) - YELLOW BOX"),
-		Team1CommandCenterPosition.X, Team1CommandCenterPosition.Y, Team1CommandCenterPosition.Z);
-	UE_LOG(LogTemp, Warning, TEXT("Team2 Command Center: (%.1f, %.1f, %.1f) - ORANGE BOX"),
-		Team2CommandCenterPosition.X, Team2CommandCenterPosition.Y, Team2CommandCenterPosition.Z);
 
 	UE_LOG(LogTemp, Warning, TEXT("=== Debug Tower Boxes Drawn ==="));
 }
