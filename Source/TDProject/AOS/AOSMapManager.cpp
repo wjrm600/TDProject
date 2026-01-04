@@ -277,6 +277,10 @@ void AAOSMapManager::SpawnStructures()
 	// 🟡 MODIFIED - 디버그 로깅 추가
 	UE_LOG(LogTemp, Warning, TEXT("=== SpawnStructures Started ==="));
 	UE_LOG(LogTemp, Warning, TEXT("Total LanesInfo: %d"), LanesInfo.Num());
+	UE_LOG(LogTemp, Warning, TEXT("Team1 CommandCenter Position: (%.1f, %.1f, %.1f)"),
+		Team1CommandCenterPosition.X, Team1CommandCenterPosition.Y, Team1CommandCenterPosition.Z);
+	UE_LOG(LogTemp, Warning, TEXT("Team2 CommandCenter Position: (%.1f, %.1f, %.1f)"),
+		Team2CommandCenterPosition.X, Team2CommandCenterPosition.Y, Team2CommandCenterPosition.Z);
 
 	if (LanesInfo.Num() == 0)
 	{
@@ -490,11 +494,18 @@ void AAOSMapManager::DrawDebugTowerPositions()
 
 	UE_LOG(LogTemp, Warning, TEXT("=== Drawing Debug Tower Boxes ==="));
 
-	// 각 라인별로 타워 위치에 디버그 박스 표시
-	for (const FLaneInfo& LaneInfo : LanesInfo)
+	// 실제 스폰된 타워들의 위치에 디버그 박스 표시
+	for (AAOSStructure* Tower : AllTowers)
 	{
+		if (!Tower)
+			continue;
+
+		FVector TowerPos = Tower->GetActorLocation();
+		EAOSTeam Team = Tower->GetOwnerTeam();
+		EAOSLane Lane = Tower->GetLane();
+
 		FString LaneName;
-		switch (LaneInfo.LaneType)
+		switch (Lane)
 		{
 		case EAOSLane::Top: LaneName = TEXT("Top"); break;
 		case EAOSLane::Mid: LaneName = TEXT("Mid"); break;
@@ -502,43 +513,23 @@ void AAOSMapManager::DrawDebugTowerPositions()
 		default: LaneName = TEXT("Unknown"); break;
 		}
 
-		// Team1 타워 위치 - 파란색 박스
-		for (int32 i = 0; i < LaneInfo.Team1TowerPositions.Num(); ++i)
-		{
-			const FVector& TowerPos = LaneInfo.Team1TowerPositions[i];
-			DrawDebugBox(
-				GetWorld(),
-				TowerPos,
-				FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
-				FColor::Blue,
-				true,  // bPersistentLines
-				-1.0f, // LifeTime (영구)
-				0,     // DepthPriority
-				10.0f  // Thickness
-			);
+		FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+		FString TeamName = (Team == EAOSTeam::Team1) ? TEXT("Team1") : TEXT("Team2");
 
-			UE_LOG(LogTemp, Warning, TEXT("[%s Lane] Team1 Tower %d: (%.1f, %.1f, %.1f) - BLUE BOX"),
-				*LaneName, i + 1, TowerPos.X, TowerPos.Y, TowerPos.Z);
-		}
+		DrawDebugBox(
+			GetWorld(),
+			TowerPos,
+			FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
+			BoxColor,
+			true,  // bPersistentLines
+			-1.0f, // LifeTime (영구)
+			0,     // DepthPriority
+			10.0f  // Thickness
+		);
 
-		// Team2 타워 위치 - 빨간색 박스
-		for (int32 i = 0; i < LaneInfo.Team2TowerPositions.Num(); ++i)
-		{
-			const FVector& TowerPos = LaneInfo.Team2TowerPositions[i];
-			DrawDebugBox(
-				GetWorld(),
-				TowerPos,
-				FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
-				FColor::Red,
-				true,  // bPersistentLines
-				-1.0f, // LifeTime (영구)
-				0,     // DepthPriority
-				10.0f  // Thickness
-			);
-
-			UE_LOG(LogTemp, Warning, TEXT("[%s Lane] Team2 Tower %d: (%.1f, %.1f, %.1f) - RED BOX"),
-				*LaneName, i + 1, TowerPos.X, TowerPos.Y, TowerPos.Z);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("[%s Lane] %s Tower: (%.1f, %.1f, %.1f) - %s BOX"),
+			*LaneName, *TeamName, TowerPos.X, TowerPos.Y, TowerPos.Z,
+			(Team == EAOSTeam::Team1) ? TEXT("BLUE") : TEXT("RED"));
 	}
 
 	// Command Center - 노란색/주황색 박스 (더 큰 사이즈, 팀당 1개)

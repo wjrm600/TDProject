@@ -25,6 +25,7 @@ class TDPROJECT_API AAOSAIController : public AAIController
 
 public:
 	AAOSAIController();
+	virtual ~AAOSAIController();
 
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
@@ -74,10 +75,6 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
 	FVector LaneEndPosition = FVector::ZeroVector;
 
-	// 다음 목표 타워 인덱스
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
-	int32 NextTowerIndex = 0;
-
 	// 모든 라인 타워 파괴되었는지 확인
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
 	bool bAllTowersDestroyed = false;
@@ -90,8 +87,17 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
 	FVector CurrentMoveTarget = FVector::ZeroVector;
 
+	// 웨이포인트 큐 (순차적으로 방문할 구조물들)
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
+	TArray<AAOSStructure*> WaypointQueue;
+
+	// 현재 웨이포인트 인덱스
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
+	int32 CurrentWaypointIndex = 0;
+
 private:
 	void CacheLaneInfo();
+	void BuildWaypointQueue();
 	void UpdateAIBehavior(float DeltaTime);
 	void MoveTowardsTarget(float DeltaTime);
 	void AttackTarget(float DeltaTime);

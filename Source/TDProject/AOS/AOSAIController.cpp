@@ -10,6 +10,16 @@ AAOSAIController::AAOSAIController()
 	bAttachToPawn = true;
 }
 
+AAOSAIController::~AAOSAIController()
+{
+	// 웨이포인트 큐 정리
+	WaypointQueue.Empty();
+
+	// 참조 정리
+	ControlledCharacter = nullptr;
+	CurrentTarget = nullptr;
+}
+
 void AAOSAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
@@ -55,10 +65,14 @@ void AAOSAIController::StartDeployment(EAOSLane Lane)
 	DeployedLane = Lane;
 	CacheLaneInfo();
 
+	// 웨이포인트 큐 구축 (아군 타워 → 적 타워 → 적 커맨드 센터)
+	BuildWaypointQueue();
+
 	// 첫번째 목표 위치 설정
 	CurrentMoveTarget = GetNextTargetLocation();
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Deployment started on lane: %d"), static_cast<int32>(Lane));
+	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Deployment started on lane: %d, Waypoints: %d"),
+		static_cast<int32>(Lane), WaypointQueue.Num());
 }
 
 FVector AAOSAIController::GetNextTargetLocation()
@@ -68,57 +82,42 @@ FVector AAOSAIController::GetNextTargetLocation()
 		return FVector::ZeroVector;
 	}
 
-	// MapManager 찾기 (월드에 있는 AAOSMapManager 액터 검색)
-	AAOSMapManager* MapManager = nullptr;
-	for (TActorIterator<AAOSMapManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	// 웨이포인트 큐가 비어있으면 기본 위치 반환
+	if (WaypointQueue.Num() == 0)
 	{
-		MapManager = *ActorItr;
-		break;
-	}
-
-	if (!MapManager)
-	{
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Waypoint queue is empty!"));
 		return LaneEndPosition;
 	}
 
-	EAOSTeam CharacterTeam = ControlledCharacter->GetTeam();
-	EAOSTeam EnemyTeam = (CharacterTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
-
-	// 다음 목표 결정 (타워 > 커맨드 센터)
-	TArray<AAOSStructure*> TowersInLane = MapManager->GetTowersInLane(DeployedLane, EnemyTeam);
-
-	// UE_LOG(LogTemp, Warning, TEXT("[AI] GetNextTargetLocation - NextTowerIndex: %d, TotalTowers: %d, Lane: %d"),
-	// 	NextTowerIndex, TowersInLane.Num(), static_cast<int32>(DeployedLane));
-
-	if (TowersInLane.Num() > 0 && NextTowerIndex < TowersInLane.Num())
+	// 현재 웨이포인트가 유효한지 확인
+	while (CurrentWaypointIndex < WaypointQueue.Num())
 	{
-		AAOSStructure* TargetTower = TowersInLane[NextTowerIndex];
-		if (TargetTower && !TargetTower->IsDestroyed())
+		AAOSStructure* CurrentWaypoint = WaypointQueue[CurrentWaypointIndex];
+
+		// 웨이포인트가 유효하고 파괴되지 않았으면 해당 위치로 이동
+		if (CurrentWaypoint && !CurrentWaypoint->IsDestroyed())
 		{
-			// UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to Tower %d at (%.1f, %.1f, %.1f)"),
-			// 	NextTowerIndex, TargetTower->GetActorLocation().X, TargetTower->GetActorLocation().Y, TargetTower->GetActorLocation().Z);
-			return TargetTower->GetActorLocation();
+			FString StructureType = CurrentWaypoint->GetStructureType() == EStructureType::Tower ? TEXT("Tower") : TEXT("CommandCenter");
+			FString TeamName = CurrentWaypoint->GetOwnerTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2");
+
+			UE_LOG(LogTemp, Warning, TEXT("[AI] Target: Waypoint[%d/%d] - %s (%s) at (%.0f, %.0f, %.0f)"),
+				CurrentWaypointIndex, WaypointQueue.Num() - 1,
+				*StructureType, *TeamName,
+				CurrentWaypoint->GetActorLocation().X,
+				CurrentWaypoint->GetActorLocation().Y,
+				CurrentWaypoint->GetActorLocation().Z);
+
+			return CurrentWaypoint->GetActorLocation();
 		}
-		else
-		{
-			NextTowerIndex++;
-			// UE_LOG(LogTemp, Warning, TEXT("[AI] Tower %d destroyed, moving to next tower (index: %d)"),
-			// 	NextTowerIndex - 1, NextTowerIndex);
-			return GetNextTargetLocation(); // 다음 타워로
-		}
+
+		// 현재 웨이포인트가 파괴되었으면 다음으로 넘어감
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Waypoint[%d] destroyed, moving to next waypoint"), CurrentWaypointIndex);
+		CurrentWaypointIndex++;
 	}
 
-	// 모든 타워 파괴 완료 - 커맨드 센터로 이동
+	// 모든 웨이포인트를 통과했으면 마지막 위치 반환
+	UE_LOG(LogTemp, Warning, TEXT("[AI] All waypoints completed!"));
 	bAllTowersDestroyed = true;
-	AAOSStructure* CommandCenter = MapManager->GetCommandCenter(EnemyTeam);
-	if (CommandCenter)
-	{
-		// UE_LOG(LogTemp, Warning, TEXT("[AI] All towers destroyed! Moving to Command Center at (%.1f, %.1f, %.1f)"),
-		// 	CommandCenter->GetActorLocation().X, CommandCenter->GetActorLocation().Y, CommandCenter->GetActorLocation().Z);
-		return CommandCenter->GetActorLocation();
-	}
-
-	// UE_LOG(LogTemp, Warning, TEXT("[AI] No command center found, moving to lane end position"));
 	return LaneEndPosition;
 }
 
@@ -223,6 +222,96 @@ void AAOSAIController::CacheLaneInfo()
 		LaneEndPosition.X, LaneEndPosition.Y, LaneEndPosition.Z);
 }
 
+void AAOSAIController::BuildWaypointQueue()
+{
+	WaypointQueue.Empty();
+	CurrentWaypointIndex = 0;
+
+	if (!ControlledCharacter)
+	{
+		return;
+	}
+
+	// MapManager 찾기
+	AAOSMapManager* MapManager = nullptr;
+	for (TActorIterator<AAOSMapManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+	{
+		MapManager = *ActorItr;
+		break;
+	}
+
+	if (!MapManager)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Controller] MapManager not found while building waypoint queue!"));
+		return;
+	}
+
+	EAOSTeam MyTeam = ControlledCharacter->GetTeam();
+	EAOSTeam EnemyTeam = (MyTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+
+	// 1단계: 아군 타워들을 순서대로 추가 (스폰 지점에서 가까운 순)
+	TArray<AAOSStructure*> FriendlyTowers = MapManager->GetTowersInLane(DeployedLane, MyTeam);
+
+	// 스폰 지점에서 가까운 순서로 정렬 (역순으로)
+	FriendlyTowers.Sort([this](const AAOSStructure& A, const AAOSStructure& B)
+	{
+		float DistA = FVector::Dist(LaneStartPosition, A.GetActorLocation());
+		float DistB = FVector::Dist(LaneStartPosition, B.GetActorLocation());
+		return DistA > DistB; // 먼 것부터 (뒤에서부터 추가하기 위해)
+	});
+
+	// 역순으로 추가 (가장 가까운 타워가 먼저 오도록)
+	for (int32 i = FriendlyTowers.Num() - 1; i >= 0; i--)
+	{
+		if (FriendlyTowers[i] && !FriendlyTowers[i]->IsDestroyed())
+		{
+			WaypointQueue.Add(FriendlyTowers[i]);
+		}
+	}
+
+	// 2단계: 적 타워들을 순서대로 추가 (내 진영에서 가까운 순)
+	TArray<AAOSStructure*> EnemyTowers = MapManager->GetTowersInLane(DeployedLane, EnemyTeam);
+
+	// 내 스폰 지점에서 가까운 순서로 정렬
+	EnemyTowers.Sort([this](const AAOSStructure& A, const AAOSStructure& B)
+	{
+		float DistA = FVector::Dist(LaneStartPosition, A.GetActorLocation());
+		float DistB = FVector::Dist(LaneStartPosition, B.GetActorLocation());
+		return DistA < DistB; // 가까운 것부터
+	});
+
+	for (AAOSStructure* Tower : EnemyTowers)
+	{
+		if (Tower && !Tower->IsDestroyed())
+		{
+			WaypointQueue.Add(Tower);
+		}
+	}
+
+	// 3단계: 마지막으로 적 커맨드 센터 추가
+	AAOSStructure* EnemyCommandCenter = MapManager->GetCommandCenter(EnemyTeam);
+	if (EnemyCommandCenter)
+	{
+		WaypointQueue.Add(EnemyCommandCenter);
+	}
+
+	// 디버그 로그
+	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Waypoint Queue Built: %d waypoints"), WaypointQueue.Num());
+	for (int32 i = 0; i < WaypointQueue.Num(); i++)
+	{
+		if (WaypointQueue[i])
+		{
+			FString StructureType = WaypointQueue[i]->GetStructureType() == EStructureType::Tower ? TEXT("Tower") : TEXT("CommandCenter");
+			FString TeamName = WaypointQueue[i]->GetOwnerTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2");
+			UE_LOG(LogTemp, Warning, TEXT("  [%d] %s (%s) at (%.0f, %.0f, %.0f)"),
+				i, *StructureType, *TeamName,
+				WaypointQueue[i]->GetActorLocation().X,
+				WaypointQueue[i]->GetActorLocation().Y,
+				WaypointQueue[i]->GetActorLocation().Z);
+		}
+	}
+}
+
 void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 {
 	// 쿨타임 업데이트
@@ -270,15 +359,14 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 	if (Distance <= ArrivalDistance)
 	{
 		ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at target! Distance: %.1f, NextTowerIndex before: %d"),
-			Distance, NextTowerIndex);
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! Distance: %.1f, CurrentWaypointIndex: %d"),
+			Distance, CurrentWaypointIndex);
 
-		// 다음 목표 업데이트
-		if (!bAllTowersDestroyed)
-		{
-			NextTowerIndex++;
-			UE_LOG(LogTemp, Warning, TEXT("[AI] NextTowerIndex incremented to: %d"), NextTowerIndex);
-		}
+		// 다음 웨이포인트로 이동
+		CurrentWaypointIndex++;
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to next waypoint. New index: %d/%d"),
+			CurrentWaypointIndex, WaypointQueue.Num() - 1);
+
 		CurrentMoveTarget = GetNextTargetLocation();
 		return;
 	}
