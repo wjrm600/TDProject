@@ -14,15 +14,18 @@ AAOSStructure::AAOSStructure()
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
 	RootComponent = CollisionComponent;
 	CollisionComponent->SetSphereRadius(100.0f);
+	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);  // 콜리전 비활성화
 
 	// 메시 컴포넌트 설정
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
+	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);  // 메시 콜리전 비활성화
 
 	// 감지 범위 설정
 	DetectionRange = CreateDefaultSubobject<USphereComponent>(TEXT("DetectionRange"));
 	DetectionRange->SetupAttachment(RootComponent);
 	DetectionRange->SetSphereRadius(1500.0f);
+	DetectionRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);  // 오버랩 감지만 가능
 
 	CurrentHealth = MaxHealth;
 }
