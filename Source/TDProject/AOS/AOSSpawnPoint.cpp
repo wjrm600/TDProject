@@ -85,6 +85,21 @@ void AAOSSpawnPoint::InitializeCharacter(AAOSCharacter* Character)
 	Character->SetTeam(Team);
 	Character->SetLane(Lane);
 
+	FString LaneName;
+	switch (Lane)
+	{
+	case EAOSLane::Top: LaneName = TEXT("TOP"); break;
+	case EAOSLane::Mid: LaneName = TEXT("MID"); break;
+	case EAOSLane::Bottom: LaneName = TEXT("BOTTOM"); break;
+	default: LaneName = TEXT("UNKNOWN"); break;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("===== CHARACTER SPAWN ====="));
+	UE_LOG(LogTemp, Warning, TEXT("Team: %s, Lane: %s, Position: (%.1f, %.1f, %.1f)"),
+		Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+		*LaneName,
+		Character->GetActorLocation().X, Character->GetActorLocation().Y, Character->GetActorLocation().Z);
+
 	// 2. 스폰 포인트에 등록 (위치는 이미 SpawnActor에서 설정됨)
 	SetOccupiedCharacter(Character);
 
@@ -94,10 +109,6 @@ void AAOSSpawnPoint::InitializeCharacter(AAOSCharacter* Character)
 	//       └─ OnPossess()에서 StartDeployment() 호출
 	//    따라서 이 시점에서는 이미 배포가 시작됨
 	Character->DeployToLane();
-
-	UE_LOG(LogTemp, Warning, TEXT("Character spawned at SpawnPoint - Team: %d, Lane: %d, Position: (%.1f, %.1f, %.1f)"),
-	       static_cast<int32>(Team), static_cast<int32>(Lane),
-	       Character->GetActorLocation().X, Character->GetActorLocation().Y, Character->GetActorLocation().Z);
 }
 
 #if WITH_EDITOR

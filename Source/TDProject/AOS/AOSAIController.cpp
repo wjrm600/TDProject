@@ -87,23 +87,23 @@ FVector AAOSAIController::GetNextTargetLocation()
 	// 다음 목표 결정 (타워 > 커맨드 센터)
 	TArray<AAOSStructure*> TowersInLane = MapManager->GetTowersInLane(DeployedLane, EnemyTeam);
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI] GetNextTargetLocation - NextTowerIndex: %d, TotalTowers: %d, Lane: %d"),
-		NextTowerIndex, TowersInLane.Num(), static_cast<int32>(DeployedLane));
+	// UE_LOG(LogTemp, Warning, TEXT("[AI] GetNextTargetLocation - NextTowerIndex: %d, TotalTowers: %d, Lane: %d"),
+	// 	NextTowerIndex, TowersInLane.Num(), static_cast<int32>(DeployedLane));
 
 	if (TowersInLane.Num() > 0 && NextTowerIndex < TowersInLane.Num())
 	{
 		AAOSStructure* TargetTower = TowersInLane[NextTowerIndex];
 		if (TargetTower && !TargetTower->IsDestroyed())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to Tower %d at (%.1f, %.1f, %.1f)"),
-				NextTowerIndex, TargetTower->GetActorLocation().X, TargetTower->GetActorLocation().Y, TargetTower->GetActorLocation().Z);
+			// UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to Tower %d at (%.1f, %.1f, %.1f)"),
+			// 	NextTowerIndex, TargetTower->GetActorLocation().X, TargetTower->GetActorLocation().Y, TargetTower->GetActorLocation().Z);
 			return TargetTower->GetActorLocation();
 		}
 		else
 		{
 			NextTowerIndex++;
-			UE_LOG(LogTemp, Warning, TEXT("[AI] Tower %d destroyed, moving to next tower (index: %d)"),
-				NextTowerIndex - 1, NextTowerIndex);
+			// UE_LOG(LogTemp, Warning, TEXT("[AI] Tower %d destroyed, moving to next tower (index: %d)"),
+			// 	NextTowerIndex - 1, NextTowerIndex);
 			return GetNextTargetLocation(); // 다음 타워로
 		}
 	}
@@ -113,12 +113,12 @@ FVector AAOSAIController::GetNextTargetLocation()
 	AAOSStructure* CommandCenter = MapManager->GetCommandCenter(EnemyTeam);
 	if (CommandCenter)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[AI] All towers destroyed! Moving to Command Center at (%.1f, %.1f, %.1f)"),
-			CommandCenter->GetActorLocation().X, CommandCenter->GetActorLocation().Y, CommandCenter->GetActorLocation().Z);
+		// UE_LOG(LogTemp, Warning, TEXT("[AI] All towers destroyed! Moving to Command Center at (%.1f, %.1f, %.1f)"),
+		// 	CommandCenter->GetActorLocation().X, CommandCenter->GetActorLocation().Y, CommandCenter->GetActorLocation().Z);
 		return CommandCenter->GetActorLocation();
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI] No command center found, moving to lane end position"));
+	// UE_LOG(LogTemp, Warning, TEXT("[AI] No command center found, moving to lane end position"));
 	return LaneEndPosition;
 }
 
