@@ -47,6 +47,14 @@ void AAOSSpawnPoint::ReleaseCharacter()
 // 🟢 NEW - 스폰 포인트에서 캐릭터 생성
 AAOSCharacter* AAOSSpawnPoint::SpawnCharacterAtPoint(TSubclassOf<AAOSCharacter> CharacterClass)
 {
+	if (!bSpawnEnabled)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[SpawnPoint] Spawn disabled - Team: %s, Lane: %d, Index: %d"),
+			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+			static_cast<int32>(Lane), SpawnIndex);
+		return nullptr;
+	}
+
 	if (!CharacterClass || !GetWorld())
 	{
 		return nullptr;

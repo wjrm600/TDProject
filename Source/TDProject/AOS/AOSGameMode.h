@@ -89,6 +89,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
 	TArray<AAOSStructure*> GetTowersByLane(EAOSLane Lane, EAOSTeam Team);
 
+	// 캐릭터 사망 시 호출
+	UFUNCTION(BlueprintCallable, Category = "AOS|Characters")
+	void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
+
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	float GetRemainingTime() const { return RemainingGameTime; }

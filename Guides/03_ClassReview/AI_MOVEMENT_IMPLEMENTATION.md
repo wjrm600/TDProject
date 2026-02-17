@@ -53,13 +53,13 @@ AIController->StartDeployment(EAOSLane::Mid);
 
 #### GetNextTargetLocation()
 ```cpp
-// 다음 이동 목표 위치 반환
+// 다음 이동 목표 위치 반환 (웨이포인트 큐 기반)
 FVector Target = AIController->GetNextTargetLocation();
 ```
-**순서**:
-1. 적군 팀의 타워 중 아직 파괴되지 않은 타워 (NextTowerIndex 기준)
-2. 모든 타워 파괴 시 → 적군 커맨드 센터
-3. 없으면 → 라인 끝 위치
+**순서** (웨이포인트 큐 시스템):
+1. WaypointQueue[CurrentWaypointIndex]가 유효하면 해당 위치 반환
+2. 파괴된 웨이포인트는 자동으로 건너뜀 (CurrentWaypointIndex++)
+3. 모든 웨이포인트 완료 시 → bAllTowersDestroyed = true, LaneEndPosition 반환
 
 #### FindNearestEnemy()
 ```cpp
@@ -138,8 +138,8 @@ void UpdateAIBehavior(float DeltaTime)
 |------|-------|------|
 | EnemyDetectionRange | 1500.0f | 적군 감지 범위 |
 | AttackRange | 500.0f | 공격 가능 범위 |
-| AttackCooldown | 1.0f | 공격 쿨타임 (초) |
-| ArrivalDistance | 100.0f | 도착 판정 거리 |
+| AttackCooldownDuration | 1.0f | 공격 쿨타임 (초) |
+| ArrivalDistance | 100.0f | 웨이포인트 도착 판정 거리 (인접 타워 간 거리보다 작아야 함) |
 
 ### 이동
 
@@ -171,10 +171,13 @@ UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
 TObjectPtr<AAOSCharacter> CurrentTarget;  // 현재 공격 목표
 
 UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
-int32 NextTowerIndex;  // 다음 목표 타워 인덱스
+TArray<AAOSStructure*> WaypointQueue;  // 웨이포인트 큐
 
 UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
-bool bAllTowersDestroyed;  // 모든 타워 파괴 여부
+int32 CurrentWaypointIndex;  // 현재 웨이포인트 인덱스
+
+UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
+bool bAllTowersDestroyed;  // 모든 웨이포인트 완료 여부
 ```
 
 ---
@@ -210,27 +213,31 @@ UpdateAIBehavior(DeltaTime)
       └─ 미도착 시 이동 입력
 ```
 
-### 3단계: 타워 선택 로직
+### 3단계: 웨이포인트 큐 로직
 
 **GetNextTargetLocation()**에서:
 
 ```cpp
-// 아직 파괴되지 않은 타워가 있으면 → 그 타워로 이동
-if (NextTowerIndex < TowersInLane.Num()) {
-    return TowersInLane[NextTowerIndex]->GetActorLocation();
+// 웨이포인트 큐를 순회하며 유효한 웨이포인트 반환
+while (CurrentWaypointIndex < WaypointQueue.Num())
+{
+    AAOSStructure* CurrentWaypoint = WaypointQueue[CurrentWaypointIndex];
+    if (CurrentWaypoint && !CurrentWaypoint->IsDestroyed())
+        return CurrentWaypoint->GetActorLocation();
+    CurrentWaypointIndex++;  // 파괴된 웨이포인트 건너뛰기
 }
 
-// 모든 타워 파괴 시 → 커맨드 센터로 이동
-else {
-    return CommandCenter->GetActorLocation();
-}
+// 모든 웨이포인트 완료
+bAllTowersDestroyed = true;
+return LaneEndPosition;
 ```
 
-**타워 도착 시 (MoveTowardsTarget에서)**:
+**웨이포인트 도착 시 (MoveTowardsTarget에서)**:
 
 ```cpp
 if (Distance <= ArrivalDistance) {
-    NextTowerIndex++;  // 다음 타워로 진행
+    if (bAllTowersDestroyed) return;  // 무한루프 방지
+    CurrentWaypointIndex++;
     CurrentMoveTarget = GetNextTargetLocation();
 }
 ```
@@ -299,6 +306,6 @@ if (Distance <= ArrivalDistance) {
 
 ---
 
-**최종 업데이트**: 2025-11-23
+**최종 업데이트**: 2026-02-17
 **담당**: AI 시스템
-**상태**: ✅ 완성
+**상태**: 완성 (웨이포인트 큐 시스템으로 업그레이드됨)

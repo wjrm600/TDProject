@@ -232,7 +232,14 @@ FVector AAOSAIController::GetNextTargetLocation()
 if (Distance <= ArrivalDistance)
 {
     ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
-    UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! Distance: %.1f, Index: %d"),
+
+    // 모든 웨이포인트 완료 시 더 이상 진행하지 않음 (무한루프 방지)
+    if (bAllTowersDestroyed)
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! Distance: %.1f, CurrentWaypointIndex: %d"),
         Distance, CurrentWaypointIndex);
 
     // 다음 웨이포인트로 이동
@@ -247,7 +254,12 @@ if (Distance <= ArrivalDistance)
 
 #### 핵심 변경점
 - ~~NextTowerIndex++~~ → **CurrentWaypointIndex++**
+- **bAllTowersDestroyed 체크** 추가 (2026-02-17): 모든 웨이포인트 완료 후 무한 인덱스 증가 방지
 - 웨이포인트 진행 상황을 명확하게 로그 출력
+
+#### ArrivalDistance 주의사항
+- 현재 값: **100.0f** (2026-02-17 수정: 200→100)
+- 인접 웨이포인트 간 거리보다 작아야 함 (너무 크면 한 프레임에 여러 웨이포인트를 건너뜀)
 
 ---
 

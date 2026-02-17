@@ -59,6 +59,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
 	FVector GetLaneEndPosition() const;
 
+	// 사망 처리
+	void OnCharacterDeath();
+
 protected:
 	// 팀 및 라인 정보
 	UPROPERTY(BlueprintReadWrite, Category = "AOS|Character")

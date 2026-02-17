@@ -68,14 +68,48 @@ bool AAOSCharacter::IsAlive() const
 
 void AAOSCharacter::ReceiveDamage(float DamageAmount)
 {
+	if (!IsAlive())
+	{
+		return;
+	}
+
 	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
 
 	if (!IsAlive())
 	{
-		// 캐릭터 사망 처리
-		// TODO: 사망 애니메이션, 드롭 아이템, 재스폰 등
-		GetCharacterMovement()->StopMovementImmediately();
+		OnCharacterDeath();
 	}
+}
+
+void AAOSCharacter::OnCharacterDeath()
+{
+	FString TeamName = (Team == EAOSTeam::Team1) ? TEXT("Team1") : TEXT("Team2");
+	FString LaneName;
+	switch (AssignedLane)
+	{
+		case EAOSLane::Top: LaneName = TEXT("Top"); break;
+		case EAOSLane::Mid: LaneName = TEXT("Mid"); break;
+		case EAOSLane::Bottom: LaneName = TEXT("Bottom"); break;
+		default: LaneName = TEXT("Unknown"); break;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Character] %s %s lane character died at (%.0f, %.0f, %.0f)"),
+		*TeamName, *LaneName,
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
+
+	GetCharacterMovement()->StopMovementImmediately();
+	SetActorEnableCollision(false);
+	SetActorHiddenInGame(true);
+	SetActorTickEnabled(false);
+
+	// GameMode에 사망 알림
+	if (AAOSGameMode* GameMode = Cast<AAOSGameMode>(GetWorld()->GetAuthGameMode()))
+	{
+		GameMode->OnCharacterDestroyed(this);
+	}
+
+	// 2초 후 액터 제거
+	SetLifeSpan(2.0f);
 }
 
 float AAOSCharacter::GetCurrentHealth() const

@@ -1,9 +1,9 @@
 # 📋 AOS 게임 프로젝트 진행 일지
 
 **프로젝트명**: Tower Defense AOS Game (1v1 자동 전략 게임)
-**엔진**: Unreal Engine 5.6
+**엔진**: Unreal Engine 5.7 / Visual Studio 2026
 **시작일**: 2025-11-16
-**현재일**: 2025-11-17
+**현재일**: 2026-02-17
 
 ---
 
@@ -868,75 +868,92 @@ AAOSSpawnPoint
 | Phase 3 (1차) | 2025-11-17 | ❌ FAILED | 1개 |
 | Phase 3 (2차) | 2025-11-17 | ✅ SUCCESS | 0개 |
 | Phase 4 | 2025-11-17 | ✅ SUCCESS | 0개 |
+| Phase 5 | 2026-01-01 | ✅ SUCCESS | 0개 |
+| Phase 6 | 2026-01-05 | ✅ SUCCESS | 0개 |
+| Phase 7 | 2026-02-17 | ✅ SUCCESS | 0개 (UHT 캐시 클리어 후) |
 
 ---
 
-## 🎯 다음 단계 (TODO)
+## 이후 Phase 진행 요약 (Phase 5~7)
 
-### 즉시 실행 (우선순위 높음)
+> Phase 5~7의 상세 내용은 각 날짜별 로그를 참조하세요.
 
-- [ ] BP_AOSCharacter 블루프린트 생성
-- [ ] 레벨에 12개 스폰 포인트 배치
-  - [ ] Team1 Top Lane: 2개
-  - [ ] Team1 Mid Lane: 2개
-  - [ ] Team1 Bottom Lane: 2개
-  - [ ] Team2 Top Lane: 2개
-  - [ ] Team2 Mid Lane: 2개
-  - [ ] Team2 Bottom Lane: 2개
-- [ ] AOSGameMode의 DefaultPawnClass 설정 (BP_AOSCharacter)
-- [ ] Level Blueprint 연결 (Event BeginPlay → StartGame)
-- [ ] PIE 테스트 실행
+### Phase 5: RTS 카메라 및 라인 수정 (2026-01-01)
+- RTS 스타일 자유 카메라 시스템 완성 (WASD 이동, 마우스 휠 줌)
+- DefaultPawnClass와 CharacterClass 분리 (RTS 모드 지원)
+- 라인별 캐릭터 이동 버그 수정 (모든 캐릭터가 중앙으로 몰리는 문제)
+- 타워 위치 디버그 박스 표시
+- 에디터에서 라인 경로 실시간 시각화
+- **상세**: [2026-01-01_RTS_CAMERA_AND_LANE_FIX.md](./2026-01-01_RTS_CAMERA_AND_LANE_FIX.md)
 
-### 단기 목표 (1주일 이내)
+### Phase 6: 맵 구조 개선 및 웨이포인트 큐 (2026-01-05)
+- MapManager 구조 리팩터링 (EndPosition 제거, Command Center 팀별로 변경)
+- **웨이포인트 큐 시스템** 구현 (아군 타워 → 적 타워 → 적 커맨드 센터 순차 이동)
+- AllTowers 배열 UPROPERTY 추가 (메모리 크래시 수정)
+- 타워/커맨드 센터 충돌 비활성화 (NoCollision)
+- AI 컨트롤러 소멸자 추가 (에디터 종료 시 크래시 방지)
+- 런타임 디버그 시각화 개선 (AllTowers 기반)
+- **상세**: [2026-01-05_MAP_STRUCTURE_IMPROVEMENTS.md](./2026-01-05_MAP_STRUCTURE_IMPROVEMENTS.md)
 
-- [ ] 타워 생성 및 배치
-- [ ] 커맨드 센터 생성
-- [ ] AI 순찰 로직 완성 테스트
-- [ ] 캐릭터 자동 공격 테스트
+### Phase 7: 웨이포인트 버그 수정 (2026-02-17)
+- bSpawnEnabled 프로퍼티 추가 (개별 스폰 포인트 비활성화 가능)
+- 웨이포인트 무한루프 버그 수정 (bAllTowersDestroyed 체크 추가)
+- ArrivalDistance 200→100 조정 (인접 웨이포인트 건너뛰기 방지)
+- FLaneInfo 구조체 기본값 초기화 (UE 5.7 경고 해결)
+- UHT 캐시 손상 문제 해결 (Intermediate/Build 삭제)
+- **상세**: [2026-02-17_WAYPOINT_BUG_FIX.md](./2026-02-17_WAYPOINT_BUG_FIX.md)
 
-### 중기 목표 (2주일 이내)
+---
 
-- [ ] 카메라 시스템 구현
-- [ ] UI (타이머, 팀 정보) 추가
+## 다음 단계 (TODO)
+
+### 즉시 필요 (우선순위 높음)
+
+- [ ] 전체 라인 테스트 (8개 스폰 포인트 모두 활성화)
+- [ ] 캐릭터 메시 할당 (SetupMesh)
+- [ ] 캐릭터 사망/리스폰 처리
+- [ ] 구조물 파괴 이펙트
+
+### 단기 목표
+
+- [ ] 승리 조건 구현 (커맨드 센터 파괴 시 게임 종료)
+- [ ] 선택된 캐릭터 하이라이트
+- [ ] AI 파라미터 밸런싱 (EnemyDetectionRange, AttackRange)
+
+### 중기 목표
+
+- [ ] UI (타이머, 팀 정보, 미니맵)
 - [ ] 네트워크 리플리케이션 설정
-
-### 장기 목표 (1개월 이내)
-
-- [ ] 완전한 게임 루프 테스트
-- [ ] 밸런싱 및 튜닝
-- [ ] 멀티플레이 테스트
+- [ ] 캐릭터 클래스 다양화
 
 ---
 
-## 📝 마지막 메모
+## 마지막 메모
 
 ### 주요 성과
 
-✅ 완전한 게임 아키텍처 설계
-✅ 7개 핵심 클래스 구현
+✅ 완전한 게임 아키텍처 설계 (7개 핵심 클래스)
 ✅ 자동 캐릭터 생성 시스템 완성
-✅ 위치 설정 문제 해결
-✅ 포괄적인 문서화
-
-### 남은 작업
-
-- Level Designer의 작업이 필요함 (스폰 포인트, 타워, 맵 배치)
-- 게임 밸런싱 필요
-- 멀티플레이 테스트
+✅ 웨이포인트 큐 기반 라인 푸시 시스템
+✅ RTS 카메라 시스템 (WASD + 줌)
+✅ 맵 구조 리팩터링 (팀별 커맨드 센터)
+✅ 에디터/런타임 디버그 시각화
+✅ 메모리 안전성 확보 (UPROPERTY, 소멸자)
+✅ 포괄적인 문서화 (26개 문서)
 
 ### 기술적 교훈
 
-1. **Reflection System 이해**: Unreal의 UPROPERTY/UFUNCTION 제약 이해의 중요성
-2. **아키텍처 설계**: 초기 설계가 이후 변경에 미치는 영향
-3. **위치 설정 중복**: 여러 곳에서 같은 작업을 반복하면 버그 발생
-4. **문서화**: 변경사항을 명확히 기록해야 나중에 추적 가능
+1. **UPROPERTY 필수**: UObject* 배열은 반드시 UPROPERTY로 선언 (GC 관리)
+2. **ArrivalDistance 조정**: 인접 웨이포인트 간 거리보다 작아야 건너뛰기 방지
+3. **UHT 캐시**: 빌드 오류 시 Intermediate/Build 삭제로 해결 가능
+4. **충돌 설계**: 구조물은 NoCollision, DetectionRange만 QueryOnly
+5. **에디터 시각화**: DrawDebugBox/Sphere는 에디터에서 렌더링 안됨, DrawDebugLine 사용
 
 ---
 
-**프로젝트 상태**: 🟢 DEVELOPMENT (개발 진행 중)
-**다음 체크포인트**: PIE 테스트
-**예상 완료**: 2025-11-20
+**프로젝트 상태**: DEVELOPMENT (개발 진행 중)
+**현재 상태**: 핵심 시스템 완성, 콘텐츠 및 밸런싱 작업 필요
 
 ---
 
-*이 문서는 자동으로 생성되었으며 최종 업데이트 날짜: 2025-11-17*
+*최종 업데이트 날짜: 2026-02-17*

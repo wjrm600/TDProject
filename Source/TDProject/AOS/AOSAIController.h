@@ -101,9 +101,10 @@ private:
 	void UpdateAIBehavior(float DeltaTime);
 	void MoveTowardsTarget(float DeltaTime);
 	void AttackTarget(float DeltaTime);
+	void AttackStructure(AAOSStructure* Structure, float DeltaTime);
 
 	// 이동 완료 판정 거리 (캐릭터 충돌 범위 고려)
-	const float ArrivalDistance = 200.0f;
+	const float ArrivalDistance = 100.0f;
 
 	// 공격 쿨타임
 	float CurrentAttackCooldown = 0.0f;

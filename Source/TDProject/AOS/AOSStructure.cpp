@@ -24,7 +24,7 @@ AAOSStructure::AAOSStructure()
 	// 감지 범위 설정
 	DetectionRange = CreateDefaultSubobject<USphereComponent>(TEXT("DetectionRange"));
 	DetectionRange->SetupAttachment(RootComponent);
-	DetectionRange->SetSphereRadius(1500.0f);
+	DetectionRange->SetSphereRadius(400.0f);
 	DetectionRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);  // 오버랩 감지만 가능
 
 	CurrentHealth = MaxHealth;
@@ -177,13 +177,53 @@ void AAOSStructure::SetupCommandCenterMesh()
 
 void AAOSStructure::ReceiveDamage(float DamageAmount)
 {
+	if (IsDestroyed())
+	{
+		return;
+	}
+
 	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
 
 	if (IsDestroyed())
 	{
-		// 구조물 파괴 처리
-		// TODO: 파괴 애니메이션, 이펙트, 게임 규칙 처리 등
+		OnStructureDestroyed();
 	}
+}
+
+void AAOSStructure::OnStructureDestroyed()
+{
+	FString TypeName = (StructureType == EStructureType::Tower) ? TEXT("Tower") : TEXT("CommandCenter");
+	FString TeamName = (OwnerTeam == EAOSTeam::Team1) ? TEXT("Team1") : TEXT("Team2");
+	FString LaneName;
+	switch (Lane)
+	{
+		case EAOSLane::Top: LaneName = TEXT("Top"); break;
+		case EAOSLane::Mid: LaneName = TEXT("Mid"); break;
+		case EAOSLane::Bottom: LaneName = TEXT("Bottom"); break;
+		default: LaneName = TEXT("Unknown"); break;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Structure] %s %s %s destroyed at (%.0f, %.0f, %.0f)"),
+		*TeamName, *LaneName, *TypeName,
+		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
+
+	// 메시 숨기기
+	if (MeshComponent)
+	{
+		MeshComponent->SetVisibility(false);
+	}
+
+	// 감지 범위 비활성화 (더 이상 적을 공격하지 않음)
+	if (DetectionRange)
+	{
+		DetectionRange->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	// Tick 비활성화
+	SetActorTickEnabled(false);
+
+	// 현재 타겟 해제
+	CurrentTarget = nullptr;
 }
 
 void AAOSStructure::FireAtTarget(AAOSCharacter* Target)
@@ -205,7 +245,7 @@ AAOSCharacter* AAOSStructure::FindNearestEnemy()
 {
 	float NearestDistance = FLT_MAX;
 	AAOSCharacter* NearestEnemy = nullptr;
-	float DetectionRadius = 1500.0f;
+	float DetectionRadius = 400.0f;
 
 	// 월드의 모든 AAOSCharacter를 순회
 	for (TActorIterator<AAOSCharacter> ActorItr(GetWorld()); ActorItr; ++ActorItr)

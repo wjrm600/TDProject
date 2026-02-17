@@ -39,53 +39,55 @@
                     ▼
 ```
 
-## 📊 스폰 프로세스 플로우
+## 스폰 프로세스 플로우
 
 ```
 ┌─────────────────────────────────────────┐
 │   1. 레벨 로드                          │
-│   - AOSGameMode 활성화                  │
-│   - BeginPlay() 호출                    │
+│   - AOSMapManager::BeginPlay()          │
+│   - SpawnStructures() → 타워/커맨드센터 │
 └──────────────┬──────────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────────┐
-│   2. 스폰 포인트 자동 등록              │
-│   - 월드의 모든 AAOSSpawnPoint 찾기     │
-│   - TeamSpawnPoints 맵에 분류           │
-│   - 팀별로 Spawn Index 정렬             │
+│   2. 스폰 포인트 자동 실행              │
+│   - AOSSpawnPoint::BeginPlay()          │
+│   - bSpawnEnabled 확인 (false면 스킵)   │
+│   - SpawnCharacterAtPoint() 호출        │
 └──────────────┬──────────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────────┐
-│   3. 게임 시작 신호                     │
-│   - Event BeginPlay (Level Blueprint)   │
-│   - StartGame() 호출                    │
-│   - AOSGameState = GameRunning          │
+│   3. 캐릭터 생성 및 초기화              │
+│   - SpawnActor<AAOSCharacter>           │
+│   - InitializeCharacter()               │
+│     - SetTeam() / SetLane()             │
+│     - SetOccupiedCharacter()            │
 └──────────────┬──────────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────────┐
-│   4. 캐릭터 배치 (각 캐릭터마다)      │
-│   - SpawnCharacter(Char, Team, Lane)    │
-│   - GetNearestSpawnPoint(Team, Lane)    │
-│   - 스폰 포인트 선택                    │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│   5. 캐릭터 이동                        │
-│   - SetActorLocation(SpawnPoint Pos)    │
-│   - SpawnPoint에 캐릭터 등록            │
+│   4. AI 배포                            │
 │   - DeployToLane() 호출                 │
+│   - AOSAIController::OnPossess()        │
+│   - StartDeployment(Lane)               │
 └──────────────┬──────────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────────┐
-│   6. AI 시작                            │
-│   - AOSAIController 활성화              │
-│   - StartPatrolLane() 호출              │
-│   - 라인 순찰 시작                      │
+│   5. 웨이포인트 큐 구축                 │
+│   - BuildWaypointQueue()                │
+│   - 아군 타워(가까운순) → 적 타워 →    │
+│     적 커맨드 센터                      │
+└──────────────┬──────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────┐
+│   6. AI 행동 루프 (매 Tick)             │
+│   - UpdateAIBehavior()                  │
+│   - 적 감지 → 공격 / 웨이포인트 이동   │
+│   - ArrivalDistance(100) 이내 도착 시   │
+│     다음 웨이포인트로 자동 전진         │
 └─────────────────────────────────────────┘
 ```
 
@@ -254,38 +256,26 @@ X: 1300, Y: -1300          X: -1300, Y: 1300
 └─────────────────────────────────────────────┘
 ```
 
-## 🎮 PIE 실행 시 예상 결과
+## PIE 실행 시 예상 결과
 
 ```
-T=0초 (게임 시작)
-  └─ BeginPlay 이벤트 발생
-     └─ 모든 스폰 포인트 등록 완료
-     └─ AOSGameMode 초기화 완료
+T=0초 (레벨 로드)
+  ├─ AOSMapManager::BeginPlay() → SpawnStructures()
+  │  └─ 18개 타워 + 2개 커맨드 센터 생성
+  └─ AOSSpawnPoint::BeginPlay() (12개 스폰 포인트)
+     └─ bSpawnEnabled == true인 스폰 포인트에서 캐릭터 자동 생성
 
-T=1초 (게임 실제 시작)
-  └─ Event BeginPlay (Level Blueprint)
-     └─ StartGame() 호출
-     └─ 게임 상태: GameRunning
-     └─ 각 캐릭터의 DeployToLane() 호출 대기
+T=0~1초 (캐릭터 스폰 및 AI 초기화)
+  ├─ AOSAIController::OnPossess() → StartDeployment()
+  ├─ BuildWaypointQueue() → 7개 웨이포인트 구축
+  │  (아군 타워3 → 아군 타워2 → 아군 타워1 → 적 타워1 → 적 타워2 → 적 타워3 → 적 커맨드 센터)
+  └─ 캐릭터들이 첫 번째 웨이포인트(가장 가까운 아군 타워)를 향해 이동 시작
 
-T=2초 (캐릭터 배치)
-  Team1 캐릭터들:
-    Char_1 → SP_Team1_Top_0 (1500, 1500, 100)으로 이동
-    Char_2 → SP_Team1_Mid_0 (1500, 0, 100)으로 이동
-    Char_3 → SP_Team1_Bot_0 (1500, -1500, 100)으로 이동
-    Char_4 → SP_Team1_Top_1 (1300, 1300, 100)으로 이동
-
-  Team2 캐릭터들:
-    Char_1 → SP_Team2_Top_0 (-1500, -1500, 100)으로 이동
-    Char_2 → SP_Team2_Mid_0 (-1500, 0, 100)으로 이동
-    Char_3 → SP_Team2_Bot_0 (-1500, 1500, 100)으로 이동
-    Char_4 → SP_Team2_Top_1 (-1300, -1300, 100)으로 이동
-
-T=3초 (AI 순찰 시작)
-  ├─ 각 캐릭터 AIController 활성화
-  ├─ 라인 순찰 경로 설정
-  ├─ 적 탐지 범위 확인
-  └─ 게임 진행 (600초 동안)
+T=2초~ (AI 행동 루프)
+  ├─ 각 캐릭터가 웨이포인트 큐를 따라 순차 이동
+  ├─ ArrivalDistance(100) 이내 도착 시 다음 웨이포인트로 전진
+  ├─ EnemyDetectionRange(1500) 내 적 발견 시 공격 모드
+  └─ 모든 웨이포인트 완료 시 정지 (bAllTowersDestroyed = true)
 ```
 
 ## 📝 요약

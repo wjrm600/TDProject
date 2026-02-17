@@ -224,29 +224,32 @@ void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 
 ---
 
-## 📍 목표 추적 시스템 - GetNextTargetLocation()
+## 목표 추적 시스템 - GetNextTargetLocation()
+
+> 웨이포인트 큐 기반 시스템으로 변경됨 (2026-01-05)
 
 ```
-1. MapManager 검색
-   └─ TActorIterator<AAOSMapManager>(GetWorld())
+1. 웨이포인트 큐 확인
+   └─ WaypointQueue.Num() == 0 → LaneEndPosition 반환
 
-2. 레인 내 적 팀 타워 검색
-   └─ MapManager->GetTowersInLane(DeployedLane, EnemyTeam)
-
-3. 다음 타워 결정
-   ├─ TowersInLane.Num() > 0 && NextTowerIndex < Count
-   │  ├─ TargetTower = TowersInLane[NextTowerIndex]
-   │  ├─ !TargetTower->IsDestroyed()
-   │  │  └─ return TargetTower->GetActorLocation()
+2. 현재 웨이포인트 유효성 확인 (while 루프)
+   ├─ CurrentWaypointIndex < WaypointQueue.Num()
+   │  ├─ 웨이포인트 유효 & 미파괴
+   │  │  └─ return 웨이포인트 위치
    │  │
-   │  └─ TargetTower 파괴됨
-   │     ├─ NextTowerIndex++
-   │     └─ GetNextTargetLocation() (재귀 호출)
+   │  └─ 웨이포인트 파괴됨
+   │     └─ CurrentWaypointIndex++ (다음으로 건너뛰기)
    │
-   └─ 모든 타워 파괴 완료
+   └─ 모든 웨이포인트 완료
       ├─ bAllTowersDestroyed = true
-      ├─ CommandCenter = MapManager->GetCommandCenter(EnemyTeam)
-      └─ return CommandCenter->GetActorLocation()
+      └─ return LaneEndPosition
+```
+
+### MoveTowardsTarget() 도착 판정
+```
+Distance <= ArrivalDistance (100.0f)
+├─ bAllTowersDestroyed == true → return (무한루프 방지)
+└─ CurrentWaypointIndex++ → GetNextTargetLocation()
 ```
 
 ---
@@ -258,7 +261,7 @@ void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 | **EnemyDetectionRange** | 1500.0f | 적 캐릭터 감지 범위 |
 | **EnemyDetectionRange** (타워) | 1500.0f | 적 타워 감지 범위 |
 | **AttackRange** | 500.0f | 공격 가능 범위 |
-| **ArrivalDistance** | 100.0f | 목표 도착 판정 거리 |
+| **ArrivalDistance** | 100.0f | 웨이포인트 도착 판정 거리 (200→100, 2026-02-17) |
 | **AttackCooldownDuration** | 1.0f | 공격 쿨타임 |
 | **AttackDamage** | 10.0f | 공격당 피해량 |
 
@@ -480,7 +483,7 @@ void AAOSAIController::BeginPlay()
 
 ---
 
-**최종 업데이트**: 2025-11-24
-**완성도**: 100% (기본 기능)
-**다음 단계**: PIE 테스트 및 추가 기능 개발 필요
+**최종 업데이트**: 2026-02-17
+**완성도**: 100% (핵심 기능 - 웨이포인트 큐, 자동 스폰, 라인 푸시)
+**다음 단계**: 캐릭터 메시, 사망/리스폰, 구조물 파괴 이펙트
 

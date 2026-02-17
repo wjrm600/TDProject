@@ -71,6 +71,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Spawn")
 	int32 SpawnIndex = 0;
 
+	// 스폰 활성화 여부 (false면 캐릭터를 스폰하지 않음)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Spawn")
+	bool bSpawnEnabled = true;
+
 	// 현재 이 스폰 포인트에 있는 캐릭터
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Spawn")
 	AAOSCharacter* OccupiedCharacter = nullptr;

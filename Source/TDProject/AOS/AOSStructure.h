@@ -84,7 +84,7 @@ protected:
 	float AttackDamage = 20.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
-	float AttackRange = 1000.0f;
+	float AttackRange = 200.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
 	float AttackCooldown = 2.0f;
@@ -105,7 +105,10 @@ private:
 
 	void UpdateAttackTarget();
 
-	// 🟢 메시 설정 함수
+	// 메시 설정 함수
 	void SetupTowerMesh();
 	void SetupCommandCenterMesh();
+
+	// 파괴 처리
+	void OnStructureDestroyed();
 };

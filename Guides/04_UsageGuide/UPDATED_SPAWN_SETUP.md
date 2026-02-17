@@ -4,20 +4,25 @@
 
 ### Lane 설정 추가됨! ✨
 
-**이제 AAOSSpawnPoint에 다음 3가지 설정이 있습니다:**
+**AAOSSpawnPoint에 다음 4가지 설정이 있습니다:**
 
 ```
 1. Team (팀 선택)
    - Team1 (Red)
    - Team2 (Blue)
 
-2. Lane (라인 선택) ← NEW!
+2. Lane (라인 선택)
    - Top Lane
    - Mid Lane
    - Bottom Lane
 
 3. Spawn Index (같은 팀/라인 내 순서)
    - 0, 1, 2, 3...
+
+4. bSpawnEnabled (스폰 활성화) ← NEW! (2026-02-17 추가)
+   - true (기본값): 캐릭터를 자동 스폰
+   - false: 이 스폰 포인트에서 캐릭터를 스폰하지 않음
+   - 디버깅 시 특정 스폰 포인트만 활성화하여 로그를 쉽게 확인할 때 유용
 ```
 
 ## 레벨 에디터에서 설정하는 방법
@@ -207,17 +212,22 @@ GetNearestSpawnPoint(Team, Lane) 함수가 다음을 수행합니다:
 
 ### Details 패널에서 한눈에 보기
 ```
-각 스폰 포인트를 선택하면 Details에서 이 3가지가 보입니다:
+각 스폰 포인트를 선택하면 Details에서 이 4가지가 보입니다:
 
 ┌─────────────────────────────────┐
 │ AOS|Spawn                       │
 ├─────────────────────────────────┤
-│ Team         ▼ (Team1/Team2)   │
-│ Lane         ▼ (Top/Mid/Bottom)│
-│ Spawn Index  0 (정수)          │
+│ Team           ▼ (Team1/Team2) │
+│ Lane           ▼ (Top/Mid/Bot) │
+│ Spawn Index    0 (정수)        │
+│ Spawn Enabled  ☑ (체크박스)    │
 ├─────────────────────────────────┤
 │ (다른 설정들...)                │
 └─────────────────────────────────┘
+
+디버깅 팁: 캐릭터가 8개 동시에 스폰되면 로그 확인이 어려움
+→ 테스트할 스폰 포인트 1개만 bSpawnEnabled=true로 설정
+→ 나머지는 false로 비활성화
 ```
 
 ### 드래그 + 설정 반복
@@ -282,5 +292,9 @@ LogTemp Error: No available spawn point for Team X, Lane Y
 
 ---
 
-**요약**: Lane 설정이 추가되어 스폰 시스템이 더욱 정확해졌습니다!
-레벨 에디터에서 스폰 포인트를 배치할 때 **Team, Lane, Spawn Index** 3가지를 모두 설정하면 됩니다.
+**요약**: 스폰 포인트를 배치할 때 **Team, Lane, Spawn Index** 3가지를 모두 설정하세요.
+디버깅 시에는 **bSpawnEnabled**를 활용하여 특정 스폰 포인트만 활성화할 수 있습니다.
+
+---
+
+**최종 업데이트**: 2026-02-17

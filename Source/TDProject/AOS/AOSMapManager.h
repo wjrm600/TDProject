@@ -14,14 +14,14 @@ struct FLaneInfo
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EAOSLane LaneType;
+	EAOSLane LaneType = EAOSLane::Mid;
 
 	// 각 팀의 스폰 위치
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team1StartPosition;
+	FVector Team1StartPosition = FVector::ZeroVector;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team2StartPosition;
+	FVector Team2StartPosition = FVector::ZeroVector;
 
 	// 라인의 타워 위치들
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

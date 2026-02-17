@@ -54,6 +54,14 @@ void AAOSAIController::Tick(float DeltaTime)
 
 	if (!ControlledCharacter || !ControlledCharacter->IsAlive())
 	{
+		// 캐릭터 사망 시 AI 정리
+		if (ControlledCharacter && !ControlledCharacter->IsAlive())
+		{
+			StopMovement();
+			WaypointQueue.Empty();
+			CurrentTarget = nullptr;
+			ControlledCharacter = nullptr;
+		}
 		return;
 	}
 
@@ -332,15 +340,13 @@ void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 	AAOSStructure* NearestTower = FindNearestEnemyTower();
 	if (NearestTower)
 	{
-		// 타워 방향으로 이동
-		CurrentMoveTarget = NearestTower->GetActorLocation();
-	}
-	else
-	{
-		// 다음 목표로 이동
-		CurrentMoveTarget = GetNextTargetLocation();
+		// 적 구조물 공격
+		AttackStructure(NearestTower, DeltaTime);
+		return;
 	}
 
+	// 다음 웨이포인트로 이동
+	CurrentMoveTarget = GetNextTargetLocation();
 	CurrentTarget = nullptr;
 	MoveTowardsTarget(DeltaTime);
 }
@@ -359,6 +365,13 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 	if (Distance <= ArrivalDistance)
 	{
 		ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+		// 모든 웨이포인트 완료 시 더 이상 진행하지 않음
+		if (bAllTowersDestroyed)
+		{
+			return;
+		}
+
 		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! Distance: %.1f, CurrentWaypointIndex: %d"),
 			Distance, CurrentWaypointIndex);
 
@@ -373,6 +386,39 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 
 	// 목표 방향으로 이동
 	ControlledCharacter->AddMovementInput(Direction, 1.0f);
+}
+
+void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime)
+{
+	if (!ControlledCharacter || !Structure || Structure->IsDestroyed())
+	{
+		return;
+	}
+
+	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), Structure->GetActorLocation());
+
+	if (Distance > AttackRange)
+	{
+		// 구조물 방향으로 이동
+		FVector Direction = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
+		ControlledCharacter->AddMovementInput(Direction, 1.0f);
+		return;
+	}
+
+	// 공격 범위 내 - 멈추고 공격
+	ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+	// 구조물 방향으로 회전
+	FVector DirectionToStructure = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
+	ControlledCharacter->SetActorRotation(DirectionToStructure.Rotation());
+
+	if (CurrentAttackCooldown <= 0.0f)
+	{
+		Structure->ReceiveDamage(10.0f);
+		CurrentAttackCooldown = AttackCooldownDuration;
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking structure! HP: %.0f/%.0f"),
+			Structure->GetCurrentHealth(), Structure->GetMaxHealth());
+	}
 }
 
 void AAOSAIController::AttackTarget(float DeltaTime)

@@ -315,6 +315,27 @@ TArray<AAOSStructure*> AAOSGameMode::GetTowersByLane(EAOSLane Lane, EAOSTeam Tea
 	return Result;
 }
 
+void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
+{
+	if (!DestroyedCharacter)
+	{
+		return;
+	}
+
+	EAOSTeam CharacterTeam = DestroyedCharacter->GetTeam();
+
+	if (CharacterTeam == EAOSTeam::Team1)
+	{
+		Team1Characters.Remove(DestroyedCharacter);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team1 character destroyed. Remaining: %d"), Team1Characters.Num());
+	}
+	else
+	{
+		Team2Characters.Remove(DestroyedCharacter);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 character destroyed. Remaining: %d"), Team2Characters.Num());
+	}
+}
+
 void AAOSGameMode::UpdateGameTime(float DeltaTime)
 {
 	RemainingGameTime -= DeltaTime;
