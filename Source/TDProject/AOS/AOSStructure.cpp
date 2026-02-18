@@ -1,7 +1,9 @@
 #include "AOSStructure.h"
 #include "AOSCharacter.h"
+#include "UI/AOSHealthBarWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/WidgetComponent.h"
 #include "EngineUtils.h"
 #include "Materials/Material.h"
 
@@ -26,6 +28,13 @@ AAOSStructure::AAOSStructure()
 	DetectionRange->SetupAttachment(RootComponent);
 	DetectionRange->SetSphereRadius(400.0f);
 	DetectionRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);  // 오버랩 감지만 가능
+
+	// HP 바 위젯 컴포넌트
+	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
+	HealthBarComponent->SetupAttachment(RootComponent);
+	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 250.0f));
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarComponent->SetDrawSize(FVector2D(120.0f, 12.0f));
 
 	CurrentHealth = MaxHealth;
 }
@@ -77,6 +86,30 @@ void AAOSStructure::Initialize(EStructureType Type, EAOSTeam InOwnerTeam, EAOSLa
 	}
 
 	CurrentHealth = MaxHealth;
+
+	InitializeHealthBar();
+}
+
+void AAOSStructure::InitializeHealthBar()
+{
+	if (!HealthBarComponent)
+	{
+		return;
+	}
+
+	// 위젯 클래스가 설정되어 있으면 WidgetComponent에 할당
+	if (HealthBarWidgetClass)
+	{
+		HealthBarComponent->SetWidgetClass(HealthBarWidgetClass);
+	}
+
+	HealthBarWidget = Cast<UAOSHealthBarWidget>(HealthBarComponent->GetUserWidgetObject());
+	if (HealthBarWidget)
+	{
+		FLinearColor BarColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+		HealthBarWidget->SetBarColor(BarColor);
+		HealthBarWidget->UpdateHealthPercent(1.0f);
+	}
 }
 
 void AAOSStructure::SetupTowerMesh()
@@ -183,6 +216,7 @@ void AAOSStructure::ReceiveDamage(float DamageAmount)
 	}
 
 	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
+	UpdateHealthBar();
 
 	if (IsDestroyed())
 	{
@@ -217,6 +251,12 @@ void AAOSStructure::OnStructureDestroyed()
 	if (DetectionRange)
 	{
 		DetectionRange->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	// HP 바 숨기기
+	if (HealthBarComponent)
+	{
+		HealthBarComponent->SetVisibility(false);
 	}
 
 	// Tick 비활성화
@@ -263,6 +303,14 @@ AAOSCharacter* AAOSStructure::FindNearestEnemy()
 	}
 
 	return NearestEnemy;
+}
+
+void AAOSStructure::UpdateHealthBar()
+{
+	if (HealthBarWidget)
+	{
+		HealthBarWidget->UpdateHealthPercent(CurrentHealth / MaxHealth);
+	}
 }
 
 void AAOSStructure::UpdateAttackTarget()

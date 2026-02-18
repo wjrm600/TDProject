@@ -106,20 +106,29 @@ These enums are used throughout the codebase for team/lane identification.
 - 12 spawn points needed for full game (2 teams × 3 lanes × 2 per lane)
 - Each has Team, Lane, and Index properties
 
-**AOSCharacter** - Player-controlled character base class
+**AOSCharacter** - AI-controlled character base class
 - Health, attack, movement properties
-- Replicates for multiplayer (though networking not fully implemented)
+- HP bar widget component (Screen Space, above character head)
+- Death handling: hide mesh, disable collision, notify GameMode, Destroy after 2s (no respawn)
 
 **AOSAIController** - AI behavior and movement
 - **Most complex class in the project**
 - Implements waypoint queue system
-- Handles enemy detection, combat, and lane pushing
+- Handles enemy detection, combat (characters AND structures), and lane pushing
+- `AttackStructure()` - moves toward structure, attacks when in range
 - Uses `Tick()` for behavior updates (not Behavior Trees or State Trees)
 
 **AOSStructure** - Base class for towers and command centers
-- Health management
-- Auto-attack system for defensive structures
-- Detection range for finding enemies
+- Health management (Tower: 1000, CommandCenter: 5000)
+- Auto-attack system: AttackRange=200, DetectionRange=400
+- HP bar widget component (Screen Space, above structure)
+- Destruction: hide mesh, disable detection, hide HP bar, stop Tick
+
+**AOSHealthBarWidget** - HP bar UI (UI/AOSHealthBarWidget.h/cpp)
+- Inherits UUserWidget, used as 3D world widget
+- Binds to `HealthProgressBar` via `BindWidget` meta
+- Team color: Team1=Red, Team2=Blue
+- Requires Widget Blueprint `WBP_HealthBar` created in editor
 
 ## Memory Management Patterns
 
@@ -192,14 +201,26 @@ Structures (towers/command centers) use specific collision settings:
 ### Modifying AI Behavior
 
 Key parameters in `AOSAIController`:
-- `EnemyDetectionRange` (default: 1500.0f) - How far AI can see enemies
-- `AttackRange` (default: 500.0f) - Distance to begin attacking
-- `ArrivalDistance` - How close to waypoint before considering "arrived"
+- `EnemyDetectionRange` (default: 1500.0f) - How far AI can see enemy characters
+- `AttackRange` (default: 500.0f) - Distance to begin attacking enemy characters
+- `ArrivalDistance` (100.0f) - How close to waypoint before considering "arrived"
+- `AttackCooldownDuration` (1.0f) - Cooldown between attacks
 
 AI behavior loop in `UpdateAIBehavior()`:
-1. Check for nearby enemies (`FindNearestEnemy()`)
-2. If enemy found → Attack (`AttackTarget()`)
-3. If no enemy → Continue waypoint movement (`MoveTowardsTarget()`)
+1. Check for nearby enemy characters (`FindNearestEnemy()`)
+2. If enemy character found → `AttackTarget()` (move + attack)
+3. If no enemy character → Check current waypoint:
+   - If waypoint is an enemy structure → `AttackStructure()` (move + attack structure)
+   - If no structure target → `MoveTowardsTarget()` (move toward next waypoint)
+
+### HP Bar Setup (Widget Blueprint)
+
+After building, create `WBP_HealthBar` in editor:
+1. Content Browser → Content/AOS/UI/ → Right-click → User Interface → Widget Blueprint
+2. Parent class: `AOSHealthBarWidget`
+3. Add ProgressBar, rename it to exactly `HealthProgressBar`
+4. Open BP_Character → HealthBarComponent → Widget Class → select `WBP_HealthBar`
+5. Same for any Structure Blueprints that use `HealthBarWidgetClass`
 
 ### Testing in PIE (Play In Editor)
 
@@ -224,10 +245,13 @@ TDProject/
 │   │   ├── AOSPlayerController.*      # Player input (minimal)
 │   │   ├── AOSStructure.*             # Towers & Command Centers
 │   │   ├── AOSMapManager.*            # Map layout & spawning
-│   │   └── AOSSpawnPoint.*            # Character spawning
+│   │   ├── AOSSpawnPoint.*            # Character spawning
+│   │   └── UI/
+│   │       └── AOSHealthBarWidget.*   # HP bar 3D world widget
 │   ├── Variant_Combat/                # Secondary system (Unused)
 │   └── TDProject.*                    # Default UE starter files
-├── Content/                           # Blueprint assets
+├── Content/
+│   └── AOS/UI/                        # Widget Blueprint assets (WBP_HealthBar)
 ├── Guides/                            # Extensive documentation (Korean)
 │   ├── 01_GameOverview/               # Architecture docs
 │   ├── 02_ProgressLog/                # Development history
@@ -292,6 +316,19 @@ git push
 4. Waypoint queue empty
 
 **Debug**: Check log output from `BuildWaypointQueue()` showing waypoint list
+
+### HP Bar Not Showing
+
+**Cause**: Widget Blueprint (`WBP_HealthBar`) not created or not assigned
+**Solution**:
+1. Create Widget Blueprint with parent class `AOSHealthBarWidget`
+2. Add ProgressBar named exactly `HealthProgressBar`
+3. Assign `WBP_HealthBar` to BP_Character's `HealthBarComponent` → Widget Class
+
+### Surviving Characters Disappear After Winning Fight
+
+**Cause**: Characters couldn't attack structures — they only moved toward them while towers attacked back
+**Fixed**: Added `AttackStructure()` to `AOSAIController`. Characters now attack structures when the waypoint is an enemy structure.
 
 ## Language Notes
 

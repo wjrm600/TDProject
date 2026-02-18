@@ -12,6 +12,7 @@
 - 라운드 시간 관리 (기본값: 10분/600초)
 - 승리 조건 확인 (상대 커맨드 센터 파괴)
 - CharacterClass를 사용한 AI 캐릭터 스폰 (DefaultPawnClass와 분리)
+- 사망한 캐릭터를 팀 배열에서 제거 (OnCharacterDestroyed)
 
 **주요 기능:**
 ```cpp
@@ -19,6 +20,7 @@
 - EndGame(WinningTeam): 게임 종료
 - SpawnCharactersAtAllSpawnPoints(): 모든 스폰 포인트에서 캐릭터 자동 생성
 - CheckVictoryConditions(): 승리 조건 확인
+- OnCharacterDestroyed(Character): 사망 캐릭터를 팀 배열에서 제거
 ```
 
 ### 2. **AOSCharacter** (AOSCharacter.h/cpp)
@@ -26,6 +28,7 @@
 - 스폰 포인트에서 자동 생성됨
 - 라인 할당 시스템 (탑, 미드, 바텀)
 - 사망 시 자동 처리 (메시 숨김 → 2초 후 액터 제거, 리스폰 없음)
+- HP 바 위젯 (UWidgetComponent, 캐릭터 상단 Screen Space 표시)
 
 **주요 속성:**
 ```cpp
@@ -42,14 +45,15 @@
 1. 이동 즉시 정지
 2. 콜리전 비활성화
 3. 메시 숨기기
-4. GameMode에 사망 알림 (팀 배열에서 제거)
-5. 2초 후 액터 Destroy
+4. HP 바 숨기기
+5. GameMode에 사망 알림 (팀 배열에서 제거)
+6. 2초 후 액터 Destroy
 ```
 
 ### 3. **AOSAIController** (AOSAIController.h/cpp)
 - 캐릭터의 자동 행동 관리
 - **웨이포인트 큐 시스템** 기반 라인 푸시
-- 적 탐지 및 자동 공격
+- 적 캐릭터 및 적 구조물 탐지 및 자동 공격
 - Tick 기반 AI (State Tree 미사용)
 
 **AI 행동 흐름:**
@@ -58,15 +62,18 @@
    (아군 타워 → 적 타워 → 적 커맨드 센터 순서)
 2. 이동: 웨이포인트 큐를 따라 순차 이동
 3. 탐지: 근처 적(EnemyDetectionRange 내)을 감지
-4. 공격: 적을 향해 이동하고 AttackRange 내에서 공격
+4. 전투:
+   - 적 캐릭터 발견 → AttackTarget()으로 공격
+   - 웨이포인트가 적 구조물 → AttackStructure()로 공격 (이동 + 사거리 내 공격)
 5. 복귀: 적 제거 후 다음 웨이포인트로 계속 이동
+6. 사망 감지: Tick에서 bAlive 확인 → 이동 중지, 큐 비우기, 레퍼런스 해제
 ```
 
 **주요 설정값:**
 | 설정 | 값 | 설명 |
 |------|-----|------|
-| EnemyDetectionRange | 1500.0f | 적 감지 범위 |
-| AttackRange | 500.0f | 공격 가능 범위 |
+| EnemyDetectionRange | 1500.0f | 적 캐릭터 감지 범위 |
+| AttackRange | 500.0f | 적 캐릭터 공격 가능 범위 |
 | ArrivalDistance | 100.0f | 웨이포인트 도착 판정 거리 |
 | AttackCooldownDuration | 1.0f | 공격 쿨타임 |
 
@@ -75,11 +82,20 @@
 - 체력 관리 및 파괴 시스템
 - 자동 방어 시스템 (범위 내 적을 자동 공격)
 - 충돌 비활성화 (캐릭터가 통과 가능)
-- 파괴 시 메시 숨김 + 감지 비활성화 + Tick 중지
+- HP 바 위젯 (UWidgetComponent, 구조물 상단 표시)
+- 파괴 시: 메시 숨김 + 감지 비활성화 + HP 바 숨기기 + Tick 중지
 
 **구조물 종류:**
 - **Tower**: 각 라인 3개씩, 팀당 9개 (체력: 1000)
 - **CommandCenter**: 팀당 1개 (체력: 5000, 파괴 시 게임 패배)
+
+**구조물 스탯:**
+| 설정 | 값 | 설명 |
+|------|-----|------|
+| AttackDamage | 20.0f | 공격 데미지 |
+| AttackRange | 200.0f | 공격 사거리 |
+| AttackCooldown | 2.0f | 공격 쿨타임 |
+| DetectionRange | 400.0f | 적 캐릭터 감지 범위 |
 
 ### 5. **AOSPlayerController** (AOSPlayerController.h/cpp)
 - RTS 스타일 카메라 제어 (WASD 이동, 마우스 휠 줌)
@@ -103,6 +119,13 @@
 - 팀/라인/인덱스 정보 저장
 - bSpawnEnabled: 개별 스폰 포인트 활성화/비활성화 (디버깅용)
 - 12개 필요 (2팀 x 3라인 x 2개)
+
+### 8. **AOSHealthBarWidget** (UI/AOSHealthBarWidget.h/cpp)
+- UUserWidget 상속, 3D 월드 위젯으로 HP 바 표시
+- BindWidget 메타로 ProgressBar 바인딩 (이름: `HealthProgressBar`)
+- 팀별 색상 설정 (Team1: 빨강, Team2: 파랑)
+- 캐릭터/구조물 머리 위에 Screen Space로 표시
+- Widget Blueprint `WBP_HealthBar` 에디터에서 생성 후 BP_Character 등에 할당
 
 ## 게임 플로우
 
@@ -130,7 +153,9 @@ Source/TDProject/AOS/
 ├── AOSPlayerController.h/cpp  # RTS 카메라 및 선택
 ├── AOSStructure.h/cpp         # 타워/커맨드 센터
 ├── AOSMapManager.h/cpp        # 맵 관리 및 구조물 생성
-└── AOSSpawnPoint.h/cpp        # 캐릭터 스폰 지점
+├── AOSSpawnPoint.h/cpp        # 캐릭터 스폰 지점
+└── UI/
+    └── AOSHealthBarWidget.h/cpp  # HP 바 위젯 (3D 월드 UI)
 ```
 
 ## 다음 단계
@@ -139,9 +164,11 @@ Source/TDProject/AOS/
 - 캐릭터 메시 할당 (SetupMesh)
 - ~~캐릭터 사망/리스폰 처리~~ ✅ 완료 (2026-02-18)
 - ~~구조물 파괴 이펙트~~ ✅ 완료 (2026-02-18, 간단 버전)
+- ~~HP 바 UI~~ ✅ 완료 (2026-02-18, 3D 월드 위젯)
 
 ### 단기 목표
-- UI 시스템 (타이머, 팀 정보, 미니맵)
+- Widget Blueprint 생성 및 캐릭터/구조물 연결 (에디터 작업)
+- UI 시스템 확장 (타이머, 팀 정보, 킬 카운트)
 - AI 파라미터 밸런싱
 - 선택된 캐릭터 하이라이트
 
@@ -153,4 +180,4 @@ Source/TDProject/AOS/
 ---
 
 **마지막 업데이트**: 2026-02-18
-**상태**: 핵심 시스템 완성 (웨이포인트 큐, 자동 스폰, RTS 카메라, 사망/파괴 처리), 콘텐츠 추가 필요
+**상태**: 핵심 시스템 완성 (웨이포인트 큐, 자동 스폰, RTS 카메라, 사망/파괴 처리, HP 바 UI), 에디터 연결 및 콘텐츠 추가 필요

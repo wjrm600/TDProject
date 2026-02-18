@@ -61,6 +61,10 @@ Guides/
 - **내용**: 웨이포인트 시스템 버그 수정 및 디버깅
 - **범위**: bSpawnEnabled 추가, 무한루프 수정, ArrivalDistance 조정, FLaneInfo 초기화
 
+### [2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md](./02_ProgressLog/2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md)
+- **내용**: 사망/파괴 처리, 구조물 공격, HP 바 UI 구현
+- **범위**: OnCharacterDeath, OnStructureDestroyed, AttackStructure, AOSHealthBarWidget, 구조물 스탯 조정
+
 ---
 
 ## 03_ClassReview (클래스 리뷰)
@@ -161,8 +165,8 @@ Guides/
 2. [04_Implementation/AI_MOVEMENT_SYSTEM_COMPLETE.md](./04_Implementation/AI_MOVEMENT_SYSTEM_COMPLETE.md) (상세)
 
 **"최근 변경사항을 확인하고 싶다"**
-1. [02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md](./02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md) (최신)
-2. [02_ProgressLog/2026-01-05_MAP_STRUCTURE_IMPROVEMENTS.md](./02_ProgressLog/2026-01-05_MAP_STRUCTURE_IMPROVEMENTS.md)
+1. [02_ProgressLog/2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md](./02_ProgressLog/2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md) (최신)
+2. [02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md](./02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md)
 
 ---
 
@@ -171,11 +175,11 @@ Guides/
 | 카테고리 | 문서 수 | 주요 목적 |
 |---------|--------|---------|
 | 01_GameOverview | 2개 | 게임 전체 구조 이해 |
-| 02_ProgressLog | 5개 | 작업 진행 과정 추적 |
+| 02_ProgressLog | 6개 | 작업 진행 과정 추적 |
 | 03_ClassReview | 9개 | 기술 구현 상세 검토 |
 | 04_Implementation | 2개 | 핵심 시스템 구현 문서 |
 | 04_UsageGuide | 8개 | 실제 사용 방법 가이드 |
-| **총계** | **26개** | |
+| **총계** | **27개** | |
 
 ---
 
@@ -185,9 +189,9 @@ Guides/
 
 1. **[04_Implementation/WAYPOINT_QUEUE_SYSTEM.md](./04_Implementation/WAYPOINT_QUEUE_SYSTEM.md)** - AI 이동의 핵심 로직
 2. **[04_UsageGuide/QUICK_TOWER_TEST.md](./04_UsageGuide/QUICK_TOWER_TEST.md)** - 게임 즉시 실행
-3. **[02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md](./02_ProgressLog/2026-02-17_WAYPOINT_BUG_FIX.md)** - 최신 수정사항
+3. **[02_ProgressLog/2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md](./02_ProgressLog/2026-02-18_COMBAT_AND_UI_IMPROVEMENTS.md)** - 최신 수정사항
 
 ---
 
-**최종 업데이트**: 2026-02-17
-**총 문서 수**: 26개
+**최종 업데이트**: 2026-02-18
+**총 문서 수**: 27개

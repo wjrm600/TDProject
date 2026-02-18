@@ -1,6 +1,8 @@
 #include "AOSCharacter.h"
 #include "AOSAIController.h"
+#include "UI/AOSHealthBarWidget.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 AAOSCharacter::AAOSCharacter()
@@ -17,9 +19,15 @@ AAOSCharacter::AAOSCharacter()
 
 	CurrentHealth = MaxHealth;
 
-	// 🟡 MODIFIED - AI 컨트롤러 자동 할당
-	// AutoPossessAI = PlacedInWorld일 때 작동하려면 이렇게 설정해야 함
+	// AI 컨트롤러 자동 할당
 	AIControllerClass = AAOSAIController::StaticClass();
+
+	// HP 바 위젯 컴포넌트
+	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
+	HealthBarComponent->SetupAttachment(RootComponent);
+	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f));
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarComponent->SetDrawSize(FVector2D(100.0f, 10.0f));
 }
 
 void AAOSCharacter::BeginPlay()
@@ -28,6 +36,18 @@ void AAOSCharacter::BeginPlay()
 
 	SetupCharacterDefaults();
 	CurrentHealth = MaxHealth;
+
+	// HP 바 초기화
+	if (HealthBarComponent)
+	{
+		HealthBarWidget = Cast<UAOSHealthBarWidget>(HealthBarComponent->GetUserWidgetObject());
+		if (HealthBarWidget)
+		{
+			FLinearColor BarColor = (Team == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+			HealthBarWidget->SetBarColor(BarColor);
+			HealthBarWidget->UpdateHealthPercent(1.0f);
+		}
+	}
 }
 
 void AAOSCharacter::Tick(float DeltaTime)
@@ -74,6 +94,7 @@ void AAOSCharacter::ReceiveDamage(float DamageAmount)
 	}
 
 	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
+	UpdateHealthBar();
 
 	if (!IsAlive())
 	{
@@ -101,6 +122,12 @@ void AAOSCharacter::OnCharacterDeath()
 	SetActorEnableCollision(false);
 	SetActorHiddenInGame(true);
 	SetActorTickEnabled(false);
+
+	// HP 바 숨기기
+	if (HealthBarComponent)
+	{
+		HealthBarComponent->SetVisibility(false);
+	}
 
 	// GameMode에 사망 알림
 	if (AAOSGameMode* GameMode = Cast<AAOSGameMode>(GetWorld()->GetAuthGameMode()))
@@ -147,6 +174,14 @@ FVector AAOSCharacter::GetLaneEndPosition() const
 			return Team == EAOSTeam::Team1 ? FVector(-1000, 1000, 0) : FVector(1000, -1000, 0);
 		default:
 			return FVector::ZeroVector;
+	}
+}
+
+void AAOSCharacter::UpdateHealthBar()
+{
+	if (HealthBarWidget)
+	{
+		HealthBarWidget->UpdateHealthPercent(CurrentHealth / MaxHealth);
 	}
 }
 

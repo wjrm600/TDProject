@@ -5,6 +5,9 @@
 #include "AOSGameMode.h"
 #include "AOSStructure.generated.h"
 
+class UWidgetComponent;
+class UAOSHealthBarWidget;
+
 UENUM(BlueprintType)
 enum class EStructureType : uint8
 {
@@ -98,6 +101,20 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|Structure")
 	class USphereComponent* DetectionRange;
+
+	// HP 바 위젯
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|UI")
+	UWidgetComponent* HealthBarComponent;
+
+	UPROPERTY()
+	UAOSHealthBarWidget* HealthBarWidget;
+
+	void UpdateHealthBar();
+	void InitializeHealthBar();
+
+	// HP 바 위젯 클래스 (에디터에서 설정 또는 코드에서 자동 로드)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> HealthBarWidgetClass;
 
 private:
 	float CurrentAttackCooldown = 0.0f;

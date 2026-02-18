@@ -6,6 +6,8 @@
 #include "AOSCharacter.generated.h"
 
 class UAOSAttributeComponent;
+class UWidgetComponent;
+class UAOSHealthBarWidget;
 
 /**
  * AOS 게임의 기본 캐릭터 클래스
@@ -90,6 +92,15 @@ protected:
 	// 이동 속도
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Character")
 	float MovementSpeed = 600.0f;
+
+	// HP 바 위젯
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|UI")
+	UWidgetComponent* HealthBarComponent;
+
+	UPROPERTY()
+	UAOSHealthBarWidget* HealthBarWidget;
+
+	void UpdateHealthBar();
 
 private:
 	float CurrentAttackCooldown = 0.0f;

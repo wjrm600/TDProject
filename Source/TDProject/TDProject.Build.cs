@@ -18,7 +18,8 @@ public class TDProject : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+			"Slate",
+			"SlateCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
@@ -26,6 +27,7 @@ public class TDProject : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"TDProject",
 			"TDProject/AOS",
+			"TDProject/AOS/UI",
 			"TDProject/Variant_Platforming",
 			"TDProject/Variant_Platforming/Animation",
 			"TDProject/Variant_Combat",
