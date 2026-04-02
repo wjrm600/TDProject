@@ -296,10 +296,11 @@ void AAOSMapManager::SpawnStructures()
 		UE_LOG(LogTemp, Warning, TEXT("  Team2 Towers: %d"), LaneInfo.Team2TowerPositions.Num());
 
 		// Team1 타워 생성
+		UClass* T1TowerClass = Team1TowerClass ? Team1TowerClass.Get() : AAOSStructure::StaticClass();
 		for (const FVector& TowerPos : LaneInfo.Team1TowerPositions)
 		{
 			AAOSStructure* Tower = GetWorld()->SpawnActor<AAOSStructure>(
-				AAOSStructure::StaticClass(),
+				T1TowerClass,
 				TowerPos,
 				FRotator::ZeroRotator
 			);
@@ -317,10 +318,11 @@ void AAOSMapManager::SpawnStructures()
 		}
 
 		// Team2 타워 생성
+		UClass* T2TowerClass = Team2TowerClass ? Team2TowerClass.Get() : AAOSStructure::StaticClass();
 		for (const FVector& TowerPos : LaneInfo.Team2TowerPositions)
 		{
 			AAOSStructure* Tower = GetWorld()->SpawnActor<AAOSStructure>(
-				AAOSStructure::StaticClass(),
+				T2TowerClass,
 				TowerPos,
 				FRotator::ZeroRotator
 			);
@@ -342,8 +344,9 @@ void AAOSMapManager::SpawnStructures()
 	UE_LOG(LogTemp, Warning, TEXT("=== Spawning Command Centers ==="));
 
 	// Team1 커맨드 센터
+	UClass* T1CCClass = Team1CommandCenterClass ? Team1CommandCenterClass.Get() : AAOSStructure::StaticClass();
 	AAOSStructure* Team1Center = GetWorld()->SpawnActor<AAOSStructure>(
-		AAOSStructure::StaticClass(),
+		T1CCClass,
 		Team1CommandCenterPosition,
 		FRotator::ZeroRotator
 	);
@@ -361,8 +364,9 @@ void AAOSMapManager::SpawnStructures()
 	}
 
 	// Team2 커맨드 센터
+	UClass* T2CCClass = Team2CommandCenterClass ? Team2CommandCenterClass.Get() : AAOSStructure::StaticClass();
 	AAOSStructure* Team2Center = GetWorld()->SpawnActor<AAOSStructure>(
-		AAOSStructure::StaticClass(),
+		T2CCClass,
 		Team2CommandCenterPosition,
 		FRotator::ZeroRotator
 	);

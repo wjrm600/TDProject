@@ -100,6 +100,19 @@ protected:
 	UPROPERTY()
 	TArray<AAOSStructure*> AllTowers;
 
+	// 팀별 구조물 Blueprint 클래스 (미설정 시 기본 C++ 클래스로 스폰)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure Classes")
+	TSubclassOf<AAOSStructure> Team1TowerClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure Classes")
+	TSubclassOf<AAOSStructure> Team2TowerClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure Classes")
+	TSubclassOf<AAOSStructure> Team1CommandCenterClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure Classes")
+	TSubclassOf<AAOSStructure> Team2CommandCenterClass;
+
 	// 🟢 NEW - 디버그 설정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Debug")
 	bool bShowDebugTowerBoxes = true;
