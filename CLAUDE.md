@@ -330,6 +330,47 @@ git push
 **Cause**: Characters couldn't attack structures — they only moved toward them while towers attacked back
 **Fixed**: Added `AttackStructure()` to `AOSAIController`. Characters now attack structures when the waypoint is an enemy structure.
 
+## Multi-Agent Development Workflow
+
+이 프로젝트는 멀티 에이전트 방식으로 개발됩니다. `.claude/commands/`에 에이전트별 슬래시 커맨드가 정의되어 있습니다.
+
+### 에이전트 역할 및 파일 소유권
+
+| 담당 | 커맨드 | 소유 파일 | 충돌 위험 |
+|------|--------|-----------|-----------|
+| AI | `/agent-ai` | AOSAIController.h/cpp | HIGH |
+| Character | `/agent-character` | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
+| UI | `/agent-ui` | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
+| Object | `/agent-object` | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
+| Build/QA | `/agent-build-verify` | 없음 (읽기 전용) | NONE |
+| Docs | `/agent-docs` | CLAUDE.md, Guides/ 전체 | LOW |
+
+### Workflow
+
+1. `/multi-agent [기능 설명]` — 오케스트레이터가 태스크 분석 및 에이전트 할당
+2. 각 에이전트별 worktree 생성 (브랜치: `agent/<role>/<feature>`)
+3. 각 터미널에서 `/agent-*` 커맨드로 병렬 작업
+4. `/merge-agents` — 의존성 순서대로 병합 + 빌드 검증
+
+### 머지 순서 (반드시 준수)
+
+1. **docs** (코드 충돌 없음)
+2. **ui** (최소 외부 의존성)
+3. **object** (중간 결합도)
+4. **character** (enum 소유, API 제공)
+5. **ai** (최고 결합도, 마지막)
+6. 각 단계 후 **build-verify** 실행
+
+### AOSGameMode.h Enum 변경 게이트
+
+`EAOSTeam`, `EAOSLane`, `EAOSGameState` enum은 모든 AOS 파일이 의존합니다.
+enum 변경이 필요하면 **반드시 main에 먼저 커밋한 후** 에이전트 브랜치를 생성하세요.
+
+### 조율 파일
+
+- `.claude/coordination/INTERFACE_CONTRACTS.md` — 에이전트 간 안정 인터페이스 문서
+- `.claude/coordination/AGENT_STATUS.md` — 활성 에이전트 세션 추적
+
 ## Language Notes
 
 - **User messages**: Often in English asking for Korean translations

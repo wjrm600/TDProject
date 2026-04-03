@@ -93,7 +93,7 @@ protected:
 	AAOSCharacter* SelectedCharacter;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float CameraHeight = 3000.0f;
+	float CameraHeight = 12000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float CameraPitch = -70.0f;
@@ -102,22 +102,22 @@ protected:
 	float CameraYaw = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float CameraMoveSpeed = 2000.0f;
+	float CameraMoveSpeed = 8000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float ZoomSpeed = 500.0f;
+	float ZoomSpeed = 2000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MinZoomHeight = 1000.0f;
+	float MinZoomHeight = 4000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MaxZoomHeight = 5000.0f;
+	float MaxZoomHeight = 20000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MapBoundaryX = 10000.0f;
+	float MapBoundaryX = 40000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MapBoundaryY = 10000.0f;
+	float MapBoundaryY = 40000.0f;
 
 private:
 	// 🟡 MODIFIED - 카메라 이동 방향을 X, Y 분리
