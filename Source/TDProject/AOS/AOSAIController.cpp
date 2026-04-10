@@ -414,7 +414,7 @@ void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime
 
 	if (CurrentAttackCooldown <= 0.0f)
 	{
-		Structure->ReceiveDamage(10.0f);
+		Structure->ReceiveDamage(ControlledCharacter->AttackDamage);
 		CurrentAttackCooldown = AttackCooldownDuration;
 		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking structure! HP: %.0f/%.0f"),
 			Structure->GetCurrentHealth(), Structure->GetMaxHealth());
@@ -450,7 +450,7 @@ void AAOSAIController::AttackTarget(float DeltaTime)
 	// 공격 실행
 	if (CurrentAttackCooldown <= 0.0f)
 	{
-		CurrentTarget->ReceiveDamage(10.0f);
+		CurrentTarget->ReceiveDamage(ControlledCharacter->AttackDamage);
 		CurrentAttackCooldown = AttackCooldownDuration;
 		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking enemy! Distance: %.1f"), Distance);
 	}

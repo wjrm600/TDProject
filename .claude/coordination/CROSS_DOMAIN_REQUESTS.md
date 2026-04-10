@@ -14,10 +14,10 @@
 
 | ID | 요청 도메인 | 대상 도메인 | 설명 | 우선순위 | 상태 |
 |----|-----------|-----------|------|---------|------|
-| CR-001 | Designer | Programmer | AOSAIController.cpp의 AttackTarget/AttackStructure에서 `ReceiveDamage(10.0f)` 하드코딩 → `ControlledCharacter->AttackDamage` 참조로 변경 | HIGH | 대기 |
+| — | — | — | — | — | — |
 
 ## 완료된 요청
 
 | ID | 요청 도메인 | 대상 도메인 | 설명 | 완료일 |
 |----|-----------|-----------|------|--------|
-| — | — | — | — | — |
+| CR-001 | Designer | Programmer | AOSAIController.cpp의 AttackTarget/AttackStructure에서 `ReceiveDamage(10.0f)` 하드코딩 → `ControlledCharacter->AttackDamage` 참조로 변경 | 2026-04-11 |
