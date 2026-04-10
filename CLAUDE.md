@@ -330,46 +330,86 @@ git push
 **Cause**: Characters couldn't attack structures — they only moved toward them while towers attacked back
 **Fixed**: Added `AttackStructure()` to `AOSAIController`. Characters now attack structures when the waypoint is an enemy structure.
 
-## Multi-Agent Development Workflow
+## Multi-Agent Development Workflow (3도메인)
 
-이 프로젝트는 멀티 에이전트 방식으로 개발됩니다. `.claude/commands/`에 에이전트별 슬래시 커맨드가 정의되어 있습니다.
+이 프로젝트는 **3개 도메인** 멀티 에이전트 방식으로 개발됩니다. `.claude/commands/`에 에이전트별 슬래시 커맨드가 정의되어 있습니다.
 
-### 에이전트 역할 및 파일 소유권
+### 도메인 1: 프로그래머 (C++ 코드)
 
-| 담당 | 커맨드 | 소유 파일 | 충돌 위험 |
-|------|--------|-----------|-----------|
-| AI | `/agent-ai` | AOSAIController.h/cpp | HIGH |
-| Character | `/agent-character` | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
-| UI | `/agent-ui` | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
-| Object | `/agent-object` | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
-| Build/QA | `/agent-build-verify` | 없음 (읽기 전용) | NONE |
-| Docs | `/agent-docs` | CLAUDE.md, Guides/ 전체 | LOW |
+작업 방식: git worktree + C++ 파일 편집
+
+| 에이전트 | 커맨드 | 소유 파일 | 충돌 위험 |
+|----------|--------|-----------|-----------|
+| prog-ai | `/agent-prog-ai` | AOSAIController.h/cpp | HIGH |
+| prog-character | `/agent-prog-character` | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
+| prog-object | `/agent-prog-object` | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
+| prog-ui | `/agent-prog-ui` | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
+| prog-anim | `/agent-prog-anim` | AOSAnimInstance.h/cpp, Anim/AOSAnimNotify_*.h/cpp | MEDIUM |
+| build-verify | `/agent-build-verify` | 없음 (읽기 전용) | NONE |
+
+### 도메인 2: 기획자 (밸런스, 레벨, 문서)
+
+작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
+
+| 에이전트 | 커맨드 | 소유 영역 |
+|----------|--------|-----------|
+| design-balance | `/agent-design-balance` | Blueprint EditAnywhere 파라미터 전체 |
+| design-level | `/agent-design-level` | 레벨 액터 배치, MapManager 설정 |
+| design-docs | `/agent-design-docs` | CLAUDE.md, Guides/ 전체 |
+
+### 도메인 3: 아트 (비주얼, VFX)
+
+작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
+
+| 에이전트 | 커맨드 | 소유 에셋 |
+|----------|--------|-----------|
+| art-visual | `/agent-art-visual` | 머티리얼, 텍스처, 메시, 팀 색상 |
+| art-vfx | `/agent-art-vfx` | Niagara VFX, UI 스타일링 |
+| art-anim | `/agent-art-anim` | 애니메이션 BP, 몽타주, 블렌드 스페이스 |
 
 ### Workflow
 
-1. `/multi-agent [기능 설명]` — 오케스트레이터가 태스크 분석 및 에이전트 할당
-2. 각 에이전트별 worktree 생성 (브랜치: `agent/<role>/<feature>`)
-3. 각 터미널에서 `/agent-*` 커맨드로 병렬 작업
-4. `/merge-agents` — 의존성 순서대로 병합 + 빌드 검증
+1. `/multi-agent [기능 설명]` — 오케스트레이터가 도메인 분류 + 에이전트 할당
+2. **프로그래머**: worktree 생성 (브랜치: `agent/prog-<role>/<feature>`), 병렬 작업
+3. **기획자/아트**: MCP 도구로 에디터에서 직접 작업 (worktree 불필요)
+4. `/merge-agents` — 프로그래머 머지 → 기획 검증 → 아트 검증
 
-### 머지 순서 (반드시 준수)
+### 머지/검증 순서 (3단계)
 
-1. **docs** (코드 충돌 없음)
-2. **ui** (최소 외부 의존성)
-3. **object** (중간 결합도)
-4. **character** (enum 소유, API 제공)
-5. **ai** (최고 결합도, 마지막)
-6. 각 단계 후 **build-verify** 실행
+**Phase 1: 프로그래머 머지** (순차)
+1. **design-docs** (코드 충돌 없음)
+2. **prog-ui** (최소 외부 의존성)
+3. **prog-anim** (AnimInstance, Character 의존)
+4. **prog-object** (중간 결합도)
+5. **prog-character** (enum 소유, API 제공)
+6. **prog-ai** (최고 결합도, 마지막)
+→ 각 단계 후 **build-verify** 실행
+
+**Phase 2: 기획자 검증** (MCP, 머지 불필요)
+6. **design-balance**: `get_property`로 값 확인
+7. **design-level**: `get_level_actors`로 배치 확인
+
+**Phase 3: 아트 검증** (MCP, 머지 불필요)
+8. **art-visual**: 머티리얼 적용 확인
+9. **art-vfx**: VFX 확인
+10. **art-anim**: 애니메이션 확인
+→ `capture_viewport`로 시각 검증
 
 ### AOSGameMode.h Enum 변경 게이트
 
 `EAOSTeam`, `EAOSLane`, `EAOSGameState` enum은 모든 AOS 파일이 의존합니다.
 enum 변경이 필요하면 **반드시 main에 먼저 커밋한 후** 에이전트 브랜치를 생성하세요.
 
+### 도메인 간 조율
+
+하드코딩 값 발견, 새 컴포넌트 슬롯 필요 등 도메인 간 요청은 `CROSS_DOMAIN_REQUESTS.md`에 등록합니다.
+
 ### 조율 파일
 
-- `.claude/coordination/INTERFACE_CONTRACTS.md` — 에이전트 간 안정 인터페이스 문서
-- `.claude/coordination/AGENT_STATUS.md` — 활성 에이전트 세션 추적
+- `.claude/coordination/INTERFACE_CONTRACTS.md` — 에이전트 간 안정 인터페이스 + Blueprint 프로퍼티 계약
+- `.claude/coordination/AGENT_STATUS.md` — 활성 에이전트 세션 추적 (worktree/MCP 구분)
+- `.claude/coordination/CROSS_DOMAIN_REQUESTS.md` — 도메인 간 변경 요청 추적
+- `.claude/coordination/ASSET_OWNERSHIP.md` — Content/ 에셋 소유권 매핑
 
 ## Language Notes
 

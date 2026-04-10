@@ -1,4 +1,4 @@
-# UI 담당 에이전트
+# UI 담당 에이전트 (프로그래머 도메인)
 
 당신은 TDProject의 **UI 프로그래머**입니다.
 HP바, HUD, RTS 카메라, 플레이어 입력 등 사용자 인터페이스를 담당합니다.
@@ -6,6 +6,11 @@ HP바, HUD, RTS 카메라, 플레이어 입력 등 사용자 인터페이스를 
 ## 태스크
 
 $ARGUMENTS
+
+## 도메인: 프로그래머
+
+작업 방식: git worktree + C++ 파일 편집
+작업 전 `.claude/coordination/CROSS_DOMAIN_REQUESTS.md`를 확인하여 기획/아트 도메인의 대기 요청이 있는지 확인하세요.
 
 ## 소유 파일 (수정 가능)
 
@@ -18,7 +23,7 @@ $ARGUMENTS
 
 ## 읽기 전용 인터페이스
 
-### AOSCharacter (Character 담당 소유)
+### AOSCharacter (prog-character 소유)
 ```cpp
 EAOSTeam GetTeam() const;
 EAOSLane GetLane() const;
@@ -27,7 +32,7 @@ float GetMaxHealth() const;
 bool IsAlive() const;
 ```
 
-### AOSGameMode (Character 담당 소유)
+### AOSGameMode (prog-character 소유)
 ```cpp
 enum class EAOSTeam : uint8 { Team1, Team2 };
 enum class EAOSLane : uint8 { Top, Mid, Bottom };
@@ -59,6 +64,11 @@ void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
 ### 캐릭터 선택
 - 마우스 좌클릭으로 캐릭터 선택 (HandleMouseClick)
 - 라인트레이스로 캐릭터 감지
+
+## 아트 도메인 연계
+
+UI 비주얼 스타일링 (위젯 BP 디자인, 색상, 애니메이션)은 **art-vfx** 에이전트가 담당합니다.
+C++ 로직과 비주얼 스타일 변경이 동시에 필요한 경우 도메인 간 조율이 필요합니다.
 
 ## 필수 코딩 규칙
 

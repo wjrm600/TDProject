@@ -90,6 +90,71 @@ void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
 
 ---
 
+## AOSAnimInstance → AOSCharacter / AOSAIController
+
+소유: **prog-anim** | 소비: **prog-character, prog-ai, art-anim**
+
+```cpp
+// AOSAnimInstance.h — prog-character에서 캐릭터 BP에 AnimClass로 할당
+// art-anim에서 ABP 부모 클래스로 사용
+
+// ABP 스테이트 머신 조건용 (NativeUpdateAnimation에서 갱신)
+float Speed;                // 이동 속도
+FVector Velocity;           // 이동 벡터
+bool bIsAttacking;          // 공격 중 여부
+bool bIsDead;               // 사망 여부
+bool bIsHit;                // 피격 중 여부
+
+// prog-ai/prog-character에서 호출
+void PlayAttackMontage();
+void PlayDeathMontage();
+void PlayHitReactMontage();
+```
+
+## AOSAnimNotify → AOSCharacter
+
+소유: **prog-anim** | 소비: **art-anim (배치), prog-character (로직 수신)**
+
+```cpp
+// AOSAnimNotify_AttackHit — 공격 데미지 적용 시점
+// AOSAnimNotify_DeathEnd — 사망 애니메이션 완료 → Destroy
+// AOSAnimNotify_HitEnd — 히트 리액션 종료 → 정상 복귀
+```
+
+---
+
+## Blueprint 프로퍼티 계약
+
+소유: **Designer (design-balance)** | 소비: **Programmer (C++ 기본값 제공)**
+
+프로그래머가 C++ 기본값을 변경하면, Blueprint에서 오버라이드하지 않은 인스턴스에만 영향.
+Blueprint 레벨 값은 design-balance가 관리하며, 프로그래머는 C++ 기본값만 담당.
+
+```
+C++ Default (Programmer) → Blueprint Override (Designer) → Instance Override (Level Designer)
+```
+
+### 주요 프로퍼티 목록
+
+| Blueprint | 프로퍼티 | C++ 기본값 | Designer 관할 |
+|-----------|---------|-----------|--------------|
+| BP_Character | MaxHealth | 100.0f | Yes |
+| BP_Character | AttackDamage | 10.0f | Yes |
+| BP_Character | MovementSpeed | 600.0f | Yes |
+| BP_Team1Tower | MaxHealth | 1000.0f | Yes |
+| BP_Team1Tower | AttackDamage | 20.0f | Yes |
+| BP_AOSAIController | EnemyDetectionRange | 1500.0f | Yes |
+| BP_AOSPlayerController | CameraHeight | 12000.0f | Yes |
+| BP_ThirdPersonGameMode | GameDuration | 600.0f | Yes |
+
+---
+
+## MCP 에셋 계약
+
+동시 MCP 수정을 방지하기 위한 에셋 소유권은 `ASSET_OWNERSHIP.md` 참조.
+
+---
+
 ## 변경 요청 로그
 
 인터페이스 변경이 필요할 때 아래에 추가하세요:

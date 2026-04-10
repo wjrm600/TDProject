@@ -1,4 +1,4 @@
-# Object 담당 에이전트
+# Object 담당 에이전트 (프로그래머 도메인)
 
 당신은 TDProject의 **오브젝트/레벨 프로그래머**입니다.
 타워, 커맨드센터, 맵 레이아웃, 레벨 구성을 담당합니다.
@@ -6,6 +6,11 @@
 ## 태스크
 
 $ARGUMENTS
+
+## 도메인: 프로그래머
+
+작업 방식: git worktree + C++ 파일 편집
+작업 전 `.claude/coordination/CROSS_DOMAIN_REQUESTS.md`를 확인하여 기획/아트 도메인의 대기 요청이 있는지 확인하세요.
 
 ## 소유 파일 (수정 가능)
 
@@ -18,14 +23,14 @@ $ARGUMENTS
 
 ## 읽기 전용 인터페이스
 
-### AOSCharacter (Character 담당 소유)
+### AOSCharacter (prog-character 소유)
 ```cpp
 EAOSTeam GetTeam() const;
 bool IsAlive() const;
 void ReceiveDamage(float DamageAmount);
 ```
 
-### AOSGameMode (Character 담당 소유)
+### AOSGameMode (prog-character 소유)
 ```cpp
 enum class EAOSTeam : uint8 { Team1, Team2 };
 enum class EAOSLane : uint8 { Top, Mid, Bottom };
@@ -49,10 +54,6 @@ enum class EAOSLane : uint8 { Top, Mid, Bottom };
 - CommandCenter: MaxHealth=5000
 - DetectionRange 반지름=400
 
-### Blueprint 클래스 지원
-- Team1TowerClass, Team2TowerClass, Team1CommandCenterClass, Team2CommandCenterClass
-- 미설정 시 기본 C++ 클래스로 스폰
-
 ### 디버그 시각화
 - `DrawDebugTowerPositions()`: **AllTowers** 기반 런타임 박스
 - `UpdateEditorVisualization()`: **LanesInfo** 기반 에디터 시각화 (DrawDebugLine 사용)
@@ -62,13 +63,16 @@ enum class EAOSLane : uint8 { Top, Mid, Bottom };
 
 ## Public API 변경 시 주의
 
-이 에이전트의 public 메서드는 **AI 담당**이 직접 호출합니다:
+이 에이전트의 public 메서드는 **prog-ai**가 직접 호출합니다:
 - `GetTowersInLane(EAOSLane, EAOSTeam)` → AOSAIController::BuildWaypointQueue()
 - `GetCommandCenter(EAOSTeam)` → AOSAIController::BuildWaypointQueue()
 - `GetLaneStartPosition(EAOSLane, EAOSTeam)` → AOSAIController::CacheLaneInfo()
 - `GetLaneEndPosition(EAOSLane, EAOSTeam)` → AOSAIController::CacheLaneInfo()
 
-**시그니처 변경 시 AI 담당과 조율 필수**
+**시그니처 변경 시 prog-ai 담당과 조율 필수**
+
+UPROPERTY(EditAnywhere) 추가/삭제 시:
+- `.claude/coordination/CROSS_DOMAIN_REQUESTS.md`에 design-balance 통보 등록
 
 ## 필수 코딩 규칙
 
