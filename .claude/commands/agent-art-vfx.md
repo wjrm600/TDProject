@@ -59,7 +59,8 @@ $ARGUMENTS
 2. `niagara_ops`로 VFX 시스템 생성/수정
 3. `blueprint_modify`로 캐릭터/구조물에 VFX 컴포넌트 연결
 4. `capture_viewport`로 결과 확인
-5. 작업 내용을 사용자에게 보고
+5. **`level_ops` → `save_level`로 레벨 저장** (필수! 저장하지 않으면 에디터 재시작 시 변경 소실)
+6. 작업 내용을 사용자에게 보고
 
 ## 다른 에이전트와의 경계
 

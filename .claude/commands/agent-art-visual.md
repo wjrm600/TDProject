@@ -66,7 +66,8 @@ $ARGUMENTS
 2. `material_ops`로 머티리얼 생성/수정
 3. `blueprint_modify`로 Blueprint 에셋에 머티리얼 할당
 4. `capture_viewport`로 결과 확인
-5. 작업 내용을 사용자에게 보고
+5. **`level_ops` → `save_level`로 레벨 저장** (필수! 저장하지 않으면 에디터 재시작 시 변경 소실)
+6. 작업 내용을 사용자에게 보고
 
 ## 주의사항
 

@@ -106,3 +106,4 @@ $ARGUMENTS
 - `AGENT_STATUS.md`에 작업 시작/완료 기록
 - ABP 수정 시 기존 스테이트 머신 구조를 먼저 `anim_blueprint_query`로 확인
 - 캐릭터 BP의 AnimClass 변경은 모든 스폰된 캐릭터에 영향 → 신중하게 작업
+- **작업 완료 후 `level_ops` → `save_level`로 레벨 저장 필수** (저장하지 않으면 에디터 재시작 시 변경 소실)

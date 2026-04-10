@@ -76,9 +76,7 @@ $ARGUMENTS
 
 ## 알려진 하드코딩 이슈
 
-- `AOSAIController.cpp` 417행: `Structure->ReceiveDamage(10.0f)` — 캐릭터 AttackDamage를 참조해야 함
-- `AOSAIController.cpp` 453행: `CurrentTarget->ReceiveDamage(10.0f)` — 동일 이슈
-- → CROSS_DOMAIN_REQUESTS CR-001로 등록됨
+- ~~CR-001: `AOSAIController.cpp`의 `ReceiveDamage(10.0f)` 하드코딩~~ → **완료 (2026-04-11)**, `GetAttackDamage()` 참조로 변경됨
 
 ## 작업 흐름
 
@@ -86,7 +84,8 @@ $ARGUMENTS
 2. 밸런스 분석 및 조정 방향 결정
 3. `set_property`로 값 변경
 4. `capture_viewport`로 결과 확인
-5. 변경 이력을 `Guides/06_BalanceLog/`에 기록 (design-docs에 요청 또는 직접 작성)
+5. **`level_ops` → `save_level`로 레벨 저장** (필수! 저장하지 않으면 에디터 재시작 시 변경 소실)
+6. 변경 이력을 `Guides/06_BalanceLog/`에 기록 (design-docs에 요청 또는 직접 작성)
 
 ## 밸런스 기록
 

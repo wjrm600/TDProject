@@ -83,7 +83,8 @@ LanesInfo[2] = Bottom Lane (동일 구조)
 3. 배치 계획 수립
 4. `spawn_actor`/`move_actor`/`set_property`로 액터 배치/이동
 5. `capture_viewport`로 결과 시각 확인
-6. 레이아웃 변경을 `Guides/05_DesignSpecs/`에 기록
+6. **`level_ops` → `save_level`로 레벨 저장** (필수! 저장하지 않으면 에디터 재시작 시 변경 소실)
+7. 레이아웃 변경을 `Guides/05_DesignSpecs/`에 기록
 
 ## 주의사항
 
