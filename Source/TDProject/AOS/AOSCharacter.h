@@ -61,6 +61,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
 	FVector GetLaneEndPosition() const;
 
+	// 공격력 조회
+	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
+	float GetAttackDamage() const { return AttackDamage; }
+
 	// 사망 처리
 	void OnCharacterDeath();
 
