@@ -1,9 +1,13 @@
 #include "AOSPlayerController.h"
 #include "AOSGameMode.h"
 #include "AOSCharacter.h"
+#include "AOSStructure.h"
+#include "UI/AOSMainMenuWidget.h"
+#include "UI/AOSSettlementWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Engine/World.h"
+#include "Blueprint/UserWidget.h"
 
 AAOSPlayerController::AAOSPlayerController()
 {
@@ -37,6 +41,16 @@ void AAOSPlayerController::BeginPlay()
 			SetViewTarget(RTSCamera);
 			UE_LOG(LogTemp, Warning, TEXT("RTS Camera created and set as view target"));
 		}
+
+		// 게임 상태 변경 델리게이트 바인딩
+		if (GameMode)
+		{
+			GameMode->OnGameStateChanged.AddDynamic(this, &AAOSPlayerController::OnGameStateChanged);
+			UE_LOG(LogTemp, Warning, TEXT("Bound to OnGameStateChanged delegate"));
+		}
+
+		// 게임은 MainMenu 상태에서 시작 — 메인 메뉴 표시
+		ShowMainMenu();
 	}
 }
 
@@ -244,6 +258,126 @@ void AAOSPlayerController::ZoomCamera(float AxisValue)
 
 	// CameraHeight 변수도 업데이트
 	CameraHeight = NewHeight;
+}
+
+// 게임 상태 변경 핸들러
+void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
+{
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 게임 상태 변경: %d"), static_cast<int32>(NewState));
+
+	switch (NewState)
+	{
+	case EAOSGameState::MainMenu:
+		HideSettlement();
+		ShowMainMenu();
+		// UI 전용 입력 모드
+		SetInputMode(FInputModeUIOnly());
+		bShowMouseCursor = true;
+		break;
+
+	case EAOSGameState::Preparation:
+		HideMainMenu();
+		HideSettlement();
+		// 게임+UI 혼합 입력 모드
+		SetInputMode(FInputModeGameAndUI());
+		bShowMouseCursor = true;
+		break;
+
+	case EAOSGameState::GameRunning:
+		HideMainMenu();
+		HideSettlement();
+		// 게임+UI 혼합 입력 모드 (RTS 카메라 + 클릭)
+		SetInputMode(FInputModeGameAndUI());
+		bShowMouseCursor = true;
+		break;
+
+	case EAOSGameState::Settlement:
+		HideMainMenu();
+		{
+			// 승리 팀 결정 — GameMode에서 확인
+			EAOSTeam WinningTeam = EAOSTeam::Team1; // 기본값
+			if (GameMode)
+			{
+				// 커맨드 센터 파괴 여부로 승리 팀 판단
+				AAOSStructure* Team1Center = GameMode->GetCommandCenter(EAOSTeam::Team1);
+				AAOSStructure* Team2Center = GameMode->GetCommandCenter(EAOSTeam::Team2);
+				if (Team1Center && Team1Center->IsDestroyed())
+				{
+					WinningTeam = EAOSTeam::Team2;
+				}
+				else
+				{
+					WinningTeam = EAOSTeam::Team1;
+				}
+			}
+			ShowSettlement(WinningTeam);
+		}
+		// UI 전용 입력 모드
+		SetInputMode(FInputModeUIOnly());
+		bShowMouseCursor = true;
+		break;
+	}
+}
+
+// 메인 메뉴 표시
+void AAOSPlayerController::ShowMainMenu()
+{
+	if (!MainMenuWidget && MainMenuWidgetClass)
+	{
+		MainMenuWidget = CreateWidget<UAOSMainMenuWidget>(this, MainMenuWidgetClass);
+	}
+
+	if (MainMenuWidget && !MainMenuWidget->IsInViewport())
+	{
+		MainMenuWidget->AddToViewport(10);
+		// UI 전용 입력 모드
+		SetInputMode(FInputModeUIOnly());
+		bShowMouseCursor = true;
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 메인 메뉴 표시"));
+	}
+}
+
+// 메인 메뉴 숨김
+void AAOSPlayerController::HideMainMenu()
+{
+	if (MainMenuWidget && MainMenuWidget->IsInViewport())
+	{
+		MainMenuWidget->RemoveFromParent();
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 메인 메뉴 숨김"));
+	}
+}
+
+// 정산 화면 표시
+void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
+{
+	if (!SettlementWidget && SettlementWidgetClass)
+	{
+		SettlementWidget = CreateWidget<UAOSSettlementWidget>(this, SettlementWidgetClass);
+	}
+
+	if (SettlementWidget)
+	{
+		SettlementWidget->SetResult(WinningTeam);
+		if (!SettlementWidget->IsInViewport())
+		{
+			SettlementWidget->AddToViewport(10);
+		}
+		// UI 전용 입력 모드
+		SetInputMode(FInputModeUIOnly());
+		bShowMouseCursor = true;
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 표시 (승리: Team%d)"),
+			WinningTeam == EAOSTeam::Team1 ? 1 : 2);
+	}
+}
+
+// 정산 화면 숨김
+void AAOSPlayerController::HideSettlement()
+{
+	if (SettlementWidget && SettlementWidget->IsInViewport())
+	{
+		SettlementWidget->RemoveFromParent();
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 숨김"));
+	}
 }
 
 // 🔴 REMOVED: SpawnPlayerCharacters() 함수는 더 이상 사용되지 않습니다.

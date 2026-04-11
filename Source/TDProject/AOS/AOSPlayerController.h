@@ -7,6 +7,8 @@
 
 class AAOSCharacter;
 class ACameraActor;
+class UAOSMainMenuWidget;
+class UAOSSettlementWidget;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -73,6 +75,30 @@ public:
 	void HandleMouseClick();
 
 protected:
+	// UI 위젯 클래스 (에디터에서 설정)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> MainMenuWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> SettlementWidgetClass;
+
+	// UI 위젯 인스턴스 (런타임)
+	UPROPERTY()
+	UAOSMainMenuWidget* MainMenuWidget;
+
+	UPROPERTY()
+	UAOSSettlementWidget* SettlementWidget;
+
+	// 게임 상태 변경 핸들러
+	UFUNCTION()
+	void OnGameStateChanged(EAOSGameState NewState);
+
+	// UI 표시/숨김 함수
+	void ShowMainMenu();
+	void HideMainMenu();
+	void ShowSettlement(EAOSTeam WinningTeam);
+	void HideSettlement();
+
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	EAOSTeam PlayerTeam = EAOSTeam::Team1;
 
