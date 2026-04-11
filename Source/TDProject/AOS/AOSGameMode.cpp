@@ -71,7 +71,7 @@ void AAOSGameMode::StartGame()
 
 void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 {
-	AOSGameState = EAOSGameState::GameEnded;
+	AOSGameState = EAOSGameState::Settlement;
 
 	// TODO: 승리 팀에 점수 부여, UI 표시 등
 }
