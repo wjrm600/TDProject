@@ -27,10 +27,13 @@ enum class EAOSTeam : uint8
 UENUM(BlueprintType)
 enum class EAOSGameState : uint8
 {
+	MainMenu UMETA(DisplayName = "Main Menu"),
 	Preparation UMETA(DisplayName = "Preparation"),
 	GameRunning UMETA(DisplayName = "Game Running"),
-	GameEnded UMETA(DisplayName = "Game Ended")
+	Settlement UMETA(DisplayName = "Settlement")
 };
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
 
 /**
  * AOS 게임 모드 메인 클래스
@@ -100,6 +103,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	EAOSGameState GetAOSGameState() const { return AOSGameState; }
 
+	// 게임 상태 전이 함수
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void TransitionToMainMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void TransitionToPreparation();
+
+	// 게임 상태 변경 델리게이트
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
+	FOnGameStateChanged OnGameStateChanged;
+
 protected:
 	// 게임 시간 설정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
@@ -109,7 +123,7 @@ protected:
 	float RemainingGameTime;
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
-	EAOSGameState AOSGameState = EAOSGameState::Preparation;
+	EAOSGameState AOSGameState = EAOSGameState::MainMenu;
 
 	// 팀 별 구조물 참조
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structures")
@@ -140,6 +154,7 @@ protected:
 	void CacheTowerReferences();
 
 private:
+	void SetGameState(EAOSGameState NewState);
 	void UpdateGameTime(float DeltaTime);
 	void CheckVictoryConditions();
 };
