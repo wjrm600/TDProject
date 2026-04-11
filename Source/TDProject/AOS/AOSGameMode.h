@@ -9,8 +9,6 @@ class AAOSStructure;
 class AAOSSpawnPoint;
 class AAOSMapManager;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
-
 UENUM(BlueprintType)
 enum class EAOSLane : uint8
 {
