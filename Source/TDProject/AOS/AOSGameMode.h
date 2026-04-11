@@ -35,6 +35,8 @@ enum class EAOSGameState : uint8
 	Settlement UMETA(DisplayName = "Settlement")
 };
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
+
 /**
  * AOS 게임 모드 메인 클래스
  * 게임 플로우, 라운드 시간, 승리 조건 등을 관리
@@ -154,6 +156,7 @@ protected:
 	void CacheTowerReferences();
 
 private:
+	void SetGameState(EAOSGameState NewState);
 	void UpdateGameTime(float DeltaTime);
 	void CheckVictoryConditions();
 };

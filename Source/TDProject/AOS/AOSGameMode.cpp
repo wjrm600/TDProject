@@ -19,21 +19,9 @@ void AAOSGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 월드의 모든 스폰 포인트 등록
-	for (TActorIterator<AAOSSpawnPoint> SpawnPointItr(GetWorld()); SpawnPointItr; ++SpawnPointItr)
-	{
-		AAOSSpawnPoint* SpawnPoint = *SpawnPointItr;
-		if (SpawnPoint)
-		{
-			RegisterSpawnPoint(SpawnPoint);
-		}
-	}
-
-	// 구조물 초기화 (타워, 커맨드 센터)
-	InitializeStructures();
-
-	AOSGameState = EAOSGameState::Preparation;
-	RemainingGameTime = GameDuration;
+	// 초기 상태는 MainMenu — 스폰 포인트 등록과 구조물 초기화는
+	// TransitionToPreparation()에서 수행
+	SetGameState(EAOSGameState::MainMenu);
 }
 
 void AAOSGameMode::Tick(float DeltaTime)
@@ -56,22 +44,28 @@ void AAOSGameMode::RestartPlayer(AController* NewPlayer)
 	UE_LOG(LogTemp, Warning, TEXT("RestartPlayer called but disabled - using SpawnPoint spawning instead"));
 }
 
-// 🟡 MODIFIED - 캐릭터 자동 생성 로직 추가
+// 🟡 MODIFIED - Preparation 상태에서만 게임 시작 가능, 델리게이트 브로드캐스트
 void AAOSGameMode::StartGame()
 {
-	if (AOSGameState == EAOSGameState::Preparation)
+	if (AOSGameState != EAOSGameState::Preparation)
 	{
-		AOSGameState = EAOSGameState::GameRunning;
-		RemainingGameTime = GameDuration;
-
-		// 🟢 NEW - 모든 스폰 포인트에서 캐릭터 자동 생성
-		SpawnCharactersAtAllSpawnPoints();
+		UE_LOG(LogTemp, Warning, TEXT("StartGame() called but current state is not Preparation. Ignoring."));
+		return;
 	}
+
+	RemainingGameTime = GameDuration;
+	SetGameState(EAOSGameState::GameRunning);
+
+	// 모든 스폰 포인트에서 캐릭터 자동 생성
+	SpawnCharactersAtAllSpawnPoints();
 }
 
 void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 {
-	AOSGameState = EAOSGameState::Settlement;
+	SetGameState(EAOSGameState::Settlement);
+
+	UE_LOG(LogTemp, Warning, TEXT("Game ended. Winning team: %s"),
+		WinningTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"));
 
 	// TODO: 승리 팀에 점수 부여, UI 표시 등
 }
@@ -334,6 +328,42 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 		Team2Characters.Remove(DestroyedCharacter);
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 character destroyed. Remaining: %d"), Team2Characters.Num());
 	}
+}
+
+// 🟢 NEW - 게임 상태 설정 및 델리게이트 브로드캐스트 헬퍼
+void AAOSGameMode::SetGameState(EAOSGameState NewState)
+{
+	AOSGameState = NewState;
+	OnGameStateChanged.Broadcast(NewState);
+}
+
+// 🟢 NEW - MainMenu 상태로 전이
+void AAOSGameMode::TransitionToMainMenu()
+{
+	SetGameState(EAOSGameState::MainMenu);
+	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to MainMenu"));
+}
+
+// 🟢 NEW - Preparation 상태로 전이: 스폰 포인트 등록 + 구조물 초기화
+void AAOSGameMode::TransitionToPreparation()
+{
+	// 월드의 모든 스폰 포인트 등록
+	for (TActorIterator<AAOSSpawnPoint> SpawnPointItr(GetWorld()); SpawnPointItr; ++SpawnPointItr)
+	{
+		AAOSSpawnPoint* SpawnPoint = *SpawnPointItr;
+		if (SpawnPoint)
+		{
+			RegisterSpawnPoint(SpawnPoint);
+		}
+	}
+
+	// 구조물 초기화 (타워, 커맨드 센터)
+	InitializeStructures();
+
+	RemainingGameTime = GameDuration;
+	SetGameState(EAOSGameState::Preparation);
+
+	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to Preparation. SpawnPoints: %d"), AllSpawnPoints.Num());
 }
 
 void AAOSGameMode::UpdateGameTime(float DeltaTime)
