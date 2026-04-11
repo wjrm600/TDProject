@@ -82,14 +82,14 @@ public:
 
 protected:
 	// 라인 정보
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map", meta = (AllowPrivateAccess = "true"))
 	TArray<FLaneInfo> LanesInfo;
 
 	// 팀별 Command Center 위치
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map", meta = (AllowPrivateAccess = "true"))
 	FVector Team1CommandCenterPosition;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Map", meta = (AllowPrivateAccess = "true"))
 	FVector Team2CommandCenterPosition;
 
 	// 스폰된 구조물들
