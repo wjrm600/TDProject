@@ -1,4 +1,5 @@
 #include "AOSSettlementWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
