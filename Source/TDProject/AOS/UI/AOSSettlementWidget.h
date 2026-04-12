@@ -7,10 +7,13 @@
 
 class UTextBlock;
 class UButton;
+class UCanvasPanel;
+class UVerticalBox;
 
 /**
  * AOS 게임 결과(정산) 위젯
  * 승리/패배 결과를 표시하고 메인 메뉴로 복귀하는 UI
+ * 위젯을 C++에서 동적 생성 (BindWidget 불필요)
  */
 UCLASS()
 class TDPROJECT_API UAOSSettlementWidget : public UUserWidget
@@ -20,19 +23,19 @@ class TDPROJECT_API UAOSSettlementWidget : public UUserWidget
 public:
 	virtual void NativeConstruct() override;
 
-	// 게임 결과 설정 (승리 팀 표시)
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	void SetResult(EAOSTeam WinningTeam);
 
 protected:
-	// Widget Blueprint에서 이름을 정확히 맞춰야 함
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY()
 	UTextBlock* ResultText;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY()
 	UButton* ReturnToMainMenuButton;
 
-	// 버튼 클릭 이벤트 핸들러
 	UFUNCTION()
 	void OnReturnClicked();
+
+private:
+	void BuildUI();
 };

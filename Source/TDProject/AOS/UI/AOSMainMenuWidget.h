@@ -5,10 +5,14 @@
 #include "AOSMainMenuWidget.generated.h"
 
 class UButton;
+class UTextBlock;
+class UCanvasPanel;
+class UVerticalBox;
 
 /**
  * AOS 메인 메뉴 위젯
  * 게임 시작 및 종료 버튼을 제공하는 메인 메뉴 UI
+ * 위젯을 C++에서 동적 생성 (BindWidget 불필요)
  */
 UCLASS()
 class TDPROJECT_API UAOSMainMenuWidget : public UUserWidget
@@ -19,17 +23,18 @@ public:
 	virtual void NativeConstruct() override;
 
 protected:
-	// Widget Blueprint에서 버튼 이름을 정확히 맞춰야 함
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY()
 	UButton* StartGameButton;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY()
 	UButton* ExitGameButton;
 
-	// 버튼 클릭 이벤트 핸들러
 	UFUNCTION()
 	void OnStartGameClicked();
 
 	UFUNCTION()
 	void OnExitGameClicked();
+
+private:
+	void BuildUI();
 };

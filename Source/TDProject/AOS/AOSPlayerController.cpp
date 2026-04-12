@@ -322,9 +322,17 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 // 메인 메뉴 표시
 void AAOSPlayerController::ShowMainMenu()
 {
-	if (!MainMenuWidget && MainMenuWidgetClass)
+	if (!MainMenuWidget)
 	{
-		MainMenuWidget = CreateWidget<UAOSMainMenuWidget>(this, MainMenuWidgetClass);
+		UClass* WidgetClass = MainMenuWidgetClass;
+		if (!WidgetClass)
+		{
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_MainMenu.WBP_MainMenu_C"));
+		}
+		if (WidgetClass)
+		{
+			MainMenuWidget = CreateWidget<UAOSMainMenuWidget>(this, WidgetClass);
+		}
 	}
 
 	if (MainMenuWidget && !MainMenuWidget->IsInViewport())
@@ -350,9 +358,17 @@ void AAOSPlayerController::HideMainMenu()
 // 정산 화면 표시
 void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 {
-	if (!SettlementWidget && SettlementWidgetClass)
+	if (!SettlementWidget)
 	{
-		SettlementWidget = CreateWidget<UAOSSettlementWidget>(this, SettlementWidgetClass);
+		UClass* WidgetClass = SettlementWidgetClass;
+		if (!WidgetClass)
+		{
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_Settlement.WBP_Settlement_C"));
+		}
+		if (WidgetClass)
+		{
+			SettlementWidget = CreateWidget<UAOSSettlementWidget>(this, WidgetClass);
+		}
 	}
 
 	if (SettlementWidget)
