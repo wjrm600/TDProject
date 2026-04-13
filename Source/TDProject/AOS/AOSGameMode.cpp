@@ -37,7 +37,7 @@ void AAOSGameMode::BeginPlay()
 	else
 	{
 		// 게임 레벨: 바로 준비 → 게임 시작
-		TransitionToPreparation();
+		TransitionToRoundPreparation();
 		StartGame();
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → 자동 시작 (Map: %s)"), *MapName);
 	}
@@ -47,7 +47,7 @@ void AAOSGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (AOSGameState == EAOSGameState::GameRunning)
+	if (AOSGameState == EAOSGameState::RoundRunning)
 	{
 		UpdateGameTime(DeltaTime);
 		CheckVictoryConditions();
@@ -63,17 +63,17 @@ void AAOSGameMode::RestartPlayer(AController* NewPlayer)
 	UE_LOG(LogTemp, Warning, TEXT("RestartPlayer called but disabled - using SpawnPoint spawning instead"));
 }
 
-// 🟡 MODIFIED - Preparation 상태에서만 게임 시작 가능, 델리게이트 브로드캐스트
+// RoundPreparation 상태에서만 라운드 시작 가능
 void AAOSGameMode::StartGame()
 {
-	if (AOSGameState != EAOSGameState::Preparation)
+	if (AOSGameState != EAOSGameState::RoundPreparation)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("StartGame() called but current state is not Preparation. Ignoring."));
+		UE_LOG(LogTemp, Warning, TEXT("StartGame() called but current state is not RoundPreparation. Ignoring."));
 		return;
 	}
 
 	RemainingGameTime = GameDuration;
-	SetGameState(EAOSGameState::GameRunning);
+	SetGameState(EAOSGameState::RoundRunning);
 
 	// 모든 스폰 포인트에서 캐릭터 자동 생성
 	SpawnCharactersAtAllSpawnPoints();
@@ -363,8 +363,15 @@ void AAOSGameMode::TransitionToMainMenu()
 	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to MainMenu"));
 }
 
-// 🟢 NEW - Preparation 상태로 전이: 스폰 포인트 등록 + 구조물 초기화
-void AAOSGameMode::TransitionToPreparation()
+// Lobby 상태로 전이
+void AAOSGameMode::TransitionToLobby()
+{
+	SetGameState(EAOSGameState::Lobby);
+	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to Lobby"));
+}
+
+// RoundPreparation 상태로 전이: 스폰 포인트 등록 + 구조물 초기화
+void AAOSGameMode::TransitionToRoundPreparation()
 {
 	// 월드의 모든 스폰 포인트 등록
 	for (TActorIterator<AAOSSpawnPoint> SpawnPointItr(GetWorld()); SpawnPointItr; ++SpawnPointItr)
@@ -380,9 +387,9 @@ void AAOSGameMode::TransitionToPreparation()
 	InitializeStructures();
 
 	RemainingGameTime = GameDuration;
-	SetGameState(EAOSGameState::Preparation);
+	SetGameState(EAOSGameState::RoundPreparation);
 
-	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to Preparation. SpawnPoints: %d"), AllSpawnPoints.Num());
+	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to RoundPreparation. SpawnPoints: %d"), AllSpawnPoints.Num());
 }
 
 void AAOSGameMode::UpdateGameTime(float DeltaTime)

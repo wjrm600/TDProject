@@ -124,7 +124,7 @@ void AAOSPlayerController::DeployCharactersToLanes()
 	}
 }
 
-void AAOSPlayerController::StartGameFromPreparation()
+void AAOSPlayerController::StartRound()
 {
 	if (GameMode)
 	{
@@ -291,15 +291,23 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 		bShowMouseCursor = true;
 		break;
 
-	case EAOSGameState::Preparation:
+	case EAOSGameState::Lobby:
 		HideMainMenu();
 		HideSettlement();
-		// 게임+UI 혼합 입력 모드
+		// 로비: UI 전용 입력 모드
+		SetInputMode(FInputModeUIOnly());
+		bShowMouseCursor = true;
+		break;
+
+	case EAOSGameState::RoundPreparation:
+		HideMainMenu();
+		HideSettlement();
+		// 라운드 준비: 게임+UI 혼합 입력 모드
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
 		break;
 
-	case EAOSGameState::GameRunning:
+	case EAOSGameState::RoundRunning:
 		HideMainMenu();
 		HideSettlement();
 		// 게임+UI 혼합 입력 모드 (RTS 카메라 + 클릭)

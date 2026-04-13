@@ -57,7 +57,7 @@ public:
 	void DeployCharactersToLanes();
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
-	void StartGameFromPreparation();
+	void StartRound();
 
 	// 플레이어의 캐릭터 목록
 	UFUNCTION(BlueprintCallable, Category = "AOS|Characters")

@@ -28,8 +28,9 @@ UENUM(BlueprintType)
 enum class EAOSGameState : uint8
 {
 	MainMenu UMETA(DisplayName = "Main Menu"),
-	Preparation UMETA(DisplayName = "Preparation"),
-	GameRunning UMETA(DisplayName = "Game Running"),
+	Lobby UMETA(DisplayName = "Lobby"),
+	RoundPreparation UMETA(DisplayName = "Round Preparation"),
+	RoundRunning UMETA(DisplayName = "Round Running"),
 	Settlement UMETA(DisplayName = "Settlement")
 };
 
@@ -117,7 +118,10 @@ public:
 	void TransitionToMainMenu();
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
-	void TransitionToPreparation();
+	void TransitionToLobby();
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void TransitionToRoundPreparation();
 
 	// 게임 상태 변경 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
