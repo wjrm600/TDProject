@@ -24,8 +24,9 @@ void AAOSAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
-	// OnPossess는 Pawn::BeginPlay() 중에 호출됨
-	// 이 시점에서 ControlledCharacter 초기화
+	// OnPossess는 SpawnActor → BeginPlay → SpawnDefaultController 과정에서 호출됨
+	// 이 시점에서는 팀/라인이 아직 설정되지 않았으므로 ControlledCharacter만 캐시
+	// 실제 배포(StartDeployment)는 InitializeCharacter → DeployToLane에서 호출됨
 	ControlledCharacter = Cast<AAOSCharacter>(InPawn);
 
 	if (!ControlledCharacter)
@@ -34,11 +35,7 @@ void AAOSAIController::OnPossess(APawn* InPawn)
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed character in lane: %d"),
-		static_cast<int32>(ControlledCharacter->GetLane()));
-
-	// 배포 시작 (이곳에서 바로 호출)
-	StartDeployment(ControlledCharacter->GetLane());
+	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed character - waiting for deployment command"));
 }
 
 void AAOSAIController::BeginPlay()

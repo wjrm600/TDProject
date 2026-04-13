@@ -21,13 +21,15 @@ AAOSCharacter::AAOSCharacter()
 
 	// AI 컨트롤러 자동 할당
 	AIControllerClass = AAOSAIController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	// HP 바 위젯 컴포넌트
 	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
 	HealthBarComponent->SetupAttachment(RootComponent);
-	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f));
-	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	HealthBarComponent->SetDrawSize(FVector2D(100.0f, 10.0f));
+	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
+	HealthBarComponent->SetDrawSize(FVector2D(150.0f, 15.0f));
+	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
 }
 
 void AAOSCharacter::BeginPlay()
@@ -58,6 +60,19 @@ void AAOSCharacter::Tick(float DeltaTime)
 	if (CurrentAttackCooldown > 0.0f)
 	{
 		CurrentAttackCooldown -= DeltaTime;
+	}
+
+	// HP 바 빌보드: 항상 카메라 정면을 바라봄
+	if (HealthBarComponent && HealthBarComponent->IsVisible())
+	{
+		if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+		{
+			FVector CamLoc;
+			FRotator CamRot;
+			PC->GetPlayerViewPoint(CamLoc, CamRot);
+			FVector CamForward = CamRot.Vector();
+			HealthBarComponent->SetWorldRotation((-CamForward).Rotation());
+		}
 	}
 }
 
@@ -187,6 +202,29 @@ void AAOSCharacter::UpdateHealthBar()
 
 void AAOSCharacter::SetupCharacterDefaults()
 {
-	// 기본 스켈레탈 메시 설정 (프로젝트 기반 메시 사용)
-	// TODO: 실제 캐릭터 메시 할당
+	// 메시가 이미 설정되어 있으면 스킵 (블루프린트에서 설정한 경우)
+	if (GetMesh()->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+
+	// 런타임 스켈레탈 메시 로딩
+	USkeletalMesh* MeshAsset = LoadObject<USkeletalMesh>(nullptr,
+		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
+	if (MeshAsset)
+	{
+		GetMesh()->SetSkeletalMeshAsset(MeshAsset);
+		GetMesh()->SetRelativeLocation(FVector(0.0f, 0.0f, -90.0f));
+		GetMesh()->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+		UE_LOG(LogTemp, Warning, TEXT("[Character] 메시 설정: SKM_Manny_Simple"));
+	}
+
+	// 런타임 애니메이션 블루프린트 로딩
+	UClass* AnimBPClass = LoadClass<UAnimInstance>(nullptr,
+		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"));
+	if (AnimBPClass)
+	{
+		GetMesh()->SetAnimInstanceClass(AnimBPClass);
+		UE_LOG(LogTemp, Warning, TEXT("[Character] 애니메이션 설정: ABP_Unarmed"));
+	}
 }

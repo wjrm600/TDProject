@@ -103,6 +103,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	EAOSGameState GetAOSGameState() const { return AOSGameState; }
 
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	bool ShouldAutoStartGame() const { return bAutoStartGame; }
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	FName GetGameMapName() const { return GameMapName; }
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	FName GetMainMenuMapName() const { return MainMenuMapName; }
+
 	// 게임 상태 전이 함수
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void TransitionToMainMenu();
@@ -115,6 +124,16 @@ public:
 	FOnGameStateChanged OnGameStateChanged;
 
 protected:
+	// 레벨 분리 설정
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
+	bool bAutoStartGame = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
+	FName GameMapName = TEXT("/Game/ThirdPerson/Lvl_ThirdPerson");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
+	FName MainMenuMapName = TEXT("/Game/AOS/Lvl_MainMenu");
+
 	// 게임 시간 설정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
 	float GameDuration = 600.0f; // 10분

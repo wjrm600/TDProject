@@ -21,7 +21,7 @@ class TDPROJECT_API UAOSSettlementWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	virtual void NativeConstruct() override;
+	virtual bool Initialize() override;
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	void SetResult(EAOSTeam WinningTeam);

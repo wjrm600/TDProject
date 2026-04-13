@@ -13,15 +13,34 @@ AAOSGameMode::AAOSGameMode()
 	// DefaultPawnClass를 nullptr로 명시적으로 설정하여 자동 생성 완전히 비활성화
 	DefaultPawnClass = nullptr;
 	PlayerControllerClass = AAOSPlayerController::StaticClass();
+
+	// 기본 캐릭터 클래스 설정 (블루프린트 없이도 동작)
+	CharacterClass = AAOSCharacter::StaticClass();
 }
 
 void AAOSGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 초기 상태는 MainMenu — 스폰 포인트 등록과 구조물 초기화는
-	// TransitionToPreparation()에서 수행
-	SetGameState(EAOSGameState::MainMenu);
+	// 레벨 이름으로 메인메뉴 여부 판단 (bAutoStartGame 오버라이드 가능)
+	FString MapName = GetWorld()->GetMapName();
+	MapName.RemoveFromStart(GetWorld()->StreamingLevelsPrefix);
+
+	bool bIsMainMenuLevel = MapName.Contains(TEXT("MainMenu"));
+
+	if (!bAutoStartGame && bIsMainMenuLevel)
+	{
+		// 메인 메뉴 레벨: 메뉴 상태로 시작
+		SetGameState(EAOSGameState::MainMenu);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] MainMenu 레벨 감지 → 메뉴 상태"));
+	}
+	else
+	{
+		// 게임 레벨: 바로 준비 → 게임 시작
+		TransitionToPreparation();
+		StartGame();
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → 자동 시작 (Map: %s)"), *MapName);
+	}
 }
 
 void AAOSGameMode::Tick(float DeltaTime)

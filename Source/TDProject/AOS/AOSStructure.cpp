@@ -6,6 +6,7 @@
 #include "Components/WidgetComponent.h"
 #include "EngineUtils.h"
 #include "Materials/Material.h"
+#include "GameFramework/PlayerController.h"
 
 AAOSStructure::AAOSStructure()
 {
@@ -33,8 +34,9 @@ AAOSStructure::AAOSStructure()
 	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
 	HealthBarComponent->SetupAttachment(RootComponent);
 	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 250.0f));
-	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
 	HealthBarComponent->SetDrawSize(FVector2D(120.0f, 12.0f));
+	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
 
 	CurrentHealth = MaxHealth;
 }
@@ -63,6 +65,19 @@ void AAOSStructure::Tick(float DeltaTime)
 		{
 			FireAtTarget(CurrentTarget);
 			CurrentAttackCooldown = AttackCooldown;
+		}
+
+		// HP 바 빌보드: 항상 카메라 정면을 바라봄
+		if (HealthBarComponent && HealthBarComponent->IsVisible())
+		{
+			if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+			{
+				FVector CamLoc;
+				FRotator CamRot;
+				PC->GetPlayerViewPoint(CamLoc, CamRot);
+				FVector CamForward = CamRot.Vector();
+				HealthBarComponent->SetWorldRotation((-CamForward).Rotation());
+			}
 		}
 	}
 }

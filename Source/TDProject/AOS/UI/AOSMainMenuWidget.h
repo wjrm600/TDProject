@@ -20,7 +20,7 @@ class TDPROJECT_API UAOSMainMenuWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	virtual void NativeConstruct() override;
+	virtual bool Initialize() override;
 
 protected:
 	UPROPERTY()

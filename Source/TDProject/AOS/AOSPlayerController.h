@@ -145,6 +145,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float MapBoundaryY = 40000.0f;
 
+	// 메인메뉴 레벨용 카메라 설정
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	FVector MenuCameraLocation = FVector(300.0f, 0.0f, 100.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
+	FRotator MenuCameraRotation = FRotator(-10.0f, 180.0f, 0.0f);
+
 private:
 	// 🟡 MODIFIED - 카메라 이동 방향을 X, Y 분리
 	float CameraMoveForward = 0.0f;

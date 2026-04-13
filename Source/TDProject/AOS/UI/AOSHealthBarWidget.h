@@ -9,6 +9,7 @@ class UProgressBar;
 /**
  * AOS HP 바 위젯
  * 캐릭터/구조물 머리 위에 표시되는 체력 바
+ * Widget Blueprint 없이도 C++에서 자동으로 ProgressBar를 생성
  */
 UCLASS()
 class TDPROJECT_API UAOSHealthBarWidget : public UUserWidget
@@ -25,7 +26,10 @@ public:
 	void SetBarColor(FLinearColor Color);
 
 protected:
-	// Widget Blueprint에서 ProgressBar 이름을 "HealthProgressBar"로 설정해야 함
-	UPROPERTY(meta = (BindWidget))
+	// Widget Blueprint가 있으면 바인딩, 없으면 C++에서 생성
+	UPROPERTY(meta = (BindWidgetOptional))
 	UProgressBar* HealthProgressBar;
+
+	// Widget Blueprint 없이 C++에서 위젯 트리 자동 생성
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 };

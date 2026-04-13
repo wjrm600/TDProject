@@ -7,11 +7,16 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "AOSGameMode.h"
+#include "Kismet/GameplayStatics.h"
 
-void UAOSSettlementWidget::NativeConstruct()
+bool UAOSSettlementWidget::Initialize()
 {
-	Super::NativeConstruct();
-	BuildUI();
+	bool bSuccess = Super::Initialize();
+	if (bSuccess)
+	{
+		BuildUI();
+	}
+	return bSuccess;
 }
 
 void UAOSSettlementWidget::BuildUI()
@@ -97,7 +102,7 @@ void UAOSSettlementWidget::OnReturnClicked()
 	AAOSGameMode* GameMode = Cast<AAOSGameMode>(World->GetAuthGameMode());
 	if (GameMode)
 	{
-		GameMode->TransitionToMainMenu();
-		UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴 복귀 요청"));
+		UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴 맵으로 전환: %s"), *GameMode->GetMainMenuMapName().ToString());
+		UGameplayStatics::OpenLevel(this, GameMode->GetMainMenuMapName());
 	}
 }

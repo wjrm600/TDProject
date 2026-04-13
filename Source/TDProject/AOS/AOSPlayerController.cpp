@@ -24,33 +24,49 @@ void AAOSPlayerController::BeginPlay()
 
 	if (IsLocalPlayerController())
 	{
-		// 🟢 NEW - RTS 카메라 생성 및 설정
+		// 레벨 이름으로 메뉴/게임 레벨 판단
+		FString MapName = GetWorld()->GetMapName();
+		MapName.RemoveFromStart(GetWorld()->StreamingLevelsPrefix);
+		bool bIsGameLevel = !MapName.Contains(TEXT("MainMenu"));
+
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-		RTSCamera = GetWorld()->SpawnActor<ACameraActor>(
-			ACameraActor::StaticClass(),
-			FVector(0.0f, 0.0f, CameraHeight),
-			FRotator(CameraPitch, CameraYaw, 0.0f),
-			SpawnParams
-		);
+		if (bIsGameLevel)
+		{
+			// 게임 레벨: RTS 카메라 (탑뷰)
+			RTSCamera = GetWorld()->SpawnActor<ACameraActor>(
+				ACameraActor::StaticClass(),
+				FVector(0.0f, 0.0f, CameraHeight),
+				FRotator(CameraPitch, CameraYaw, 0.0f),
+				SpawnParams
+			);
+		}
+		else
+		{
+			// 메인메뉴 레벨: 캐릭터를 바라보는 고정 카메라
+			RTSCamera = GetWorld()->SpawnActor<ACameraActor>(
+				ACameraActor::StaticClass(),
+				MenuCameraLocation,
+				MenuCameraRotation,
+				SpawnParams
+			);
+		}
 
 		if (RTSCamera)
 		{
 			SetViewTarget(RTSCamera);
-			UE_LOG(LogTemp, Warning, TEXT("RTS Camera created and set as view target"));
+			UE_LOG(LogTemp, Warning, TEXT("Camera created: %s"), bIsGameLevel ? TEXT("RTS") : TEXT("Menu"));
 		}
 
 		// 게임 상태 변경 델리게이트 바인딩
 		if (GameMode)
 		{
 			GameMode->OnGameStateChanged.AddDynamic(this, &AAOSPlayerController::OnGameStateChanged);
-			UE_LOG(LogTemp, Warning, TEXT("Bound to OnGameStateChanged delegate"));
+			// 현재 상태 적용 (BeginPlay 전에 이미 설정된 경우)
+			OnGameStateChanged(GameMode->GetAOSGameState());
 		}
-
-		// 게임은 MainMenu 상태에서 시작 — 메인 메뉴 표시
-		ShowMainMenu();
 	}
 }
 
