@@ -35,6 +35,7 @@ enum class EAOSGameState : uint8
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundEnded, int32, RoundNumber);
 
 /**
  * AOS 게임 모드 메인 클래스
@@ -51,15 +52,32 @@ public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
-	// 🟢 NEW - PlayerStart에서 자동 캐릭터 생성 방지
+	// PlayerStart에서 자동 캐릭터 생성 방지
 	virtual void RestartPlayer(AController* NewPlayer) override;
 
-	// 게임 시간 관리
+	// 라운드 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
-	void StartGame();
+	void StartRound();
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void EndRound();
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void EndGame(EAOSTeam WinningTeam);
+
+	// 하위 호환: StartGame()은 StartRound()로 위임
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void StartGame() { StartRound(); }
+
+	// 배치 계획 설정/조회
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void SetLaneDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	int32 GetLaneDeployCount(EAOSTeam Team, EAOSLane Lane) const;
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	int32 GetTotalDeployCount(EAOSTeam Team) const;
 
 	// 캐릭터 배치 관련
 	UFUNCTION(BlueprintCallable, Category = "AOS|Characters")
@@ -72,14 +90,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Spawn")
 	AAOSSpawnPoint* GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane);
 
-	// 🔴 REMOVED: void SpawnCharacter(AAOSCharacter* Character, EAOSTeam Team, EAOSLane Lane);
-	// ↑ 더 이상 필요 없음 (자동 생성으로 변경)
-
-	// 🟢 NEW - 모든 스폰 포인트에서 캐릭터 자동 생성
-	UFUNCTION(BlueprintCallable, Category = "AOS|Spawn")
-	void SpawnCharactersAtAllSpawnPoints();
-
-	// 🟢 NEW - RTS용 캐릭터 클래스 (DefaultPawnClass와 분리)
+	// RTS용 캐릭터 클래스 (DefaultPawnClass와 분리)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Spawn")
 	TSubclassOf<AAOSCharacter> CharacterClass;
 
@@ -113,6 +124,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	FName GetMainMenuMapName() const { return MainMenuMapName; }
 
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	int32 GetCurrentRound() const { return CurrentRound; }
+
 	// 게임 상태 전이 함수
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void TransitionToMainMenu();
@@ -126,6 +140,13 @@ public:
 	// 게임 상태 변경 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
 	FOnGameStateChanged OnGameStateChanged;
+
+	// 라운드 종료 델리게이트
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
+	FOnRoundEnded OnRoundEnded;
+
+	// 라인 당 최대 캐릭터 수
+	static const int32 MaxCharactersPerLane = 2;
 
 protected:
 	// 레벨 분리 설정
@@ -148,6 +169,13 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	EAOSGameState AOSGameState = EAOSGameState::MainMenu;
 
+	// 라운드 정보
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
+	int32 CurrentRound = 0;
+
+	// 라운드 종료 타이머
+	FTimerHandle RoundEndTimerHandle;
+
 	// 팀 별 구조물 참조
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structures")
 	TMap<EAOSTeam, AAOSStructure*> CommandCenters;
@@ -169,15 +197,27 @@ protected:
 	TArray<AAOSSpawnPoint*> AllSpawnPoints;
 	TMap<EAOSTeam, TArray<AAOSSpawnPoint*>> TeamSpawnPoints;
 
-	// 🟢 NEW - 맵 매니저 참조
+	// 맵 매니저 참조
 	AAOSMapManager* MapManager;
 
-	// 🟢 NEW - 타워 생성 함수
+	// 타워 생성 함수
 	void InitializeMapManager();
 	void CacheTowerReferences();
+
+	// 배치 계획 내부 관리
+	void InitializeDefaultDeployPlan();
+	int32 GetDeployCount(EAOSTeam Team, EAOSLane Lane) const;
+	void SetDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count);
+
+	// 라운드 기반 캐릭터 생성
+	void SpawnCharactersForRound();
 
 private:
 	void SetGameState(EAOSGameState NewState);
 	void UpdateGameTime(float DeltaTime);
 	void CheckVictoryConditions();
+
+	// 배치 계획 저장 (TMap<EAOSTeam, TMap<>> 은 UHT 미지원이므로 배열로 관리)
+	// DeployPlan[TeamIndex][LaneIndex] = Count
+	int32 DeployPlan[2][3];
 };

@@ -6,6 +6,7 @@
 #include "AOSSpawnPoint.h"
 #include "AOSMapManager.h"
 #include "EngineUtils.h"
+#include "TimerManager.h"
 
 AAOSGameMode::AAOSGameMode()
 {
@@ -16,6 +17,15 @@ AAOSGameMode::AAOSGameMode()
 
 	// 기본 캐릭터 클래스 설정 (블루프린트 없이도 동작)
 	CharacterClass = AAOSCharacter::StaticClass();
+
+	// 배치 계획 초기화 (기본값: 라인당 2명)
+	for (int32 TeamIdx = 0; TeamIdx < 2; ++TeamIdx)
+	{
+		for (int32 LaneIdx = 0; LaneIdx < 3; ++LaneIdx)
+		{
+			DeployPlan[TeamIdx][LaneIdx] = MaxCharactersPerLane;
+		}
+	}
 }
 
 void AAOSGameMode::BeginPlay()
@@ -36,10 +46,9 @@ void AAOSGameMode::BeginPlay()
 	}
 	else
 	{
-		// 게임 레벨: 바로 준비 → 게임 시작
+		// 게임 레벨: RoundPreparation으로 전이 (자동 시작하지 않음 → UI에서 StartRound 호출)
 		TransitionToRoundPreparation();
-		StartGame();
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → 자동 시작 (Map: %s)"), *MapName);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → RoundPreparation 대기 (Map: %s)"), *MapName);
 	}
 }
 
@@ -54,7 +63,7 @@ void AAOSGameMode::Tick(float DeltaTime)
 	}
 }
 
-// 🟢 NEW - PlayerStart에서 자동 캐릭터 생성 방지
+// PlayerStart에서 자동 캐릭터 생성 방지
 void AAOSGameMode::RestartPlayer(AController* NewPlayer)
 {
 	// PlayerStart에서 자동으로 Pawn을 생성하지 않음
@@ -64,29 +73,149 @@ void AAOSGameMode::RestartPlayer(AController* NewPlayer)
 }
 
 // RoundPreparation 상태에서만 라운드 시작 가능
-void AAOSGameMode::StartGame()
+void AAOSGameMode::StartRound()
 {
 	if (AOSGameState != EAOSGameState::RoundPreparation)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("StartGame() called but current state is not RoundPreparation. Ignoring."));
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] StartRound() 호출되었으나 현재 상태가 RoundPreparation이 아님. 무시."));
 		return;
 	}
 
+	// 라운드 번호 증가
+	CurrentRound++;
+
+	// 이전 라운드 캐릭터 참조 정리
+	Team1Characters.Empty();
+	Team2Characters.Empty();
+
+	// 게임 시간 초기화
 	RemainingGameTime = GameDuration;
+
+	// RoundRunning 상태로 전이
 	SetGameState(EAOSGameState::RoundRunning);
 
-	// 모든 스폰 포인트에서 캐릭터 자동 생성
-	SpawnCharactersAtAllSpawnPoints();
+	// 배치 계획에 따라 캐릭터 생성
+	SpawnCharactersForRound();
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] ===== 라운드 %d 시작 ====="), CurrentRound);
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team1: %d명, Team2: %d명 배치"),
+		Team1Characters.Num(), Team2Characters.Num());
+}
+
+void AAOSGameMode::EndRound()
+{
+	if (AOSGameState != EAOSGameState::RoundRunning)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] ===== 라운드 %d 종료 ====="), CurrentRound);
+
+	// 라운드 종료 델리게이트 브로드캐스트
+	OnRoundEnded.Broadcast(CurrentRound);
+
+	// 커맨드 센터 파괴 여부 확인
+	bool bTeam1CCDestroyed = false;
+	bool bTeam2CCDestroyed = false;
+
+	if (AAOSStructure* Team1CC = CommandCenters.FindRef(EAOSTeam::Team1))
+	{
+		bTeam1CCDestroyed = Team1CC->IsDestroyed();
+	}
+	if (AAOSStructure* Team2CC = CommandCenters.FindRef(EAOSTeam::Team2))
+	{
+		bTeam2CCDestroyed = Team2CC->IsDestroyed();
+	}
+
+	if (bTeam1CCDestroyed)
+	{
+		EndGame(EAOSTeam::Team2);
+	}
+	else if (bTeam2CCDestroyed)
+	{
+		EndGame(EAOSTeam::Team1);
+	}
+	else
+	{
+		// 커맨드 센터가 아직 파괴되지 않음 → 다음 라운드 준비
+		TransitionToRoundPreparation();
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 커맨드 센터 미파괴 → 다음 라운드 준비"));
+	}
 }
 
 void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 {
+	// 라운드 종료 타이머가 남아있으면 정리
+	if (GetWorldTimerManager().IsTimerActive(RoundEndTimerHandle))
+	{
+		GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
+	}
+
 	SetGameState(EAOSGameState::Settlement);
 
-	UE_LOG(LogTemp, Warning, TEXT("Game ended. Winning team: %s"),
-		WinningTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 종료! 승리 팀: %s (라운드 %d)"),
+		WinningTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"), CurrentRound);
+}
 
-	// TODO: 승리 팀에 점수 부여, UI 표시 등
+// 배치 계획 설정
+void AAOSGameMode::SetLaneDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count)
+{
+	// 0 ~ MaxCharactersPerLane 범위로 제한
+	int32 ClampedCount = FMath::Clamp(Count, 0, MaxCharactersPerLane);
+	SetDeployCount(Team, Lane, ClampedCount);
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 배치 계획 설정: %s %s 라인 = %d명"),
+		Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+		Lane == EAOSLane::Top ? TEXT("Top") : Lane == EAOSLane::Mid ? TEXT("Mid") : TEXT("Bottom"),
+		ClampedCount);
+}
+
+int32 AAOSGameMode::GetLaneDeployCount(EAOSTeam Team, EAOSLane Lane) const
+{
+	return GetDeployCount(Team, Lane);
+}
+
+int32 AAOSGameMode::GetTotalDeployCount(EAOSTeam Team) const
+{
+	int32 Total = 0;
+	Total += GetDeployCount(Team, EAOSLane::Top);
+	Total += GetDeployCount(Team, EAOSLane::Mid);
+	Total += GetDeployCount(Team, EAOSLane::Bottom);
+	return Total;
+}
+
+// 내부 배치 계획 접근 함수
+void AAOSGameMode::SetDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count)
+{
+	int32 TeamIdx = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 LaneIdx = static_cast<int32>(Lane);
+	if (LaneIdx >= 0 && LaneIdx < 3)
+	{
+		DeployPlan[TeamIdx][LaneIdx] = Count;
+	}
+}
+
+int32 AAOSGameMode::GetDeployCount(EAOSTeam Team, EAOSLane Lane) const
+{
+	int32 TeamIdx = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 LaneIdx = static_cast<int32>(Lane);
+	if (LaneIdx >= 0 && LaneIdx < 3)
+	{
+		return DeployPlan[TeamIdx][LaneIdx];
+	}
+	return 0;
+}
+
+// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)
+void AAOSGameMode::InitializeDefaultDeployPlan()
+{
+	for (int32 TeamIdx = 0; TeamIdx < 2; ++TeamIdx)
+	{
+		for (int32 LaneIdx = 0; LaneIdx < 3; ++LaneIdx)
+		{
+			DeployPlan[TeamIdx][LaneIdx] = MaxCharactersPerLane;
+		}
+	}
 }
 
 void AAOSGameMode::DeployCharacters(EAOSTeam Team, const TArray<EAOSLane>& LaneAssignments)
@@ -94,7 +223,7 @@ void AAOSGameMode::DeployCharacters(EAOSTeam Team, const TArray<EAOSLane>& LaneA
 	CharacterDeployments.Add(Team, LaneAssignments);
 
 	// 이 함수는 플레이어 준비 단계에서 라인 배치 정보를 받음
-	// 실제 캐릭터 스폰은 다른 함수에서 처리
+	// 실제 캐릭터 스폰은 StartRound()에서 처리
 }
 
 void AAOSGameMode::RegisterSpawnPoint(AAOSSpawnPoint* SpawnPoint)
@@ -105,7 +234,7 @@ void AAOSGameMode::RegisterSpawnPoint(AAOSSpawnPoint* SpawnPoint)
 	}
 
 	AllSpawnPoints.Add(SpawnPoint);
-	
+
 	// 팀별로 분류
 	EAOSTeam Team = SpawnPoint->GetTeam();
 	if (!TeamSpawnPoints.Contains(Team))
@@ -133,7 +262,7 @@ AAOSSpawnPoint* AAOSGameMode::GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane)
 	}
 
 	TArray<AAOSSpawnPoint*>& SpawnPoints = TeamSpawnPoints[Team];
-	
+
 	// 해당 팀의 해당 라인에서 사용 가능한 첫 번째 스폰 포인트 찾기
 	for (AAOSSpawnPoint* SpawnPoint : SpawnPoints)
 	{
@@ -147,68 +276,100 @@ AAOSSpawnPoint* AAOSGameMode::GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane)
 	return nullptr;
 }
 
-// 🔴 REMOVED: SpawnCharacter() 함수는 더 이상 사용되지 않습니다.
-// SpawnCharactersAtAllSpawnPoints()로 대체되었습니다.
-/*
-void AAOSGameMode::SpawnCharacter(AAOSCharacter* Character, EAOSTeam Team, EAOSLane Lane)
+// 라운드 배치 계획에 따라 캐릭터 생성
+void AAOSGameMode::SpawnCharactersForRound()
 {
-	// ... 기존 구현 제거됨
-}
-*/
-
-// 🟢 NEW - 모든 스폰 포인트에서 캐릭터 자동 생성
-void AAOSGameMode::SpawnCharactersAtAllSpawnPoints()
-{
-	// 🟡 MODIFIED - DefaultPawnClass 대신 CharacterClass 사용 (RTS 모드 지원)
 	if (!CharacterClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("CharacterClass not set! Please set CharacterClass in GameMode blueprint."));
+		UE_LOG(LogTemp, Error, TEXT("[GameMode] CharacterClass 미설정! GameMode 블루프린트에서 설정해주세요."));
 		return;
 	}
 
-	// CharacterClass가 AAOSCharacter 파생 클래스인지 확인
 	if (!CharacterClass->IsChildOf(AAOSCharacter::StaticClass()))
 	{
-		UE_LOG(LogTemp, Error, TEXT("CharacterClass is not a valid AAOSCharacter class!"));
+		UE_LOG(LogTemp, Error, TEXT("[GameMode] CharacterClass가 AAOSCharacter 파생이 아닙니다!"));
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Spawning characters at %d spawn points..."), AllSpawnPoints.Num());
-
-	for (AAOSSpawnPoint* SpawnPoint : AllSpawnPoints)
+	// 스폰 포인트의 Occupied 상태 초기화
+	for (AAOSSpawnPoint* SP : AllSpawnPoints)
 	{
-		if (SpawnPoint)
+		if (SP)
 		{
-			// 스폰 포인트에서 캐릭터 생성
-			AAOSCharacter* NewCharacter = SpawnPoint->SpawnCharacterAtPoint(CharacterClass);
+			SP->ReleaseCharacter();
+		}
+	}
 
-			if (NewCharacter)
+	// 각 팀, 각 라인에 대해 배치 계획에 따라 캐릭터 생성
+	const EAOSTeam Teams[] = { EAOSTeam::Team1, EAOSTeam::Team2 };
+	const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+
+	for (EAOSTeam CurrentTeam : Teams)
+	{
+		for (EAOSLane CurrentLane : Lanes)
+		{
+			int32 PlannedCount = GetDeployCount(CurrentTeam, CurrentLane);
+
+			if (PlannedCount <= 0)
 			{
-				// 팀별 리스트에 추가
-				if (NewCharacter->GetTeam() == EAOSTeam::Team1)
+				continue;
+			}
+
+			// 해당 팀/라인의 스폰 포인트 수집
+			TArray<AAOSSpawnPoint*> LaneSpawnPoints;
+			if (TeamSpawnPoints.Contains(CurrentTeam))
+			{
+				for (AAOSSpawnPoint* SP : TeamSpawnPoints[CurrentTeam])
 				{
-					Team1Characters.Add(NewCharacter);
+					if (SP && SP->GetLane() == CurrentLane)
+					{
+						LaneSpawnPoints.Add(SP);
+					}
 				}
-				else
+			}
+
+			// 계획된 수만큼 (스폰 포인트 수 제한 내에서) 캐릭터 생성
+			int32 SpawnCount = FMath::Min(PlannedCount, LaneSpawnPoints.Num());
+
+			for (int32 i = 0; i < SpawnCount; ++i)
+			{
+				AAOSCharacter* NewCharacter = LaneSpawnPoints[i]->SpawnCharacterAtPoint(CharacterClass);
+
+				if (NewCharacter)
 				{
-					Team2Characters.Add(NewCharacter);
+					if (CurrentTeam == EAOSTeam::Team1)
+					{
+						Team1Characters.Add(NewCharacter);
+					}
+					else
+					{
+						Team2Characters.Add(NewCharacter);
+					}
 				}
+			}
+
+			if (SpawnCount < PlannedCount)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameMode] %s %s 라인: 스폰 포인트 부족 (%d/%d)"),
+					CurrentTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+					CurrentLane == EAOSLane::Top ? TEXT("Top") : CurrentLane == EAOSLane::Mid ? TEXT("Mid") : TEXT("Bottom"),
+					SpawnCount, PlannedCount);
 			}
 		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Character spawn complete - Team1: %d, Team2: %d"),
-		Team1Characters.Num(), Team2Characters.Num());
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 라운드 %d 캐릭터 생성 완료 - Team1: %d, Team2: %d"),
+		CurrentRound, Team1Characters.Num(), Team2Characters.Num());
 }
 
-// 🟡 MODIFIED - 맵 매니저를 통한 타워 및 커맨드 센터 생성
+// 맵 매니저를 통한 타워 및 커맨드 센터 생성
 void AAOSGameMode::InitializeStructures()
 {
 	InitializeMapManager();
 	CacheTowerReferences();
 }
 
-// 🟢 NEW - 맵 매니저 초기화 및 구조물 생성
+// 맵 매니저 초기화 및 구조물 생성
 void AAOSGameMode::InitializeMapManager()
 {
 	// 월드에서 MapManager 찾기
@@ -247,7 +408,7 @@ void AAOSGameMode::InitializeMapManager()
 	}
 }
 
-// 🟢 NEW - 생성된 타워와 커맨드 센터를 참조로 캐시
+// 생성된 타워와 커맨드 센터를 참조로 캐시
 void AAOSGameMode::CacheTowerReferences()
 {
 	if (!MapManager)
@@ -306,7 +467,7 @@ AAOSStructure* AAOSGameMode::GetCommandCenter(EAOSTeam Team)
 	return CommandCenters.FindRef(Team);
 }
 
-// 🟡 MODIFIED - 특정 라인의 팀별 타워 목록 반환
+// 특정 라인의 팀별 타워 목록 반환
 TArray<AAOSStructure*> AAOSGameMode::GetTowersByLane(EAOSLane Lane, EAOSTeam Team)
 {
 	TArray<AAOSStructure*> Result;
@@ -340,56 +501,93 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 	if (CharacterTeam == EAOSTeam::Team1)
 	{
 		Team1Characters.Remove(DestroyedCharacter);
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team1 character destroyed. Remaining: %d"), Team1Characters.Num());
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team1 캐릭터 사망. 남은: %d"), Team1Characters.Num());
 	}
 	else
 	{
 		Team2Characters.Remove(DestroyedCharacter);
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 character destroyed. Remaining: %d"), Team2Characters.Num());
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 캐릭터 사망. 남은: %d"), Team2Characters.Num());
+	}
+
+	// 양 팀 모두 캐릭터가 없으면 라운드 종료 (3초 딜레이)
+	if (AOSGameState == EAOSGameState::RoundRunning &&
+		Team1Characters.Num() == 0 && Team2Characters.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양 팀 모든 캐릭터 사망 → 3초 후 라운드 종료"));
+
+		// 이미 타이머가 설정되어 있으면 중복 방지
+		if (!GetWorldTimerManager().IsTimerActive(RoundEndTimerHandle))
+		{
+			GetWorldTimerManager().SetTimer(
+				RoundEndTimerHandle,
+				this,
+				&AAOSGameMode::EndRound,
+				3.0f,
+				false
+			);
+		}
 	}
 }
 
-// 🟢 NEW - 게임 상태 설정 및 델리게이트 브로드캐스트 헬퍼
+// 게임 상태 설정 및 델리게이트 브로드캐스트 헬퍼
 void AAOSGameMode::SetGameState(EAOSGameState NewState)
 {
 	AOSGameState = NewState;
 	OnGameStateChanged.Broadcast(NewState);
 }
 
-// 🟢 NEW - MainMenu 상태로 전이
+// MainMenu 상태로 전이
 void AAOSGameMode::TransitionToMainMenu()
 {
 	SetGameState(EAOSGameState::MainMenu);
-	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to MainMenu"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] MainMenu 상태로 전이"));
 }
 
 // Lobby 상태로 전이
 void AAOSGameMode::TransitionToLobby()
 {
 	SetGameState(EAOSGameState::Lobby);
-	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to Lobby"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Lobby 상태로 전이"));
 }
 
 // RoundPreparation 상태로 전이: 스폰 포인트 등록 + 구조물 초기화
 void AAOSGameMode::TransitionToRoundPreparation()
 {
-	// 월드의 모든 스폰 포인트 등록
-	for (TActorIterator<AAOSSpawnPoint> SpawnPointItr(GetWorld()); SpawnPointItr; ++SpawnPointItr)
+	// 이전 라운드 캐릭터 참조 정리
+	Team1Characters.Empty();
+	Team2Characters.Empty();
+
+	// 라운드 종료 타이머 정리
+	if (GetWorldTimerManager().IsTimerActive(RoundEndTimerHandle))
 	{
-		AAOSSpawnPoint* SpawnPoint = *SpawnPointItr;
-		if (SpawnPoint)
-		{
-			RegisterSpawnPoint(SpawnPoint);
-		}
+		GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
 	}
 
-	// 구조물 초기화 (타워, 커맨드 센터)
-	InitializeStructures();
+	// 첫 라운드인 경우만 스폰 포인트 등록 및 구조물 초기화
+	if (CurrentRound == 0)
+	{
+		// 월드의 모든 스폰 포인트 등록
+		for (TActorIterator<AAOSSpawnPoint> SpawnPointItr(GetWorld()); SpawnPointItr; ++SpawnPointItr)
+		{
+			AAOSSpawnPoint* SpawnPoint = *SpawnPointItr;
+			if (SpawnPoint)
+			{
+				RegisterSpawnPoint(SpawnPoint);
+			}
+		}
+
+		// 구조물 초기화 (타워, 커맨드 센터)
+		InitializeStructures();
+	}
+
+	// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)
+	InitializeDefaultDeployPlan();
 
 	RemainingGameTime = GameDuration;
 	SetGameState(EAOSGameState::RoundPreparation);
 
-	UE_LOG(LogTemp, Warning, TEXT("Game state transitioned to RoundPreparation. SpawnPoints: %d"), AllSpawnPoints.Num());
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] RoundPreparation 상태로 전이 (다음 라운드: %d). SpawnPoints: %d"),
+		CurrentRound + 1, AllSpawnPoints.Num());
 }
 
 void AAOSGameMode::UpdateGameTime(float DeltaTime)
