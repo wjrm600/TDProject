@@ -96,6 +96,10 @@ protected:
 	int32 CurrentWaypointIndex = 0;
 
 private:
+	// GameMode 캐시 (라운드 상태 확인용)
+	UPROPERTY()
+	class AAOSGameMode* CachedGameMode = nullptr;
+
 	void CacheLaneInfo();
 	void BuildWaypointQueue();
 	void UpdateAIBehavior(float DeltaTime);

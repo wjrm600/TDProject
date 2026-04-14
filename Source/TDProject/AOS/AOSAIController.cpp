@@ -42,12 +42,19 @@ void AAOSAIController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// OnPossess에서 이미 모든 초기화 및 배포 시작됨
+	// GameMode 캐시 (라운드 상태 확인용)
+	CachedGameMode = Cast<AAOSGameMode>(GetWorld()->GetAuthGameMode());
 }
 
 void AAOSAIController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// RoundRunning 상태가 아니면 AI 행동 중지
+	if (CachedGameMode && CachedGameMode->GetAOSGameState() != EAOSGameState::RoundRunning)
+	{
+		return;
+	}
 
 	if (!ControlledCharacter || !ControlledCharacter->IsAlive())
 	{
