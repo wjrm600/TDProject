@@ -73,10 +73,34 @@ void ReceiveDamage(float DamageAmount);
 // 이 enum 값을 변경하면 모든 AOS 파일에 영향
 enum class EAOSTeam : uint8 { Team1, Team2 };
 enum class EAOSLane : uint8 { Top, Mid, Bottom };
-enum class EAOSGameState : uint8 { Preparation, GameRunning, GameEnded };
+enum class EAOSGameState : uint8 { MainMenu, Lobby, RoundPreparation, RoundRunning, Settlement };
 
 // 구조물 타입 (AOSStructure.h에 정의, Object 소유)
 enum class EStructureType : uint8 { CommandCenter, Tower };
+```
+
+## AOSGameMode 라운드 시스템 API (Phase 2 신규)
+
+소유: **Character** | 소비: **UI, AI**
+
+```cpp
+// AOSGameMode.h — 라운드 배치 관련 (prog-ui에서 호출)
+void SetLaneDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count); // 라인별 배치 수 설정 (0~2)
+int32 GetLaneDeployCount(EAOSTeam Team, EAOSLane Lane) const;
+int32 GetTotalDeployCount(EAOSTeam Team) const;
+static const int32 MaxCharactersPerLane = 2;
+
+// AOSGameMode.h — 라운드 진행 (prog-ui에서 호출)
+void StartRound();          // 배치된 캐릭터 스폰 + RoundRunning 전이
+int32 GetCurrentRound() const;
+
+// AOSGameMode.h — 라운드 종료 (내부 + prog-ai 참조)
+// OnCharacterDestroyed()에서 양팀 전원사망 감지 → EndRound() 자동 호출
+// EndRound() → 커맨드센터 파괴 확인 → Settlement 또는 다음 RoundPreparation
+
+// AOSGameMode.h — 라운드 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundEnded, int32, RoundNumber);
+FOnRoundEnded OnRoundEnded;
 ```
 
 ## AOSGameMode → AOSCharacter

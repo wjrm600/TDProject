@@ -498,9 +498,12 @@ void AAOSPlayerController::OnStartRoundClicked()
 
 	if (GameMode)
 	{
-		// TODO: prog-character 머지 후 GameMode->SetLaneDeployCount() 호출 추가
-		// 현재는 기존 StartGame() 직접 호출
-		GameMode->StartGame();
+		// 배치 계획을 GameMode에 전달
+		for (auto& Pair : LocalDeployPlan)
+		{
+			GameMode->SetLaneDeployCount(PlayerTeam, Pair.Key, Pair.Value);
+		}
+		GameMode->StartRound();
 	}
 }
 
