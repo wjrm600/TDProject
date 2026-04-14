@@ -9,6 +9,7 @@ class AAOSCharacter;
 class ACameraActor;
 class UAOSMainMenuWidget;
 class UAOSSettlementWidget;
+class UAOSCharacterSelectWidget;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -82,12 +83,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> SettlementWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> CharacterSelectWidgetClass;
+
 	// UI 위젯 인스턴스 (런타임)
 	UPROPERTY()
 	UAOSMainMenuWidget* MainMenuWidget;
 
 	UPROPERTY()
 	UAOSSettlementWidget* SettlementWidget;
+
+	UPROPERTY()
+	UAOSCharacterSelectWidget* CharacterSelectWidget = nullptr;
 
 	// 게임 상태 변경 핸들러
 	UFUNCTION()
@@ -98,6 +105,11 @@ protected:
 	void HideMainMenu();
 	void ShowSettlement(EAOSTeam WinningTeam);
 	void HideSettlement();
+	void ShowCharacterSelect();
+	void HideCharacterSelect();
+
+	UFUNCTION()
+	void OnStartRoundClicked();
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	EAOSTeam PlayerTeam = EAOSTeam::Team1;
@@ -107,6 +119,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Deployment")
 	TArray<EAOSLane> CurrentDeployment;
+
+	// 라운드별 라인 배치 수 (캐릭터 선택 UI에서 설정)
+	TMap<EAOSLane, int32> LocalDeployPlan;
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	class AAOSGameMode* GameMode;

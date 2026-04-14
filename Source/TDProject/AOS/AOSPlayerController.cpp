@@ -4,6 +4,7 @@
 #include "AOSStructure.h"
 #include "UI/AOSMainMenuWidget.h"
 #include "UI/AOSSettlementWidget.h"
+#include "UI/AOSCharacterSelectWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Engine/World.h"
@@ -302,6 +303,7 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 	case EAOSGameState::RoundPreparation:
 		HideMainMenu();
 		HideSettlement();
+		ShowCharacterSelect();
 		// 라운드 준비: 게임+UI 혼합 입력 모드
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
@@ -310,6 +312,7 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 	case EAOSGameState::RoundRunning:
 		HideMainMenu();
 		HideSettlement();
+		HideCharacterSelect();
 		// 게임+UI 혼합 입력 모드 (RTS 카메라 + 클릭)
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
@@ -317,6 +320,7 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 
 	case EAOSGameState::Settlement:
 		HideMainMenu();
+		HideCharacterSelect();
 		{
 			// 승리 팀 결정 — GameMode에서 확인
 			EAOSTeam WinningTeam = EAOSTeam::Team1; // 기본값
@@ -417,6 +421,86 @@ void AAOSPlayerController::HideSettlement()
 	{
 		SettlementWidget->RemoveFromParent();
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 숨김"));
+	}
+}
+
+// 캐릭터 선택 UI 표시
+void AAOSPlayerController::ShowCharacterSelect()
+{
+	if (!CharacterSelectWidget)
+	{
+		UClass* WidgetClass = CharacterSelectWidgetClass;
+		if (!WidgetClass)
+		{
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_CharacterSelect.WBP_CharacterSelect_C"));
+		}
+		if (!WidgetClass)
+		{
+			// 위젯 블루프린트가 없으면 C++ 클래스 직접 사용
+			WidgetClass = UAOSCharacterSelectWidget::StaticClass();
+		}
+		if (WidgetClass)
+		{
+			CharacterSelectWidget = CreateWidget<UAOSCharacterSelectWidget>(this, WidgetClass);
+			if (CharacterSelectWidget)
+			{
+				CharacterSelectWidget->OnStartRoundClicked.AddDynamic(this, &AAOSPlayerController::OnStartRoundClicked);
+			}
+		}
+	}
+
+	if (CharacterSelectWidget)
+	{
+		// 기본 배치 초기화 (라인당 2명)
+		LocalDeployPlan.Empty();
+		LocalDeployPlan.Add(EAOSLane::Top, 2);
+		LocalDeployPlan.Add(EAOSLane::Mid, 2);
+		LocalDeployPlan.Add(EAOSLane::Bottom, 2);
+
+		CharacterSelectWidget->SetLaneCount(EAOSLane::Top, 2);
+		CharacterSelectWidget->SetLaneCount(EAOSLane::Mid, 2);
+		CharacterSelectWidget->SetLaneCount(EAOSLane::Bottom, 2);
+
+		if (!CharacterSelectWidget->IsInViewport())
+		{
+			CharacterSelectWidget->AddToViewport(10);
+		}
+		CharacterSelectWidget->SetVisibility(ESlateVisibility::Visible);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 캐릭터 선택 UI 표시"));
+	}
+}
+
+// 캐릭터 선택 UI 숨김
+void AAOSPlayerController::HideCharacterSelect()
+{
+	if (CharacterSelectWidget && CharacterSelectWidget->GetVisibility() != ESlateVisibility::Collapsed)
+	{
+		CharacterSelectWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 캐릭터 선택 UI 숨김"));
+	}
+}
+
+// 캐릭터 선택 UI에서 라운드 시작 클릭
+void AAOSPlayerController::OnStartRoundClicked()
+{
+	if (CharacterSelectWidget)
+	{
+		// 위젯에서 현재 라인별 배치 수 읽기
+		LocalDeployPlan.Add(EAOSLane::Top, CharacterSelectWidget->GetLaneCount(EAOSLane::Top));
+		LocalDeployPlan.Add(EAOSLane::Mid, CharacterSelectWidget->GetLaneCount(EAOSLane::Mid));
+		LocalDeployPlan.Add(EAOSLane::Bottom, CharacterSelectWidget->GetLaneCount(EAOSLane::Bottom));
+
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 라운드 시작 요청 (Top:%d, Mid:%d, Bottom:%d)"),
+			LocalDeployPlan[EAOSLane::Top],
+			LocalDeployPlan[EAOSLane::Mid],
+			LocalDeployPlan[EAOSLane::Bottom]);
+	}
+
+	if (GameMode)
+	{
+		// TODO: prog-character 머지 후 GameMode->SetLaneDeployCount() 호출 추가
+		// 현재는 기존 StartGame() 직접 호출
+		GameMode->StartGame();
 	}
 }
 
