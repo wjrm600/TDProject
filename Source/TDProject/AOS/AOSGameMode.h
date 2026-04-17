@@ -8,6 +8,8 @@ class AAOSCharacter;
 class AAOSStructure;
 class AAOSSpawnPoint;
 class AAOSMapManager;
+class AAOSGameState;
+class AAOSPlayerState;
 
 UENUM(BlueprintType)
 enum class EAOSLane : uint8
@@ -54,6 +56,10 @@ public:
 
 	// PlayerStart에서 자동 캐릭터 생성 방지
 	virtual void RestartPlayer(AController* NewPlayer) override;
+
+	// Phase 3A: 네트워킹 - 접속/퇴장 핸들러
+	virtual void PostLogin(APlayerController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
 
 	// 라운드 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -147,6 +153,16 @@ public:
 
 	// 라인 당 최대 캐릭터 수
 	static const int32 MaxCharactersPerLane = 2;
+
+	// Phase 3A: 네트워킹 - 팀별 플레이어 준비 상태 체크 + 라운드 자동 시작
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bReady);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	bool AreAllPlayersReady();
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void ServerSetLaneDeployCountForPlayer(AAOSPlayerState* PlayerState, EAOSLane Lane, int32 Count);
 
 protected:
 	// 레벨 분리 설정

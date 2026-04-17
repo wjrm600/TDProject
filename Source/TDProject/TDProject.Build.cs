@@ -19,7 +19,10 @@ public class TDProject : ModuleRules
 			"GameplayStateTreeModule",
 			"UMG",
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			// Phase 3A: 네트워킹 모듈 (세션/로비/데디서버)
+			"OnlineSubsystem",
+			"OnlineSubsystemUtils"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

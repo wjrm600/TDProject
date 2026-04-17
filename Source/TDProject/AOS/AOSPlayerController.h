@@ -75,6 +75,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Selection")
 	void HandleMouseClick();
 
+	// Phase 3A: 서버 RPC (클라이언트 → 서버 요청)
+	// 라인별 배치 수 설정 (서버 검증: 0~2)
+	UFUNCTION(Server, Reliable, WithValidation, Category = "AOS|Network")
+	void Server_SetLaneDeployCount(EAOSLane Lane, int32 Count);
+
+	// 준비 상태 토글 (로비/라운드 준비 시 사용)
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_SetReady(bool bReady);
+
+	// 라운드 시작 요청 (서버에서 조건 검증 후 StartRound 호출)
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_RequestStartRound();
+
 protected:
 	// UI 위젯 클래스 (에디터에서 설정)
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")

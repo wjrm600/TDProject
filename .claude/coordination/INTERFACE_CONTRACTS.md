@@ -103,6 +103,99 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundEnded, int32, RoundNumber);
 FOnRoundEnded OnRoundEnded;
 ```
 
+## AOSGameState 리플리케이션 API (Phase 3A 신규)
+
+소유: **Character** | 소비: **UI (클라이언트 상태 구독)**
+
+```cpp
+// AOSGameState.h — 서버만 리플리케이션된 게임 상태를 변경할 수 있음
+UPROPERTY(ReplicatedUsing=OnRep_CurrentState) EAOSGameState CurrentState;
+UPROPERTY(ReplicatedUsing=OnRep_CurrentRound) int32 CurrentRound;
+UPROPERTY(ReplicatedUsing=OnRep_TeamReady) bool bTeam1Ready;
+UPROPERTY(ReplicatedUsing=OnRep_TeamReady) bool bTeam2Ready;
+
+// 서버 전용 Setter (AOSGameMode에서 호출)
+void ServerSetCurrentState(EAOSGameState NewState);
+void ServerSetCurrentRound(int32 NewRound);
+void ServerSetTeamReady(EAOSTeam Team, bool bReady);
+
+// 클라이언트 UI 바인딩용 델리게이트 (OnRep_* 호출 시 브로드캐스트)
+FOnGameStateChangedClient OnGameStateChangedClient;   // EAOSGameState NewState
+FOnRoundNumberChanged    OnRoundNumberChanged;        // int32 NewRound
+FOnTeamReadyChanged      OnTeamReadyChanged;          // (no param)
+
+// 헬퍼 (클라이언트에서 조회 가능)
+EAOSGameState GetCurrentState() const;
+int32 GetCurrentRound() const;
+bool IsTeamReady(EAOSTeam Team) const;
+bool AreBothTeamsReady() const;
+```
+
+## AOSPlayerState 리플리케이션 API (Phase 3A 신규)
+
+소유: **Character** | 소비: **UI (플레이어 팀/준비 상태), GameMode**
+
+```cpp
+// AOSPlayerState.h — 서버만 리플리케이션 프로퍼티 변경 가능
+UPROPERTY(ReplicatedUsing=OnRep_Team)       EAOSTeam Team;          // 팀 (서버가 PostLogin에서 할당)
+UPROPERTY(ReplicatedUsing=OnRep_Ready)      bool bIsReady;          // 준비 완료 여부
+UPROPERTY(ReplicatedUsing=OnRep_DeployPlan) int32 DeployCountTop;   // 라인별 배치 수 (0~2)
+UPROPERTY(ReplicatedUsing=OnRep_DeployPlan) int32 DeployCountMid;
+UPROPERTY(ReplicatedUsing=OnRep_DeployPlan) int32 DeployCountBottom;
+
+// 서버 전용 Setter
+void ServerSetTeam(EAOSTeam NewTeam);
+void ServerSetReady(bool bReady);
+void ServerSetDeployCount(EAOSLane Lane, int32 Count); // 자동 0~2 Clamp
+
+// 클라이언트 UI 바인딩용 델리게이트
+FOnPlayerTeamChanged  OnPlayerTeamChanged;
+FOnPlayerReadyChanged OnPlayerReadyChanged;
+FOnDeployPlanChanged  OnDeployPlanChanged;
+
+// Getter (어디서든 호출 가능)
+EAOSTeam GetTeam() const;
+bool IsReady() const;
+int32 GetDeployCount(EAOSLane Lane) const;
+int32 GetTotalDeployCount() const;
+```
+
+## AOSPlayerController Server RPC (Phase 3A 신규)
+
+소유: **UI** | 소비: **Character (GameMode 라우팅)**
+
+```cpp
+// AOSPlayerController.h — 클라이언트에서 호출하면 서버에서 실행됨
+// 라인당 0~2 검증 포함 (WithValidation)
+UFUNCTION(Server, Reliable, WithValidation)
+void Server_SetLaneDeployCount(EAOSLane Lane, int32 Count);
+
+// 준비 상태 토글. 양쪽 준비 시 RoundPreparation → RoundRunning 자동 전이
+UFUNCTION(Server, Reliable)
+void Server_SetReady(bool bReady);
+
+// 라운드 시작 요청 (서버가 AreAllPlayersReady() 확인)
+UFUNCTION(Server, Reliable)
+void Server_RequestStartRound();
+```
+
+## AOSGameMode 서버 권한 API (Phase 3A 신규)
+
+소유: **Character** | 소비: **AOSPlayerController (RPC 라우팅)**
+
+```cpp
+// AOSGameMode.h — 모두 HasAuthority() 체크 내장
+virtual void PostLogin(APlayerController* NewPlayer) override;  // 접속 순서 팀 할당
+virtual void Logout(AController* Exiting) override;              // 게임 중 퇴장 → 상대 승리 처리
+
+void ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bReady);
+void ServerSetLaneDeployCountForPlayer(AAOSPlayerState* PlayerState, EAOSLane Lane, int32 Count);
+bool AreAllPlayersReady();  // GetNumPlayers()가 non-const라 non-const
+
+// StartRound(), EndRound(), EndGame(), SetLaneDeployCount() 모두 HasAuthority() 선행 체크
+// SetGameState() 내부에서 AAOSGameState::ServerSetCurrentState() 호출로 리플리케이션 동기화
+```
+
 ## AOSGameMode → AOSCharacter
 
 소유: **Character** | 소비: **UI**

@@ -5,8 +5,11 @@
 #include "AOSPlayerController.h"
 #include "AOSSpawnPoint.h"
 #include "AOSMapManager.h"
+#include "AOSGameState.h"
+#include "AOSPlayerState.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
+#include "GameFramework/PlayerState.h"
 
 AAOSGameMode::AAOSGameMode()
 {
@@ -18,6 +21,10 @@ AAOSGameMode::AAOSGameMode()
 	// 기본 캐릭터 클래스 설정 (블루프린트 없이도 동작)
 	CharacterClass = AAOSCharacter::StaticClass();
 
+	// Phase 3A: 리플리케이션용 GameState / PlayerState 클래스 지정
+	GameStateClass = AAOSGameState::StaticClass();
+	PlayerStateClass = AAOSPlayerState::StaticClass();
+
 	// 배치 계획 초기화 (기본값: 라인당 2명)
 	for (int32 TeamIdx = 0; TeamIdx < 2; ++TeamIdx)
 	{
@@ -26,6 +33,67 @@ AAOSGameMode::AAOSGameMode()
 			DeployPlan[TeamIdx][LaneIdx] = MaxCharactersPerLane;
 		}
 	}
+}
+
+// Phase 3A: 접속 시 팀 자동 할당
+void AAOSGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+
+	if (!NewPlayer)
+	{
+		return;
+	}
+
+	AAOSPlayerState* PS = NewPlayer->GetPlayerState<AAOSPlayerState>();
+	if (!PS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] PostLogin: PlayerState가 AAOSPlayerState 아님"));
+		return;
+	}
+
+	// 접속 순서로 팀 할당 (첫 번째 → Team1, 두 번째 → Team2)
+	const int32 NumPlayers = GetNumPlayers();
+	const EAOSTeam AssignedTeam = (NumPlayers <= 1) ? EAOSTeam::Team1 : EAOSTeam::Team2;
+	PS->ServerSetTeam(AssignedTeam);
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] PostLogin: 플레이어 %d명, %s 할당"),
+		NumPlayers,
+		AssignedTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"));
+
+	// 양쪽 접속 완료 시 Lobby → RoundPreparation (향후 로비 UI에서 수동 시작으로 변경 예정)
+	if (NumPlayers >= 2 && AOSGameState == EAOSGameState::Lobby)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 접속 완료 → RoundPreparation"));
+		TransitionToRoundPreparation();
+	}
+}
+
+// Phase 3A: 퇴장 시 처리
+void AAOSGameMode::Logout(AController* Exiting)
+{
+	if (Exiting)
+	{
+		APlayerController* PC = Cast<APlayerController>(Exiting);
+		AAOSPlayerState* PS = PC ? PC->GetPlayerState<AAOSPlayerState>() : nullptr;
+		if (PS)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] Logout: %s 퇴장"),
+				PS->Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"));
+		}
+
+		// 게임 도중 한쪽이 나가면 남은 팀 승리 처리 (라운드 진행 중일 때만)
+		if (AOSGameState == EAOSGameState::RoundRunning || AOSGameState == EAOSGameState::RoundPreparation)
+		{
+			if (PS)
+			{
+				const EAOSTeam WinningTeam = (PS->Team == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+				EndGame(WinningTeam);
+			}
+		}
+	}
+
+	Super::Logout(Exiting);
 }
 
 void AAOSGameMode::BeginPlay()
@@ -75,6 +143,13 @@ void AAOSGameMode::RestartPlayer(AController* NewPlayer)
 // RoundPreparation 상태에서만 라운드 시작 가능
 void AAOSGameMode::StartRound()
 {
+	// Phase 3A: 서버 권한 체크
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] StartRound(): 클라이언트에서 호출됨. 무시."));
+		return;
+	}
+
 	if (AOSGameState != EAOSGameState::RoundPreparation)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] StartRound() 호출되었으나 현재 상태가 RoundPreparation이 아님. 무시."));
@@ -83,6 +158,12 @@ void AAOSGameMode::StartRound()
 
 	// 라운드 번호 증가
 	CurrentRound++;
+
+	// Phase 3A: AOSGameState에 라운드 번호 리플리케이션
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetCurrentRound(CurrentRound);
+	}
 
 	// 이전 라운드 캐릭터 참조 정리
 	Team1Characters.Empty();
@@ -104,6 +185,12 @@ void AAOSGameMode::StartRound()
 
 void AAOSGameMode::EndRound()
 {
+	// Phase 3A: 서버 권한 체크
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (AOSGameState != EAOSGameState::RoundRunning)
 	{
 		return;
@@ -145,6 +232,12 @@ void AAOSGameMode::EndRound()
 
 void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 {
+	// Phase 3A: 서버 권한 체크
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	// 라운드 종료 타이머가 남아있으면 정리
 	if (GetWorldTimerManager().IsTimerActive(RoundEndTimerHandle))
 	{
@@ -160,6 +253,13 @@ void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 // 배치 계획 설정
 void AAOSGameMode::SetLaneDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count)
 {
+	// Phase 3A: 서버 권한 체크 (단, 로컬 싱글 플레이 시에도 동작하도록 ListenServer/Standalone 허용)
+	if (!HasAuthority())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] SetLaneDeployCount(): 클라이언트에서 호출됨. RPC 경로 사용 필요."));
+		return;
+	}
+
 	// 0 ~ MaxCharactersPerLane 범위로 제한
 	int32 ClampedCount = FMath::Clamp(Count, 0, MaxCharactersPerLane);
 	SetDeployCount(Team, Lane, ClampedCount);
@@ -533,6 +633,13 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 void AAOSGameMode::SetGameState(EAOSGameState NewState)
 {
 	AOSGameState = NewState;
+
+	// Phase 3A: AOSGameState에 상태 리플리케이션
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetCurrentState(NewState);
+	}
+
 	OnGameStateChanged.Broadcast(NewState);
 }
 
@@ -623,4 +730,73 @@ void AAOSGameMode::CheckVictoryConditions()
 			}
 		}
 	}
+}
+
+// Phase 3A: 서버에서 플레이어 준비 상태 업데이트 + GameState 리플리케이션
+void AAOSGameMode::ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bReady)
+{
+	if (!HasAuthority() || !PlayerState)
+	{
+		return;
+	}
+
+	PlayerState->ServerSetReady(bReady);
+
+	// GameState의 팀별 준비 플래그도 업데이트
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetTeamReady(PlayerState->GetTeam(), bReady);
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] %s 준비 상태: %s"),
+		PlayerState->GetTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+		bReady ? TEXT("TRUE") : TEXT("FALSE"));
+
+	// 양쪽 모두 준비 완료 + RoundPreparation 상태 → 자동 라운드 시작 (로비 시스템 3B에서 수동 시작으로 전환 예정)
+	if (AOSGameState == EAOSGameState::RoundPreparation && AreAllPlayersReady())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 플레이어 준비 완료 → 라운드 시작"));
+		StartRound();
+	}
+}
+
+bool AAOSGameMode::AreAllPlayersReady()
+{
+	const AAOSGameState* AOSGS = Cast<AAOSGameState>(GameState);
+	if (!AOSGS)
+	{
+		return false;
+	}
+
+	// 양쪽 팀 접속 + 양쪽 준비
+	return GetNumPlayers() >= 2 && AOSGS->AreBothTeamsReady();
+}
+
+void AAOSGameMode::ServerSetLaneDeployCountForPlayer(AAOSPlayerState* PlayerState, EAOSLane Lane, int32 Count)
+{
+	if (!HasAuthority() || !PlayerState)
+	{
+		return;
+	}
+
+	// RoundPreparation 상태에서만 허용
+	if (AOSGameState != EAOSGameState::RoundPreparation)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ServerSetLaneDeployCountForPlayer: RoundPreparation 아님. 무시."));
+		return;
+	}
+
+	// 0 ~ MaxCharactersPerLane 범위로 제한
+	const int32 ClampedCount = FMath::Clamp(Count, 0, MaxCharactersPerLane);
+
+	// PlayerState에 저장 (리플리케이션 용)
+	PlayerState->ServerSetDeployCount(Lane, ClampedCount);
+
+	// GameMode의 DeployPlan에도 반영 (SpawnCharactersForRound가 읽는 곳)
+	SetDeployCount(PlayerState->GetTeam(), Lane, ClampedCount);
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] %s %s 라인 배치 수: %d (리플리케이션)"),
+		PlayerState->GetTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+		Lane == EAOSLane::Top ? TEXT("Top") : Lane == EAOSLane::Mid ? TEXT("Mid") : TEXT("Bottom"),
+		ClampedCount);
 }

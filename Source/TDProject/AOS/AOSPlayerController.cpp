@@ -1,5 +1,7 @@
 #include "AOSPlayerController.h"
 #include "AOSGameMode.h"
+#include "AOSGameState.h"
+#include "AOSPlayerState.h"
 #include "AOSCharacter.h"
 #include "AOSStructure.h"
 #include "UI/AOSMainMenuWidget.h"
@@ -127,10 +129,19 @@ void AAOSPlayerController::DeployCharactersToLanes()
 
 void AAOSPlayerController::StartRound()
 {
-	if (GameMode)
+	DeployCharactersToLanes();
+
+	// Phase 3A: 서버면 직접 StartRound, 클라이언트면 RPC로 요청
+	if (HasAuthority())
 	{
-		DeployCharactersToLanes();
-		GameMode->StartGame();
+		if (GameMode)
+		{
+			GameMode->StartGame();
+		}
+	}
+	else
+	{
+		Server_RequestStartRound();
 	}
 }
 
@@ -481,6 +492,7 @@ void AAOSPlayerController::HideCharacterSelect()
 }
 
 // 캐릭터 선택 UI에서 라운드 시작 클릭
+// Phase 3A: 클라이언트는 Server RPC로 요청. 서버 권한 확인은 RPC 구현부에서 처리.
 void AAOSPlayerController::OnStartRoundClicked()
 {
 	if (CharacterSelectWidget)
@@ -496,14 +508,72 @@ void AAOSPlayerController::OnStartRoundClicked()
 			LocalDeployPlan[EAOSLane::Bottom]);
 	}
 
-	if (GameMode)
+	// Phase 3A: 서버 권한이면 직접 호출, 클라이언트면 RPC 사용
+	// 각 라인별 배치 수를 Server RPC로 전송
+	for (auto& Pair : LocalDeployPlan)
 	{
-		// 배치 계획을 GameMode에 전달
-		for (auto& Pair : LocalDeployPlan)
-		{
-			GameMode->SetLaneDeployCount(PlayerTeam, Pair.Key, Pair.Value);
-		}
-		GameMode->StartRound();
+		Server_SetLaneDeployCount(Pair.Key, Pair.Value);
+	}
+
+	// 준비 완료 → 서버가 양쪽 준비 확인 후 자동 라운드 시작
+	Server_SetReady(true);
+}
+
+// Phase 3A: Server RPC 구현 - 라인별 배치 수 설정
+bool AAOSPlayerController::Server_SetLaneDeployCount_Validate(EAOSLane Lane, int32 Count)
+{
+	// 라인당 0~2 범위만 허용 (MaxCharactersPerLane)
+	return Count >= 0 && Count <= 2;
+}
+
+void AAOSPlayerController::Server_SetLaneDeployCount_Implementation(EAOSLane Lane, int32 Count)
+{
+	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
+	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
+
+	if (GM && PS)
+	{
+		GM->ServerSetLaneDeployCountForPlayer(PS, Lane, Count);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetLaneDeployCount: GameMode 또는 PlayerState 없음"));
+	}
+}
+
+// Phase 3A: Server RPC 구현 - 준비 상태 토글
+void AAOSPlayerController::Server_SetReady_Implementation(bool bReady)
+{
+	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
+	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
+
+	if (GM && PS)
+	{
+		GM->ServerSetPlayerReady(PS, bReady);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetReady: GameMode 또는 PlayerState 없음"));
+	}
+}
+
+// Phase 3A: Server RPC 구현 - 라운드 시작 요청 (호스트만 허용)
+void AAOSPlayerController::Server_RequestStartRound_Implementation()
+{
+	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
+	if (!GM)
+	{
+		return;
+	}
+
+	// 양쪽 준비 확인 후 StartRound 호출 (대안: 호스트 전용으로 변경 가능)
+	if (GM->AreAllPlayersReady())
+	{
+		GM->StartRound();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_RequestStartRound: 양쪽 준비 아직 안됨"));
 	}
 }
 
