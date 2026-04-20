@@ -87,14 +87,14 @@ protected:
 	// 라인별 배치 수
 	int32 TopLaneCount = 2;
 	int32 MidLaneCount = 2;
-	int32 BottomLaneCount = 2;
+	int32 BottomLaneCount = 1;
 
 	// 최대 총 배치 수
-	int32 MaxTotalCount = 6;
+	int32 MaxTotalCount = 5;
 
 	// 라인당 최소/최대
 	int32 MinPerLane = 0;
-	int32 MaxPerLane = 4;
+	int32 MaxPerLane = 2;
 
 	UFUNCTION()
 	void OnTopMinusClicked();

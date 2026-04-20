@@ -69,7 +69,40 @@ void AAOSPlayerController::BeginPlay()
 		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
 		{
 			AOSGS->OnGameStateChangedClient.AddDynamic(this, &AAOSPlayerController::OnGameStateChanged);
-			OnGameStateChanged(AOSGS->GetCurrentState());
+
+			EAOSGameState InitialState = AOSGS->GetCurrentState();
+
+			// ── 타이밍 버그 방어 ──────────────────────────────────────────────────
+			// BeginPlay 실행 순서는 항상 일정하지 않다.
+			// 경우 1: GameMode::BeginPlay 먼저 → TransitionToLobby → CurrentState=Lobby(1)
+			//          → PC::BeginPlay 실행 시 InitialState=1 이므로 즉시 처리 ✓
+			// 경우 2: PostLogin 또는 PC::BeginPlay 가 먼저 실행
+			//          → GameMode::BeginPlay 아직 미실행 → CurrentState=MainMenu(0) (기본값)
+			//          → 즉시 처리하면 게임 레벨에서 메인 메뉴 위젯이 잘못 표시됨 ✗
+			// 경우 3: (클라이언트) 서버 리플리케이션 미도착
+			//          → CurrentState=MainMenu(0) (기본값) → 즉시 처리 시 동일 문제 ✗
+			//
+			// 해결:
+			//  · 게임 레벨에서 InitialState=MainMenu(0) 이면 기다린다.
+			//    - 서버: GameMode::BeginPlay 가 TransitionToLobby → OnGameStateChangedClient 브로드캐스트
+			//    - 클라이언트: OnRep_CurrentState 가 Lobby 전달
+			//  · 메뉴 레벨 또는 InitialState≠0 이면 즉시 처리
+			// ─────────────────────────────────────────────────────────────────────
+			const bool bWaitingForLobbyState = bIsGameLevel
+				&& (InitialState == EAOSGameState::MainMenu);
+
+			if (!bWaitingForLobbyState)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] BeginPlay 초기 상태 처리: %d (IsServer=%d)"),
+					(int32)InitialState, HasAuthority() ? 1 : 0);
+				OnGameStateChanged(InitialState);
+			}
+			else
+			{
+				// 게임 레벨에서 기본값(0) → 아직 초기화되지 않은 상태 → 델리게이트 대기
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] BeginPlay: 게임레벨 초기화 대기 중... (IsServer=%d)"),
+					HasAuthority() ? 1 : 0);
+			}
 		}
 		else if (GameMode)
 		{
@@ -367,6 +400,9 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 // 메인 메뉴 표시
 void AAOSPlayerController::ShowMainMenu()
 {
+	// 메인 메뉴 진입 시 항상 "시작 버튼 안 누름" 상태로 초기화
+	bLocalPressedStart = false;
+
 	if (!MainMenuWidget)
 	{
 		UClass* WidgetClass = MainMenuWidgetClass;
@@ -377,11 +413,30 @@ void AAOSPlayerController::ShowMainMenu()
 		if (WidgetClass)
 		{
 			MainMenuWidget = CreateWidget<UAOSMainMenuWidget>(this, WidgetClass);
+			if (MainMenuWidget)
+			{
+				// 시작 버튼 클릭 델리게이트 바인딩 (중복 방지)
+				if (!MainMenuWidget->OnStartClicked.IsAlreadyBound(this, &AAOSPlayerController::OnMainMenuStartClicked))
+				{
+					MainMenuWidget->OnStartClicked.AddDynamic(this, &AAOSPlayerController::OnMainMenuStartClicked);
+				}
+			}
 		}
 	}
 
 	if (MainMenuWidget && !MainMenuWidget->IsInViewport())
 	{
+		// GameState 팀 준비 상태 구독
+		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+		{
+			if (!AOSGS->OnTeamReadyChanged.IsAlreadyBound(this, &AAOSPlayerController::OnMainMenuTeamReadyChanged))
+			{
+				AOSGS->OnTeamReadyChanged.AddDynamic(this, &AAOSPlayerController::OnMainMenuTeamReadyChanged);
+			}
+		}
+		// 초기 상태: 아무도 시작 안 누른 기본 텍스트
+		MainMenuWidget->UpdateReadyState(GetLocalPlayerName(), false, TEXT("다른 사용자"), false);
+
 		MainMenuWidget->AddToViewport(10);
 		// UI 전용 입력 모드
 		SetInputMode(FInputModeUIOnly());
@@ -468,15 +523,15 @@ void AAOSPlayerController::ShowCharacterSelect()
 
 	if (CharacterSelectWidget)
 	{
-		// 기본 배치 초기화 (라인당 2명)
+		// 기본 배치 초기화 (총 5명: Top 2, Mid 2, Bottom 1)
 		LocalDeployPlan.Empty();
 		LocalDeployPlan.Add(EAOSLane::Top, 2);
 		LocalDeployPlan.Add(EAOSLane::Mid, 2);
-		LocalDeployPlan.Add(EAOSLane::Bottom, 2);
+		LocalDeployPlan.Add(EAOSLane::Bottom, 1);
 
 		CharacterSelectWidget->SetLaneCount(EAOSLane::Top, 2);
 		CharacterSelectWidget->SetLaneCount(EAOSLane::Mid, 2);
-		CharacterSelectWidget->SetLaneCount(EAOSLane::Bottom, 2);
+		CharacterSelectWidget->SetLaneCount(EAOSLane::Bottom, 1);
 
 		if (!CharacterSelectWidget->IsInViewport())
 		{
@@ -555,11 +610,15 @@ void AAOSPlayerController::Server_SetReady_Implementation(bool bReady)
 
 	if (GM && PS)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetReady: %s → bReady=%d"),
+			PS->GetTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"), bReady ? 1 : 0);
 		GM->ServerSetPlayerReady(PS, bReady);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetReady: GameMode 또는 PlayerState 없음"));
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetReady: GameMode(%s) 또는 PlayerState(%s) 없음"),
+			GM ? TEXT("OK") : TEXT("NULL"),
+			PS ? TEXT("OK") : TEXT("NULL"));
 	}
 }
 
@@ -605,15 +664,49 @@ void AAOSPlayerController::ShowLobby()
 
 	if (LobbyWidget)
 	{
-		int32 Connected = (GetWorld() && GetWorld()->GetGameState())
-			? GetWorld()->GetGameState()->PlayerArray.Num() : 0;
-		LobbyWidget->UpdatePlayerCount(Connected, 2);
+		// 준비 버튼 바인딩 (중복 방지)
+		if (!LobbyWidget->OnReadyClicked.IsAlreadyBound(this, &AAOSPlayerController::OnLobbyReadyClicked))
+		{
+			LobbyWidget->OnReadyClicked.AddDynamic(this, &AAOSPlayerController::OnLobbyReadyClicked);
+		}
+
+		// GameState 팀 준비 상태 변경 + 접속 인원 변경 구독 (중복 방지)
+		// ─ 먼저 구독한 뒤 초기값을 읽어야 OnRep_* 와 경합하지 않는다 ─
+		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+		{
+			if (!AOSGS->OnTeamReadyChanged.IsAlreadyBound(this, &AAOSPlayerController::OnTeamReadyChanged))
+			{
+				AOSGS->OnTeamReadyChanged.AddDynamic(this, &AAOSPlayerController::OnTeamReadyChanged);
+			}
+			if (!AOSGS->OnPlayerCountChanged.IsAlreadyBound(this, &AAOSPlayerController::OnLobbyPlayerCountChanged))
+			{
+				AOSGS->OnPlayerCountChanged.AddDynamic(this, &AAOSPlayerController::OnLobbyPlayerCountChanged);
+			}
+
+			// 현재 상태 즉시 반영
+			// PlayerArray.Num() 과 ConnectedCount 중 더 큰 값 사용 (리플리케이션 타이밍 차이 방어)
+			const int32 PlayerArrayCount = GetWorld()->GetGameState()
+				? GetWorld()->GetGameState()->PlayerArray.Num() : 0;
+			const int32 DisplayCount = FMath::Max(PlayerArrayCount, AOSGS->ConnectedCount);
+
+			LobbyWidget->UpdateReadyState(
+				GetPlayerNameByTeam(EAOSTeam::Team1), AOSGS->bTeam1Ready,
+				GetPlayerNameByTeam(EAOSTeam::Team2), AOSGS->bTeam2Ready);
+			LobbyWidget->UpdatePlayerCount(DisplayCount, 2);
+
+			UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 표시 — PlayerArray=%d, ConnectedCount=%d, Display=%d/2"),
+				PlayerArrayCount, AOSGS->ConnectedCount, DisplayCount);
+		}
+		else
+		{
+			LobbyWidget->UpdatePlayerCount(0, 2);
+			UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 표시 — GameState 없음"));
+		}
 
 		if (!LobbyWidget->IsInViewport())
 		{
 			LobbyWidget->AddToViewport(10);
 		}
-		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 표시 (%d/2)"), Connected);
 	}
 }
 
@@ -625,6 +718,162 @@ void AAOSPlayerController::HideLobby()
 		LobbyWidget->RemoveFromParent();
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 숨김"));
 	}
+}
+
+// 준비 버튼 클릭 → 서버에 준비 상태 전달
+void AAOSPlayerController::OnLobbyReadyClicked()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 준비 버튼 클릭 → Server_SetReady(true)"));
+	Server_SetReady(true);
+}
+
+// GameState 접속 인원 변경 → 로비 위젯 갱신 (이름도 함께 갱신: 신규 플레이어 접속 시 반영)
+void AAOSPlayerController::OnLobbyPlayerCountChanged(int32 Count)
+{
+	if (!LobbyWidget)
+	{
+		return;
+	}
+
+	LobbyWidget->UpdatePlayerCount(Count, 2);
+
+	// 인원 변경 시 이름도 갱신 (새 플레이어가 접속하면 PlayerArray에 추가된 이름을 반영)
+	if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+	{
+		LobbyWidget->UpdateReadyState(
+			GetPlayerNameByTeam(EAOSTeam::Team1), AOSGS->bTeam1Ready,
+			GetPlayerNameByTeam(EAOSTeam::Team2), AOSGS->bTeam2Ready);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 접속 인원 갱신: %d/2"), Count);
+}
+
+// GameState 팀 준비 상태 변경 → 로비 위젯 갱신
+void AAOSPlayerController::OnTeamReadyChanged()
+{
+	if (!LobbyWidget)
+	{
+		return;
+	}
+
+	if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+	{
+		LobbyWidget->UpdateReadyState(
+			GetPlayerNameByTeam(EAOSTeam::Team1), AOSGS->bTeam1Ready,
+			GetPlayerNameByTeam(EAOSTeam::Team2), AOSGS->bTeam2Ready);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 팀 준비 상태 갱신 — Team1:%d Team2:%d"),
+			AOSGS->bTeam1Ready, AOSGS->bTeam2Ready);
+	}
+}
+
+// 메인 메뉴 시작 버튼 클릭 → 즉시 로컬 UI 갱신 + 서버에 Ready 전달
+void AAOSPlayerController::OnMainMenuStartClicked()
+{
+	// 로컬 플래그 세팅: 이제부터 OnMainMenuTeamReadyChanged가 UI를 갱신할 수 있음
+	bLocalPressedStart = true;
+
+	// 서버 응답 전에 즉시 로컬 UI 갱신
+	// (자신: 준비 완료, 상대방: 대기 중 — 상대방 이름은 아직 알 수 없으므로 "다른 사용자")
+	if (MainMenuWidget)
+	{
+		MainMenuWidget->UpdateReadyState(GetLocalPlayerName(), true, TEXT("다른 사용자"), false);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 메인 메뉴 시작 클릭 → Server_SetReady(true)"));
+	Server_SetReady(true);
+}
+
+// GameState 팀 준비 상태 변경 → 메인 메뉴 StatusText 갱신
+void AAOSPlayerController::OnMainMenuTeamReadyChanged()
+{
+	// ── 요구사항 1 ─────────────────────────────────────────────────────────────
+	// 자신이 "게임 시작"을 누르기 전까지는 상대방 준비 상태를 표시하지 않는다.
+	// → 서버가 먼저 눌렀을 때 클라이언트 화면에 "Team1: 준비 완료" 같은 정보가 뜨지 않음.
+	// ─────────────────────────────────────────────────────────────────────────
+	if (!bLocalPressedStart)
+	{
+		return;
+	}
+
+	if (!MainMenuWidget || !MainMenuWidget->IsInViewport())
+	{
+		return;
+	}
+
+	if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+	{
+		// 로컬 플레이어의 팀을 기준으로 LocalReady / RemoteReady 결정
+		AAOSPlayerState* LocalPS = GetPlayerState<AAOSPlayerState>();
+		bool bLocalReady  = false;
+		bool bRemoteReady = false;
+		EAOSTeam RemoteTeam = EAOSTeam::Team2;
+
+		if (LocalPS)
+		{
+			if (LocalPS->GetTeam() == EAOSTeam::Team1)
+			{
+				bLocalReady  = AOSGS->bTeam1Ready;
+				bRemoteReady = AOSGS->bTeam2Ready;
+				RemoteTeam   = EAOSTeam::Team2;
+			}
+			else
+			{
+				bLocalReady  = AOSGS->bTeam2Ready;
+				bRemoteReady = AOSGS->bTeam1Ready;
+				RemoteTeam   = EAOSTeam::Team1;
+			}
+		}
+
+		FString LocalName  = GetLocalPlayerName();
+		FString RemoteName = GetPlayerNameByTeam(RemoteTeam);
+		if (RemoteName.IsEmpty() || RemoteName == TEXT("Team1") || RemoteName == TEXT("Team2"))
+		{
+			RemoteName = TEXT("다른 사용자");
+		}
+
+		MainMenuWidget->UpdateReadyState(LocalName, bLocalReady, RemoteName, bRemoteReady);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 메인 메뉴 팀 준비 갱신 — Local(%s):%d Remote(%s):%d"),
+			*LocalName, bLocalReady ? 1 : 0, *RemoteName, bRemoteReady ? 1 : 0);
+	}
+}
+
+// 로컬 플레이어 이름 반환 (PlayerState에서 읽음, 없으면 "플레이어" 반환)
+FString AAOSPlayerController::GetLocalPlayerName() const
+{
+	if (APlayerState* PS = GetPlayerState<APlayerState>())
+	{
+		FString Name = PS->GetPlayerName();
+		if (!Name.IsEmpty())
+		{
+			return Name;
+		}
+	}
+	return TEXT("플레이어");
+}
+
+// 특정 팀 플레이어 이름 반환 (GameState PlayerArray에서 탐색)
+FString AAOSPlayerController::GetPlayerNameByTeam(EAOSTeam Team) const
+{
+	AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GS)
+	{
+		return Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2");
+	}
+
+	for (APlayerState* PS : GS->PlayerArray)
+	{
+		AAOSPlayerState* AOSPS = Cast<AAOSPlayerState>(PS);
+		if (AOSPS && AOSPS->GetTeam() == Team)
+		{
+			FString Name = PS->GetPlayerName();
+			if (!Name.IsEmpty())
+			{
+				return Name;
+			}
+			return Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2");
+		}
+	}
+	return Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2");
 }
 
 // 🔴 REMOVED: SpawnPlayerCharacters() 함수는 더 이상 사용되지 않습니다.

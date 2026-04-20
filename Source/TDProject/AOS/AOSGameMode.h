@@ -192,6 +192,9 @@ protected:
 	// 라운드 종료 타이머
 	FTimerHandle RoundEndTimerHandle;
 
+	// 라운드 준비 자동 시작 타이머 (30초)
+	FTimerHandle RoundPreparationTimerHandle;
+
 	// 팀 별 구조물 참조
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structures")
 	TMap<EAOSTeam, AAOSStructure*> CommandCenters;

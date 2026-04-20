@@ -61,11 +61,13 @@ void AAOSGameMode::PostLogin(APlayerController* NewPlayer)
 		NumPlayers,
 		AssignedTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"));
 
-	// 양쪽 접속 완료 시 Lobby → RoundPreparation (향후 로비 UI에서 수동 시작으로 변경 예정)
-	if (NumPlayers >= 2 && AOSGameState == EAOSGameState::Lobby)
+	// 로비 유지 — 양쪽이 준비 버튼을 눌러야 RoundPreparation으로 전이
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] %d명 접속 중. 로비 대기."), NumPlayers);
+
+	// 접속 인원 리플리케이션 갱신
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 접속 완료 → RoundPreparation"));
-		TransitionToRoundPreparation();
+		AOSGS->ServerSetConnectedCount(NumPlayers);
 	}
 }
 
@@ -94,6 +96,12 @@ void AAOSGameMode::Logout(AController* Exiting)
 	}
 
 	Super::Logout(Exiting);
+
+	// 퇴장 후 접속 인원 갱신 (Super 이후에 호출해야 정확한 카운트)
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetConnectedCount(GetNumPlayers());
+	}
 }
 
 void AAOSGameMode::BeginPlay()
@@ -154,6 +162,12 @@ void AAOSGameMode::StartRound()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] StartRound() 호출되었으나 현재 상태가 RoundPreparation이 아님. 무시."));
 		return;
+	}
+
+	// 자동 시작 타이머 취소 (수동 시작 시)
+	if (GetWorldTimerManager().IsTimerActive(RoundPreparationTimerHandle))
+	{
+		GetWorldTimerManager().ClearTimer(RoundPreparationTimerHandle);
 	}
 
 	// 라운드 번호 증가
@@ -693,7 +707,10 @@ void AAOSGameMode::TransitionToRoundPreparation()
 	RemainingGameTime = GameDuration;
 	SetGameState(EAOSGameState::RoundPreparation);
 
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] RoundPreparation 상태로 전이 (다음 라운드: %d). SpawnPoints: %d"),
+	// 30초 후 자동 라운드 시작 (양쪽이 준비 버튼을 누르지 않아도 자동 시작)
+	GetWorldTimerManager().SetTimer(RoundPreparationTimerHandle, this, &AAOSGameMode::StartRound, 30.0f, false);
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] RoundPreparation 상태로 전이 (다음 라운드: %d). SpawnPoints: %d. 30초 자동 시작 타이머 시작"),
 		CurrentRound + 1, AllSpawnPoints.Num());
 }
 
@@ -761,11 +778,27 @@ void AAOSGameMode::ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bRead
 		PlayerState->GetTeam() == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
 		bReady ? TEXT("TRUE") : TEXT("FALSE"));
 
-	// 양쪽 모두 준비 완료 + RoundPreparation 상태 → 자동 라운드 시작 (로비 시스템 3B에서 수동 시작으로 전환 예정)
-	if (AOSGameState == EAOSGameState::RoundPreparation && AreAllPlayersReady())
+	// 양쪽 준비 완료 시 상태에 따라 전이
+	if (AreAllPlayersReady())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 플레이어 준비 완료 → 라운드 시작"));
-		StartRound();
+		if (AOSGameState == EAOSGameState::MainMenu)
+		{
+			// 양쪽이 모두 메인 메뉴에서 "게임 시작" 클릭 → 게임 레벨로 ServerTravel
+			// (bTeam1Ready/bTeam2Ready는 ServerTravel 후 새 레벨에서 자동으로 false 초기화됨)
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 시작 완료 → ServerTravel"));
+			FString MapURL = GameMapName.ToString();
+			GetWorld()->ServerTravel(MapURL, false /*bAbsolute*/);
+		}
+		else if (AOSGameState == EAOSGameState::Lobby)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 준비 완료 → RoundPreparation"));
+			TransitionToRoundPreparation();
+		}
+		else if (AOSGameState == EAOSGameState::RoundPreparation)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 준비 완료 → 라운드 시작"));
+			StartRound();
+		}
 	}
 }
 
