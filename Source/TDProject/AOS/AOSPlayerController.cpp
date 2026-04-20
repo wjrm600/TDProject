@@ -7,6 +7,7 @@
 #include "UI/AOSMainMenuWidget.h"
 #include "UI/AOSSettlementWidget.h"
 #include "UI/AOSCharacterSelectWidget.h"
+#include "UI/AOSLobbyWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Engine/World.h"
@@ -300,9 +301,9 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 	switch (NewState)
 	{
 	case EAOSGameState::MainMenu:
+		HideLobby();
 		HideSettlement();
 		ShowMainMenu();
-		// UI 전용 입력 모드
 		SetInputMode(FInputModeUIOnly());
 		bShowMouseCursor = true;
 		break;
@@ -310,30 +311,31 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 	case EAOSGameState::Lobby:
 		HideMainMenu();
 		HideSettlement();
-		// 로비: UI 전용 입력 모드
+		ShowLobby();
 		SetInputMode(FInputModeUIOnly());
 		bShowMouseCursor = true;
 		break;
 
 	case EAOSGameState::RoundPreparation:
+		HideLobby();
 		HideMainMenu();
 		HideSettlement();
 		ShowCharacterSelect();
-		// 라운드 준비: 게임+UI 혼합 입력 모드
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
 		break;
 
 	case EAOSGameState::RoundRunning:
+		HideLobby();
 		HideMainMenu();
 		HideSettlement();
 		HideCharacterSelect();
-		// 게임+UI 혼합 입력 모드 (RTS 카메라 + 클릭)
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
 		break;
 
 	case EAOSGameState::Settlement:
+		HideLobby();
 		HideMainMenu();
 		HideCharacterSelect();
 		{
@@ -578,6 +580,50 @@ void AAOSPlayerController::Server_RequestStartRound_Implementation()
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_RequestStartRound: 양쪽 준비 아직 안됨"));
+	}
+}
+
+// 로비 화면 표시
+void AAOSPlayerController::ShowLobby()
+{
+	if (!LobbyWidget)
+	{
+		UClass* WidgetClass = LobbyWidgetClass;
+		if (!WidgetClass)
+		{
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_Lobby.WBP_Lobby_C"));
+		}
+		if (!WidgetClass)
+		{
+			WidgetClass = UAOSLobbyWidget::StaticClass();
+		}
+		if (WidgetClass)
+		{
+			LobbyWidget = CreateWidget<UAOSLobbyWidget>(this, WidgetClass);
+		}
+	}
+
+	if (LobbyWidget)
+	{
+		int32 Connected = (GetWorld() && GetWorld()->GetGameState())
+			? GetWorld()->GetGameState()->PlayerArray.Num() : 0;
+		LobbyWidget->UpdatePlayerCount(Connected, 2);
+
+		if (!LobbyWidget->IsInViewport())
+		{
+			LobbyWidget->AddToViewport(10);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 표시 (%d/2)"), Connected);
+	}
+}
+
+// 로비 화면 숨김
+void AAOSPlayerController::HideLobby()
+{
+	if (LobbyWidget && LobbyWidget->IsInViewport())
+	{
+		LobbyWidget->RemoveFromParent();
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 로비 화면 숨김"));
 	}
 }
 

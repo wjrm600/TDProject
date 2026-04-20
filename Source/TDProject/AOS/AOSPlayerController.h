@@ -10,6 +10,7 @@ class ACameraActor;
 class UAOSMainMenuWidget;
 class UAOSSettlementWidget;
 class UAOSCharacterSelectWidget;
+class UAOSLobbyWidget;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -99,6 +100,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> CharacterSelectWidgetClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> LobbyWidgetClass;
+
 	// UI 위젯 인스턴스 (런타임)
 	UPROPERTY()
 	UAOSMainMenuWidget* MainMenuWidget;
@@ -108,6 +112,9 @@ protected:
 
 	UPROPERTY()
 	UAOSCharacterSelectWidget* CharacterSelectWidget = nullptr;
+
+	UPROPERTY()
+	UAOSLobbyWidget* LobbyWidget = nullptr;
 
 	// 게임 상태 변경 핸들러
 	UFUNCTION()
@@ -120,6 +127,8 @@ protected:
 	void HideSettlement();
 	void ShowCharacterSelect();
 	void HideCharacterSelect();
+	void ShowLobby();
+	void HideLobby();
 
 	UFUNCTION()
 	void OnStartRoundClicked();
