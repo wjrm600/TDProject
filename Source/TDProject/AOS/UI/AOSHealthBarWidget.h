@@ -32,4 +32,6 @@ protected:
 
 	// Widget Blueprint 없이 C++에서 위젯 트리 자동 생성
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	virtual void NativeDestruct() override;
 };

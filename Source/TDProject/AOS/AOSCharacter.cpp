@@ -55,6 +55,12 @@ void AAOSCharacter::Multicast_OnDeath_Implementation()
 	}
 }
 
+void AAOSCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	HealthBarWidget = nullptr;
+	Super::EndPlay(EndPlayReason);
+}
+
 void AAOSCharacter::BeginPlay()
 {
 	Super::BeginPlay();

@@ -74,6 +74,13 @@ void AAOSGameMode::PostLogin(APlayerController* NewPlayer)
 // Phase 3A: 퇴장 시 처리
 void AAOSGameMode::Logout(AController* Exiting)
 {
+	// PIE 종료 등 월드 해제 중에는 EndGame 로직을 실행하지 않음
+	if (GetWorld() && GetWorld()->bIsTearingDown)
+	{
+		Super::Logout(Exiting);
+		return;
+	}
+
 	if (Exiting)
 	{
 		APlayerController* PC = Cast<APlayerController>(Exiting);

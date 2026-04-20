@@ -49,3 +49,9 @@ void UAOSHealthBarWidget::SetBarColor(FLinearColor Color)
 		HealthProgressBar->SetFillColorAndOpacity(Color);
 	}
 }
+
+void UAOSHealthBarWidget::NativeDestruct()
+{
+	HealthProgressBar = nullptr;
+	Super::NativeDestruct();
+}

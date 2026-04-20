@@ -65,6 +65,13 @@ void AAOSStructure::Multicast_OnDestroyed_Implementation()
 	}
 }
 
+void AAOSStructure::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	HealthBarWidget = nullptr;
+	CurrentTarget = nullptr;
+	Super::EndPlay(EndPlayReason);
+}
+
 void AAOSStructure::BeginPlay()
 {
 	Super::BeginPlay();

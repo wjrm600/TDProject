@@ -458,6 +458,11 @@ void AAOSPlayerController::HideMainMenu()
 // 정산 화면 표시
 void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 {
+	if (!GetWorld() || GetWorld()->bIsTearingDown)
+	{
+		return;
+	}
+
 	if (!SettlementWidget)
 	{
 		UClass* WidgetClass = SettlementWidgetClass;
