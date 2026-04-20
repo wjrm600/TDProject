@@ -114,9 +114,9 @@ void AAOSGameMode::BeginPlay()
 	}
 	else
 	{
-		// 게임 레벨: RoundPreparation으로 전이 (자동 시작하지 않음 → UI에서 StartRound 호출)
-		TransitionToRoundPreparation();
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → RoundPreparation 대기 (Map: %s)"), *MapName);
+		// 게임 레벨: Lobby 상태로 대기 (2명 접속 완료 시 PostLogin → TransitionToRoundPreparation)
+		TransitionToLobby();
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 레벨 감지 → Lobby 대기 (Map: %s)"), *MapName);
 	}
 }
 

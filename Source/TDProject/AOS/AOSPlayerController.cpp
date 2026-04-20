@@ -64,10 +64,15 @@ void AAOSPlayerController::BeginPlay()
 		}
 
 		// 게임 상태 변경 델리게이트 바인딩
-		if (GameMode)
+		// 클라이언트는 GameMode에 접근 불가 → 리플리케이트된 GameState 델리게이트 사용
+		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+		{
+			AOSGS->OnGameStateChangedClient.AddDynamic(this, &AAOSPlayerController::OnGameStateChanged);
+			OnGameStateChanged(AOSGS->GetCurrentState());
+		}
+		else if (GameMode)
 		{
 			GameMode->OnGameStateChanged.AddDynamic(this, &AAOSPlayerController::OnGameStateChanged);
-			// 현재 상태 적용 (BeginPlay 전에 이미 설정된 경우)
 			OnGameStateChanged(GameMode->GetAOSGameState());
 		}
 	}
