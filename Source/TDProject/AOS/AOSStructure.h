@@ -29,6 +29,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// 초기 설정
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
@@ -79,7 +80,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
 	float MaxHealth = 1000.0f;
 
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structure")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, BlueprintReadOnly, Category = "AOS|Structure")
 	float CurrentHealth;
 
 	// 공격 속성
@@ -112,6 +113,10 @@ protected:
 	void UpdateHealthBar();
 	void InitializeHealthBar();
 
+	// Phase 3B: 체력 리플리케이션 콜백
+	UFUNCTION()
+	void OnRep_CurrentHealth();
+
 	// HP 바 위젯 클래스 (에디터에서 설정 또는 코드에서 자동 로드)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
@@ -128,4 +133,8 @@ private:
 
 	// 파괴 처리
 	void OnStructureDestroyed();
+
+	// Phase 3B: 파괴 시각 효과 멀티캐스트 (서버 → 모든 클라이언트)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDestroyed();
 };

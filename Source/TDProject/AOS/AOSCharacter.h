@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AOSGameMode.h"
+#include "Net/UnrealNetwork.h"
 #include "AOSCharacter.generated.h"
 
 class UAOSAttributeComponent;
@@ -23,6 +24,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// 팀 및 라인 설정
 	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
@@ -84,7 +86,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Character")
 	float MaxHealth = 100.0f;
 
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|Character")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, BlueprintReadOnly, Category = "AOS|Character")
 	float CurrentHealth;
 
 	// 공격 속성
@@ -109,6 +111,14 @@ protected:
 	UAOSHealthBarWidget* HealthBarWidget;
 
 	void UpdateHealthBar();
+
+	// Phase 3B: 체력 리플리케이션 콜백
+	UFUNCTION()
+	void OnRep_CurrentHealth();
+
+	// Phase 3B: 사망 시각 효과 멀티캐스트 (서버 → 모든 클라이언트)
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_OnDeath();
 
 private:
 	float CurrentAttackCooldown = 0.0f;

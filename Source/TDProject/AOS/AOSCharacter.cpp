@@ -5,10 +5,12 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 AAOSCharacter::AAOSCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	bReplicates = true;
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -31,6 +33,26 @@ AAOSCharacter::AAOSCharacter()
 	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
 	HealthBarComponent->SetDrawSize(FVector2D(150.0f, 15.0f));
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
+}
+
+void AAOSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AAOSCharacter, CurrentHealth);
+}
+
+void AAOSCharacter::OnRep_CurrentHealth()
+{
+	UpdateHealthBar();
+}
+
+void AAOSCharacter::Multicast_OnDeath_Implementation()
+{
+	SetActorHiddenInGame(true);
+	if (HealthBarComponent)
+	{
+		HealthBarComponent->SetVisibility(false);
+	}
 }
 
 void AAOSCharacter::BeginPlay()
@@ -104,6 +126,11 @@ bool AAOSCharacter::IsAlive() const
 
 void AAOSCharacter::ReceiveDamage(float DamageAmount)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (!IsAlive())
 	{
 		return;
@@ -134,24 +161,21 @@ void AAOSCharacter::OnCharacterDeath()
 		*TeamName, *LaneName,
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
 
+	// 서버 전용: 이동/콜리전/틱 비활성화
 	GetCharacterMovement()->StopMovementImmediately();
 	SetActorEnableCollision(false);
-	SetActorHiddenInGame(true);
 	SetActorTickEnabled(false);
 
-	// HP 바 숨기기
-	if (HealthBarComponent)
-	{
-		HealthBarComponent->SetVisibility(false);
-	}
+	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함)
+	Multicast_OnDeath();
 
-	// GameMode에 사망 알림
+	// 서버 전용: GameMode 알림
 	if (AAOSGameMode* GameMode = Cast<AAOSGameMode>(GetWorld()->GetAuthGameMode()))
 	{
 		GameMode->OnCharacterDestroyed(this);
 	}
 
-	// 2초 후 액터 제거
+	// 서버 전용: 2초 후 액터 제거 (bReplicates=true → Destroy()가 클라이언트에도 전파)
 	SetLifeSpan(2.0f);
 }
 

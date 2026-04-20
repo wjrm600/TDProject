@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "Materials/Material.h"
 #include "GameFramework/PlayerController.h"
+#include "Net/UnrealNetwork.h"
 
 AAOSStructure::AAOSStructure()
 {
@@ -39,6 +40,29 @@ AAOSStructure::AAOSStructure()
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
 
 	CurrentHealth = MaxHealth;
+}
+
+void AAOSStructure::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AAOSStructure, CurrentHealth);
+}
+
+void AAOSStructure::OnRep_CurrentHealth()
+{
+	UpdateHealthBar();
+}
+
+void AAOSStructure::Multicast_OnDestroyed_Implementation()
+{
+	if (MeshComponent)
+	{
+		MeshComponent->SetVisibility(false);
+	}
+	if (HealthBarComponent)
+	{
+		HealthBarComponent->SetVisibility(false);
+	}
 }
 
 void AAOSStructure::BeginPlay()
@@ -225,6 +249,11 @@ void AAOSStructure::SetupCommandCenterMesh()
 
 void AAOSStructure::ReceiveDamage(float DamageAmount)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (IsDestroyed())
 	{
 		return;
@@ -256,29 +285,18 @@ void AAOSStructure::OnStructureDestroyed()
 		*TeamName, *LaneName, *TypeName,
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
 
-	// 메시 숨기기
-	if (MeshComponent)
-	{
-		MeshComponent->SetVisibility(false);
-	}
-
-	// 감지 범위 비활성화 (더 이상 적을 공격하지 않음)
+	// 서버 전용: 감지 범위 비활성화 (더 이상 적을 공격하지 않음)
 	if (DetectionRange)
 	{
 		DetectionRange->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
-	// HP 바 숨기기
-	if (HealthBarComponent)
-	{
-		HealthBarComponent->SetVisibility(false);
-	}
-
-	// Tick 비활성화
+	// 서버 전용: Tick/타겟 해제
 	SetActorTickEnabled(false);
-
-	// 현재 타겟 해제
 	CurrentTarget = nullptr;
+
+	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함)
+	Multicast_OnDestroyed();
 }
 
 void AAOSStructure::FireAtTarget(AAOSCharacter* Target)
