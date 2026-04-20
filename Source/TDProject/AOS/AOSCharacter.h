@@ -65,6 +65,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
 	float GetAttackDamage() const { return AttackDamage; }
 
+	// 선택 하이라이트 (커스텀 뎁스 스텐실)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Character")
+	void SetHighlighted(bool bHighlight);
+
 	// 사망 처리
 	void OnCharacterDeath();
 

@@ -229,7 +229,7 @@ void AAOSPlayerController::SelectCharacter(AAOSCharacter* NewCharacter)
 	// 이전 선택 캐릭터 하이라이트 제거
 	if (SelectedCharacter)
 	{
-		// TODO: 이전 선택 캐릭터의 하이라이트 제거
+		SelectedCharacter->SetHighlighted(false);
 	}
 
 	SelectedCharacter = NewCharacter;
@@ -237,8 +237,7 @@ void AAOSPlayerController::SelectCharacter(AAOSCharacter* NewCharacter)
 	// 새로 선택된 캐릭터에 하이라이트 표시
 	if (SelectedCharacter)
 	{
-		// TODO: 새 선택 캐릭터 하이라이트 표시
-		UE_LOG(LogTemp, Warning, TEXT("Character selected"));
+		SelectedCharacter->SetHighlighted(true);
 	}
 }
 

@@ -362,24 +362,22 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 		return;
 	}
 
-	FVector Direction = (CurrentMoveTarget - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), CurrentMoveTarget);
+	// Z(높이)를 무시한 2D 거리로 도착 판정 — 지형 높낮이 차이 허용
+	float Distance2D = FVector::Dist2D(ControlledCharacter->GetActorLocation(), CurrentMoveTarget);
 
-	// 도착 판정
-	if (Distance <= ArrivalDistance)
+	if (Distance2D <= ArrivalDistance)
 	{
-		ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		StopMovement();
+		LastNavMoveTarget = FVector::ZeroVector;
 
-		// 모든 웨이포인트 완료 시 더 이상 진행하지 않음
 		if (bAllTowersDestroyed)
 		{
 			return;
 		}
 
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! Distance: %.1f, CurrentWaypointIndex: %d"),
-			Distance, CurrentWaypointIndex);
+		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! 2D Distance: %.1f, Index: %d"),
+			Distance2D, CurrentWaypointIndex);
 
-		// 다음 웨이포인트로 이동
 		CurrentWaypointIndex++;
 		UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to next waypoint. New index: %d/%d"),
 			CurrentWaypointIndex, WaypointQueue.Num() - 1);
@@ -388,8 +386,17 @@ void AAOSAIController::MoveTowardsTarget(float DeltaTime)
 		return;
 	}
 
-	// 목표 방향으로 이동
-	ControlledCharacter->AddMovementInput(Direction, 1.0f);
+	// NavMesh 이동 요청 — 목표가 50 유닛 이상 바뀔 때만 재요청(매 틱 방지)
+	if (FVector::Dist(LastNavMoveTarget, CurrentMoveTarget) > 50.0f)
+	{
+		LastNavMoveActor = nullptr;
+		MoveToLocation(CurrentMoveTarget, ArrivalDistance * 0.5f,
+			/*bStopOnOverlap=*/true,
+			/*bUsePathfinding=*/true,
+			/*bProjectDestinationToNavigation=*/true,
+			/*bCanStrafe=*/false);
+		LastNavMoveTarget = CurrentMoveTarget;
+	}
 }
 
 void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime)
@@ -403,16 +410,25 @@ void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime
 
 	if (Distance > AttackRange)
 	{
-		// 구조물 방향으로 이동
-		FVector Direction = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-		ControlledCharacter->AddMovementInput(Direction, 1.0f);
+		// NavMesh로 구조물 접근
+		FVector StructurePos = Structure->GetActorLocation();
+		if (FVector::Dist(LastNavMoveTarget, StructurePos) > 50.0f)
+		{
+			LastNavMoveActor = nullptr;
+			MoveToLocation(StructurePos, AttackRange * 0.8f,
+				/*bStopOnOverlap=*/true,
+				/*bUsePathfinding=*/true,
+				/*bProjectDestinationToNavigation=*/true,
+				/*bCanStrafe=*/false);
+			LastNavMoveTarget = StructurePos;
+		}
 		return;
 	}
 
 	// 공격 범위 내 - 멈추고 공격
-	ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	StopMovement();
+	LastNavMoveTarget = FVector::ZeroVector;
 
-	// 구조물 방향으로 회전
 	FVector DirectionToStructure = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
 	ControlledCharacter->SetActorRotation(DirectionToStructure.Rotation());
 
@@ -434,24 +450,28 @@ void AAOSAIController::AttackTarget(float DeltaTime)
 
 	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), CurrentTarget->GetActorLocation());
 
-	// 공격 범위 확인
 	if (Distance > AttackRange)
 	{
-		// 적을 추격
-		FVector Direction = (CurrentTarget->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-		ControlledCharacter->AddMovementInput(Direction, 1.0f);
+		// MoveToActor: 목표 캐릭터가 움직여도 경로 자동 갱신
+		if (LastNavMoveActor != CurrentTarget)
+		{
+			LastNavMoveTarget = FVector::ZeroVector;
+			MoveToActor(CurrentTarget, AttackRange * 0.8f,
+				/*bStopOnOverlap=*/true,
+				/*bUsePathfinding=*/true,
+				/*bCanStrafe=*/false);
+			LastNavMoveActor = CurrentTarget;
+		}
 		return;
 	}
 
 	// 공격 범위 내 - 멈추고 공격
-	ControlledCharacter->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	StopMovement();
+	LastNavMoveActor = nullptr;
 
-	// 적 방향으로 회전
 	FVector DirectionToEnemy = (CurrentTarget->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-	FRotator LookAtRotation = DirectionToEnemy.Rotation();
-	ControlledCharacter->SetActorRotation(LookAtRotation);
+	ControlledCharacter->SetActorRotation(DirectionToEnemy.Rotation());
 
-	// 공격 실행
 	if (CurrentAttackCooldown <= 0.0f)
 	{
 		CurrentTarget->ReceiveDamage(ControlledCharacter->GetAttackDamage());

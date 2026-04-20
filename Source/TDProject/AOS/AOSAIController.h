@@ -113,4 +113,10 @@ private:
 	// 공격 쿨타임
 	float CurrentAttackCooldown = 0.0f;
 	const float AttackCooldownDuration = 1.0f;
+
+	// NavMesh 이동 캐시 — 동일 목표로 중복 요청 방지
+	FVector LastNavMoveTarget = FVector::ZeroVector;
+
+	UPROPERTY()
+	TObjectPtr<AAOSCharacter> LastNavMoveActor = nullptr;
 };

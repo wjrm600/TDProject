@@ -704,8 +704,17 @@ void AAOSGameMode::UpdateGameTime(float DeltaTime)
 	if (RemainingGameTime <= 0.0f)
 	{
 		RemainingGameTime = 0.0f;
-		// 게임 시간 만료 - 점수로 승자 결정
-		// TODO: 점수 계산 및 승자 결정
+		// 커맨드센터 잔여 체력 비교 — 체력이 높은 팀(피해를 덜 받은 팀)이 승리
+		AAOSStructure* Team1CC = CommandCenters.FindRef(EAOSTeam::Team1);
+		AAOSStructure* Team2CC = CommandCenters.FindRef(EAOSTeam::Team2);
+
+		float Team1HP = Team1CC ? Team1CC->GetCurrentHealth() : 0.0f;
+		float Team2HP = Team2CC ? Team2CC->GetCurrentHealth() : 0.0f;
+
+		EAOSTeam Winner = (Team1HP >= Team2HP) ? EAOSTeam::Team1 : EAOSTeam::Team2;
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 시간 만료 — Team1HP=%.0f Team2HP=%.0f → 승리팀=%d"),
+			Team1HP, Team2HP, (int32)Winner);
+		EndGame(Winner);
 	}
 }
 

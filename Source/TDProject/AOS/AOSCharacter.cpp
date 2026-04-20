@@ -1,5 +1,6 @@
 #include "AOSCharacter.h"
 #include "AOSAIController.h"
+#include "AOSMapManager.h"
 #include "UI/AOSHealthBarWidget.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/WidgetComponent.h"
@@ -161,34 +162,30 @@ float AAOSCharacter::GetCurrentHealth() const
 
 FVector AAOSCharacter::GetLaneStartPosition() const
 {
-	// TODO: 맵 레이아웃에 따라 라인의 시작 위치 반환
-	// 현재는 기본값 반환, 실제로는 맵 데이터 기반으로 구현
-	switch (AssignedLane)
+	if (AAOSMapManager* MapManager = Cast<AAOSMapManager>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), AAOSMapManager::StaticClass())))
 	{
-		case EAOSLane::Top:
-			return Team == EAOSTeam::Team1 ? FVector(1000, 1000, 0) : FVector(-1000, -1000, 0);
-		case EAOSLane::Mid:
-			return Team == EAOSTeam::Team1 ? FVector(1000, 0, 0) : FVector(-1000, 0, 0);
-		case EAOSLane::Bottom:
-			return Team == EAOSTeam::Team1 ? FVector(1000, -1000, 0) : FVector(-1000, 1000, 0);
-		default:
-			return FVector::ZeroVector;
+		return MapManager->GetLaneStartPosition(AssignedLane, Team);
 	}
+	return FVector::ZeroVector;
 }
 
 FVector AAOSCharacter::GetLaneEndPosition() const
 {
-	// TODO: 맵 레이아웃에 따라 라인의 끝 위치 반환
-	switch (AssignedLane)
+	if (AAOSMapManager* MapManager = Cast<AAOSMapManager>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), AAOSMapManager::StaticClass())))
 	{
-		case EAOSLane::Top:
-			return Team == EAOSTeam::Team1 ? FVector(-1000, -1000, 0) : FVector(1000, 1000, 0);
-		case EAOSLane::Mid:
-			return Team == EAOSTeam::Team1 ? FVector(-1000, 0, 0) : FVector(1000, 0, 0);
-		case EAOSLane::Bottom:
-			return Team == EAOSTeam::Team1 ? FVector(-1000, 1000, 0) : FVector(1000, -1000, 0);
-		default:
-			return FVector::ZeroVector;
+		return MapManager->GetLaneEndPosition(AssignedLane, Team);
+	}
+	return FVector::ZeroVector;
+}
+
+void AAOSCharacter::SetHighlighted(bool bHighlight)
+{
+	if (GetMesh())
+	{
+		GetMesh()->SetRenderCustomDepth(bHighlight);
+		GetMesh()->SetCustomDepthStencilValue(bHighlight ? 1 : 0);
 	}
 }
 
