@@ -706,6 +706,21 @@ void AAOSGameMode::TransitionToRoundPreparation()
 
 		// 구조물 초기화 (타워, 커맨드 센터)
 		InitializeStructures();
+
+		// 스폰 포인트 팀/라인 현황 로그 (레벨 설정 진단용)
+		for (auto& KV : TeamSpawnPoints)
+		{
+			TMap<EAOSLane, int32> LaneCounts;
+			for (AAOSSpawnPoint* SP : KV.Value)
+			{
+				if (SP) LaneCounts.FindOrAdd(SP->GetLane())++;
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] %s 스폰 포인트 — Top:%d Mid:%d Bottom:%d"),
+				KV.Key == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+				LaneCounts.FindRef(EAOSLane::Top),
+				LaneCounts.FindRef(EAOSLane::Mid),
+				LaneCounts.FindRef(EAOSLane::Bottom));
+		}
 	}
 
 	// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)

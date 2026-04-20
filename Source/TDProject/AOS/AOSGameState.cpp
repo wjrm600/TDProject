@@ -15,6 +15,7 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, CurrentRound);
 	DOREPLIFETIME(AAOSGameState, bTeam1Ready);
 	DOREPLIFETIME(AAOSGameState, bTeam2Ready);
+	DOREPLIFETIME(AAOSGameState, ConnectedCount);
 }
 
 void AAOSGameState::ServerSetCurrentState(EAOSGameState NewState)
@@ -100,4 +101,27 @@ void AAOSGameState::OnRep_CurrentRound()
 void AAOSGameState::OnRep_TeamReady()
 {
 	OnTeamReadyChanged.Broadcast();
+}
+
+void AAOSGameState::ServerSetConnectedCount(int32 Count)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (ConnectedCount == Count)
+	{
+		return;
+	}
+
+	ConnectedCount = Count;
+	// 서버(리스너)에서도 즉시 브로드캐스트
+	OnPlayerCountChanged.Broadcast(ConnectedCount);
+}
+
+void AAOSGameState::OnRep_ConnectedCount()
+{
+	// 클라이언트: 리플리케이션 수신 시 UI 갱신
+	OnPlayerCountChanged.Broadcast(ConnectedCount);
 }

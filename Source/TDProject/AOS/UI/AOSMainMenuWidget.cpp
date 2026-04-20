@@ -7,8 +7,6 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Kismet/GameplayStatics.h"
-#include "AOSGameMode.h"
 
 bool UAOSMainMenuWidget::Initialize()
 {
@@ -41,8 +39,19 @@ void UAOSMainMenuWidget::BuildUI()
 	TitleText->SetFont(TitleFont);
 	TitleText->SetJustification(ETextJustify::Center);
 	UVerticalBoxSlot* TitleSlot = VBox->AddChildToVerticalBox(TitleText);
-	TitleSlot->SetPadding(FMargin(0, 0, 0, 40));
+	TitleSlot->SetPadding(FMargin(0, 0, 0, 20));
 	TitleSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+
+	// StatusText (준비 상태 표시 — "게임 시작을 눌러 주세요" / "Team1: 준비 완료 ✓ ..." 등)
+	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("StatusText"));
+	StatusText->SetText(FText::FromString(TEXT("게임 시작을 눌러 주세요")));
+	FSlateFontInfo StatusFont = StatusText->GetFont();
+	StatusFont.Size = 16;
+	StatusText->SetFont(StatusFont);
+	StatusText->SetJustification(ETextJustify::Center);
+	UVerticalBoxSlot* StatusSlot = VBox->AddChildToVerticalBox(StatusText);
+	StatusSlot->SetPadding(FMargin(0, 0, 0, 20));
+	StatusSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
 	// StartGameButton
 	StartGameButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("StartGameButton"));
@@ -76,17 +85,45 @@ void UAOSMainMenuWidget::BuildUI()
 
 void UAOSMainMenuWidget::OnStartGameClicked()
 {
-	UWorld* World = GetWorld();
-	if (!World)
+	// ── 독립 시작 흐름 ────────────────────────────────────────────────────────────
+	// 서버/클라이언트 모두 이 버튼 클릭 시 PlayerController의 Server_SetReady(true)를
+	// 호출하도록 OnStartClicked 델리게이트만 브로드캐스트한다.
+	// PlayerController(ShowMainMenu에서 바인딩)가 RPC를 처리하고,
+	// GameMode::ServerSetPlayerReady()에서 양쪽 모두 준비 완료 시 ServerTravel을 실행한다.
+	// ─────────────────────────────────────────────────────────────────────────────
+	UE_LOG(LogTemp, Warning, TEXT("[MainMenu] 시작 버튼 클릭 → OnStartClicked 브로드캐스트"));
+	OnStartClicked.Broadcast();
+}
+
+void UAOSMainMenuWidget::UpdateReadyState(const FString& LocalName, bool bLocalReady,
+                                           const FString& RemoteName, bool bRemoteReady)
+{
+	if (!StatusText)
 	{
 		return;
 	}
 
-	AAOSGameMode* GameMode = Cast<AAOSGameMode>(World->GetAuthGameMode());
-	if (GameMode)
+	if (bLocalReady && bRemoteReady)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MainMenu] 게임 맵으로 전환: %s"), *GameMode->GetGameMapName().ToString());
-		UGameplayStatics::OpenLevel(this, GameMode->GetGameMapName());
+		StatusText->SetText(FText::FromString(TEXT("양쪽 준비 완료! 이동 중...")));
+	}
+	else if (bLocalReady)
+	{
+		// 자신은 준비, 상대방 대기
+		const FString WaitingName = RemoteName.IsEmpty() ? TEXT("다른 사용자") : RemoteName;
+		StatusText->SetText(FText::FromString(
+			FString::Printf(TEXT("%s: 게임 시작 ✓  |  %s: 대기 중..."), *LocalName, *WaitingName)));
+	}
+	else if (bRemoteReady)
+	{
+		// 상대방은 준비, 자신 대기
+		const FString ReadyName = RemoteName.IsEmpty() ? TEXT("다른 사용자") : RemoteName;
+		StatusText->SetText(FText::FromString(
+			FString::Printf(TEXT("%s: 대기 중...  |  %s: 게임 시작 ✓"), *LocalName, *ReadyName)));
+	}
+	else
+	{
+		StatusText->SetText(FText::FromString(TEXT("게임 시작을 눌러 주세요")));
 	}
 }
 

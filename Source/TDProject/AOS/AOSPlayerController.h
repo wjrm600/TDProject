@@ -133,6 +133,30 @@ protected:
 	UFUNCTION()
 	void OnStartRoundClicked();
 
+	// 로비 준비 버튼 클릭 → 서버 RPC 호출
+	UFUNCTION()
+	void OnLobbyReadyClicked();
+
+	// GameState 접속 인원 변경 → 로비 UI 갱신
+	UFUNCTION()
+	void OnLobbyPlayerCountChanged(int32 Count);
+
+	// GameState 팀 준비 상태 변경 → 로비 UI 갱신
+	UFUNCTION()
+	void OnTeamReadyChanged();
+
+	// 메인 메뉴 "게임 시작" 버튼 클릭 → Server_SetReady(true) 호출
+	UFUNCTION()
+	void OnMainMenuStartClicked();
+
+	// GameState 팀 준비 상태 변경 → 메인 메뉴 StatusText 갱신
+	UFUNCTION()
+	void OnMainMenuTeamReadyChanged();
+
+	// 플레이어 이름 헬퍼 (UI 표시용)
+	FString GetLocalPlayerName() const;
+	FString GetPlayerNameByTeam(EAOSTeam Team) const;
+
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	EAOSTeam PlayerTeam = EAOSTeam::Team1;
 
@@ -193,4 +217,8 @@ private:
 	// 🟡 MODIFIED - 카메라 이동 방향을 X, Y 분리
 	float CameraMoveForward = 0.0f;
 	float CameraMoveRight = 0.0f;
+
+	// 메인 메뉴에서 로컬 플레이어가 "게임 시작"을 눌렀는지 여부
+	// false → 상대방 Ready 상태를 UI에 표시하지 않음 (요구사항 1)
+	bool bLocalPressedStart = false;
 };

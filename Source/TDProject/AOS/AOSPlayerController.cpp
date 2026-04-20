@@ -538,6 +538,12 @@ void AAOSPlayerController::ShowCharacterSelect()
 		CharacterSelectWidget->SetLaneCount(EAOSLane::Mid, 2);
 		CharacterSelectWidget->SetLaneCount(EAOSLane::Bottom, 1);
 
+		// 기본 배치를 즉시 서버에 동기화 (30초 자동 시작 시에도 위젯 표시값이 반영되도록)
+		for (auto& Pair : LocalDeployPlan)
+		{
+			Server_SetLaneDeployCount(Pair.Key, Pair.Value);
+		}
+
 		if (!CharacterSelectWidget->IsInViewport())
 		{
 			CharacterSelectWidget->AddToViewport(10);

@@ -17,6 +17,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChangedClient, EAOSGameState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundNumberChanged, int32, NewRound);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTeamReadyChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerCountChanged, int32, Count);
 
 UCLASS()
 class TDPROJECT_API AAOSGameState : public AGameStateBase
@@ -43,10 +44,15 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_TeamReady, BlueprintReadOnly, Category = "AOS|Game")
 	bool bTeam2Ready = false;
 
+	// 현재 접속 인원 (로비 UI 갱신용)
+	UPROPERTY(ReplicatedUsing = OnRep_ConnectedCount, BlueprintReadOnly, Category = "AOS|Game")
+	int32 ConnectedCount = 0;
+
 	// 서버 전용: 상태 업데이트 (AOSGameMode에서 호출)
 	void ServerSetCurrentState(EAOSGameState NewState);
 	void ServerSetCurrentRound(int32 NewRound);
 	void ServerSetTeamReady(EAOSTeam Team, bool bReady);
+	void ServerSetConnectedCount(int32 Count);
 
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -71,6 +77,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
 	FOnTeamReadyChanged OnTeamReadyChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
+	FOnPlayerCountChanged OnPlayerCountChanged;
+
 protected:
 	UFUNCTION()
 	void OnRep_CurrentState();
@@ -80,4 +89,7 @@ protected:
 
 	UFUNCTION()
 	void OnRep_TeamReady();
+
+	UFUNCTION()
+	void OnRep_ConnectedCount();
 };
