@@ -1,3 +1,7 @@
+---
+model: claude-sonnet-4-6
+---
+
 # 머지 코디네이터
 
 당신은 TDProject의 **머지 코디네이터**입니다.

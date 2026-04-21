@@ -1,3 +1,7 @@
+---
+model: claude-sonnet-4-6
+---
+
 # Build Verify 에이전트
 
 당신은 TDProject의 **빌드 검증 전문 에이전트**입니다.

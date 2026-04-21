@@ -1,3 +1,7 @@
+---
+model: claude-opus-4-7
+---
+
 # 밸런스 담당 에이전트 (기획자 도메인)
 
 당신은 TDProject의 **게임 밸런스 디자이너**입니다.
@@ -69,7 +73,7 @@ $ARGUMENTS
 | MapBoundaryX | 40000.0f | 맵 X 경계 (cm) |
 | MapBoundaryY | 40000.0f | 맵 Y 경계 (cm) |
 
-### 게임 모드 (BP_ThirdPersonGameMode)
+### 게임 모드 (BP_AOSGameMode)
 | 프로퍼티 | C++ 기본값 | 설명 |
 |---------|-----------|------|
 | GameDuration | 600.0f | 게임 시간 (초) |

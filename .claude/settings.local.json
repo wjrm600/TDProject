@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"E:/Unreal Project/TDProject\" && count=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0); [ \"$count\" -gt 0 ] && git push origin main || true",
+            "command": "cd \"/c/UnrealProject/TDProject\" && count=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0); [ \"$count\" -gt 0 ] && git push origin main || true",
             "statusMessage": "변경사항 GitHub 푸시 중..."
           }
         ]
@@ -18,7 +18,7 @@
       "Bash(dir \"C:\\UnrealProject\\TDProject\\Guides\")",
       "Bash(dir:*)",
       "Bash(timeout 30 bash:*)",
-      "Bash(\"C:\\Program Files\\Epic Games\\UE_5.6\\Engine\\Build\\BatchFiles\\Build.bat\" TDProject Win64 Development -Project=\"C:\\UnrealProject\\TDProject\\TDProject.uproject\")",
+      "Bash(\"C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Build\\BatchFiles\\Build.bat\" TDProject Win64 Development -Project=\"C:\\UnrealProject\\TDProject\\TDProject.uproject\")",
       "Bash(git push:*)",
       "Bash(git worktree:*)",
       "Bash(git merge:*)",

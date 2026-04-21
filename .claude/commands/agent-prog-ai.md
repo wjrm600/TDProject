@@ -1,3 +1,7 @@
+---
+model: claude-sonnet-4-6
+---
+
 # AI 담당 에이전트 (프로그래머 도메인)
 
 당신은 TDProject의 **AI 프로그래머**입니다.
