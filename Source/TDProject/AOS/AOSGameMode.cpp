@@ -726,6 +726,20 @@ void AAOSGameMode::TransitionToRoundPreparation()
 	// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)
 	InitializeDefaultDeployPlan();
 
+	// 준비 상태 초기화 (로비/이전 라운드의 ready 상태가 남아있으면 첫 번째 플레이어가 시작 버튼을 눌렀을 때 바로 StartRound가 실행됨)
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetTeamReady(EAOSTeam::Team1, false);
+		AOSGS->ServerSetTeamReady(EAOSTeam::Team2, false);
+	}
+	for (APlayerState* PS : GameState->PlayerArray)
+	{
+		if (AAOSPlayerState* AOSPS = Cast<AAOSPlayerState>(PS))
+		{
+			AOSPS->ServerSetReady(false);
+		}
+	}
+
 	RemainingGameTime = GameDuration;
 	SetGameState(EAOSGameState::RoundPreparation);
 
