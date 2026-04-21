@@ -2,7 +2,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 # ============================================================
@@ -33,7 +33,8 @@ def initialize_vector_db():
         UNREAL_PROJECT_SOURCE_PATH,
         glob="**/*.[hc]*",
         loader_cls=TextLoader,
-        loader_kwargs={"autodetect_encoding": True},
+        loader_kwargs={"encoding": "utf-8", "autodetect_encoding": False},
+        silent_errors=True,  # 인코딩 오류 파일은 건너뜀
     )
     docs = loader.load()
 
