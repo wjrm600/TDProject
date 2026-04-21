@@ -8,8 +8,8 @@ from langchain_community.vectorstores import Chroma
 # ============================================================
 # 설정 — 새 컴퓨터에서 클론 후 이 두 경로를 본인 환경에 맞게 수정하세요
 # ============================================================
-UNREAL_PROJECT_SOURCE_PATH = r"C:\UnrealProject\TDProject\Source"
-DB_DIR = r"C:\Mcp_Tools\chroma_db"
+UNREAL_PROJECT_SOURCE_PATH = r"E:\Unreal Project\TDProject\Source"
+DB_DIR = r"E:\Unreal Project\TDProject\Mcp_Tools\chroma_db"
 # ============================================================
 
 mcp = FastMCP("Unreal_RAG_Server")

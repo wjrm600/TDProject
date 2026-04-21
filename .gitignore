@@ -53,3 +53,6 @@ __pycache__/
 # Temporary files
 *.tmp
 *.bak
+
+# RAG 벡터 DB (로컬 생성, 커밋 불필요)
+Mcp_Tools/chroma_db/
