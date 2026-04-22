@@ -10,6 +10,7 @@
 #include "UI/AOSLobbyWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Engine/World.h"
 #include "Blueprint/UserWidget.h"
 #include "HAL/IConsoleManager.h"
@@ -61,6 +62,14 @@ void AAOSPlayerController::BeginPlay()
 
 		if (RTSCamera)
 		{
+			// 종횡비 제약 해제: bConstrainAspectRatio=true 면 레터박스(검은 띠)가 생기고
+			// DrawDebugString 텍스트가 실제 게임 영역 밖에 렌더링되어 위치가 어긋남.
+			// false 로 설정하면 뷰포트 크기에 맞게 수평 FOV만 조정되고 디버그 위치가 정확해짐.
+			if (UCameraComponent* CamComp = RTSCamera->GetCameraComponent())
+			{
+				CamComp->bConstrainAspectRatio = false;
+			}
+
 			SetViewTarget(RTSCamera);
 			UE_LOG(LogTemp, Warning, TEXT("Camera created: %s"), bIsGameLevel ? TEXT("RTS") : TEXT("Menu"));
 		}

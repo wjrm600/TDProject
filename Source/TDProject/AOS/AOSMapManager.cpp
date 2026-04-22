@@ -2,6 +2,7 @@
 #include "AOSStructure.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
+#include "EngineUtils.h"
 
 static TAutoConsoleVariable<int32> CVarShowStructureBoxes(
     TEXT("AOS.Debug.ShowStructureBoxes"), 1,
@@ -532,15 +533,20 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 	if (!GetWorld())
 		return;
 
-	// 실제 스폰된 타워들의 위치에 디버그 박스 표시 (bPersistentLines=false, 매 프레임 갱신)
-	for (AAOSStructure* Tower : AllTowers)
+	// ─────────────────────────────────────────────────────────────────────────
+	// AllTowers(코드 스폰 전용) 대신 TActorIterator로 월드의 모든 AOSStructure 순회
+	// → 레벨 에디터에 배치된 액터 포함, 실제 화면에 보이는 구조물에 정확히 표시
+	// ─────────────────────────────────────────────────────────────────────────
+	for (TActorIterator<AAOSStructure> It(GetWorld()); It; ++It)
 	{
-		if (!Tower)
+		AAOSStructure* Structure = *It;
+		if (!Structure || !IsValid(Structure) || Structure->IsDestroyed())
 			continue;
 
-		FVector TowerPos = Tower->GetActorLocation();
-		EAOSTeam Team = Tower->GetOwnerTeam();
-		EAOSLane Lane = Tower->GetLane();
+		FVector Pos = Structure->GetActorLocation();
+		EAOSTeam Team         = Structure->GetOwnerTeam();
+		EStructureType SType  = Structure->GetStructureType();
+		EAOSLane Lane         = Structure->GetLane();
 
 		FString LaneName;
 		switch (Lane)
@@ -551,91 +557,35 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 		default:               LaneName = TEXT("Unknown"); break;
 		}
 
-		FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+		const FString TeamStr = (Team == EAOSTeam::Team1) ? TEXT("T1") : TEXT("T2");
 
-		DrawDebugBox(
-			GetWorld(),
-			TowerPos,
-			FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
-			BoxColor,
-			false,  // bPersistentLines = false (매 프레임 갱신)
-			0.0f,   // LifeTime = 0 (다음 프레임까지만)
-			0,
-			10.0f
-		);
+		if (SType == EStructureType::CommandCenter)
+		{
+			// Command Center: 노란(T1) / 주황(T2), 1.5배 박스
+			FColor CCColor = (Team == EAOSTeam::Team1) ? FColor::Yellow : FColor::Orange;
 
-		// 타워 텍스트 레이블
-		FString Label = FString::Printf(TEXT("[%s] Tower\n%s"),
-			(Team == EAOSTeam::Team1) ? TEXT("T1") : TEXT("T2"),
-			*LaneName);
+			DrawDebugBox(GetWorld(), Pos,
+				FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
+				CCColor, false, 0.0f, 0, 10.0f);
 
-		DrawDebugString(
-			GetWorld(),
-			TowerPos + FVector(0, 0, DebugBoxSize + 50.0f),
-			Label,
-			nullptr,
-			BoxColor,
-			0.0f,  // 매 프레임 갱신
-			true   // bDrawShadow
-		);
+			DrawDebugString(GetWorld(),
+				Pos + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
+				FString::Printf(TEXT("[%s]\nCommandCenter"), *TeamStr),
+				nullptr, CCColor, 0.0f, true);
+		}
+		else
+		{
+			// Tower: 파랑(T1) / 빨강(T2)
+			FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+
+			DrawDebugBox(GetWorld(), Pos,
+				FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
+				BoxColor, false, 0.0f, 0, 10.0f);
+
+			DrawDebugString(GetWorld(),
+				Pos + FVector(0, 0, DebugBoxSize + 50.0f),
+				FString::Printf(TEXT("[%s] Tower\n%s"), *TeamStr, *LaneName),
+				nullptr, BoxColor, 0.0f, true);
+		}
 	}
-
-	// Command Center — 설정 벡터 대신 실제 스폰된 액터 위치 사용
-	// (스폰 시 충돌 조정 등으로 위치가 달라져도 항상 액터에 정확히 일치)
-	FColor CC1Color = FColor::Yellow;
-	FColor CC2Color = FColor::Orange;
-
-	AAOSStructure* CC1Actor = CommandCenters.FindRef(EAOSTeam::Team1);
-	FVector CC1Pos = (CC1Actor && IsValid(CC1Actor))
-		? CC1Actor->GetActorLocation()
-		: Team1CommandCenterPosition;
-
-	DrawDebugBox(
-		GetWorld(),
-		CC1Pos,
-		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		CC1Color,
-		false,
-		0.0f,
-		0,
-		10.0f
-	);
-
-	FString CC1Label = FString::Printf(TEXT("[T1]\nCommandCenter"));
-	DrawDebugString(
-		GetWorld(),
-		CC1Pos + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
-		CC1Label,
-		nullptr,
-		CC1Color,
-		0.0f,
-		true
-	);
-
-	AAOSStructure* CC2Actor = CommandCenters.FindRef(EAOSTeam::Team2);
-	FVector CC2Pos = (CC2Actor && IsValid(CC2Actor))
-		? CC2Actor->GetActorLocation()
-		: Team2CommandCenterPosition;
-
-	DrawDebugBox(
-		GetWorld(),
-		CC2Pos,
-		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		CC2Color,
-		false,
-		0.0f,
-		0,
-		10.0f
-	);
-
-	FString CC2Label = FString::Printf(TEXT("[T2]\nCommandCenter"));
-	DrawDebugString(
-		GetWorld(),
-		CC2Pos + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
-		CC2Label,
-		nullptr,
-		CC2Color,
-		0.0f,
-		true
-	);
 }
