@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from mcp.server.fastmcp import FastMCP
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
@@ -27,13 +28,13 @@ def _initialize_vector_db():
         if _init_done:
             return
 
-        print("언리얼 C++ 코드 인덱싱을 시작합니다 (최초 실행 시 시간 소요)...")
+        print("언리얼 C++ 코드 인덱싱을 시작합니다 (최초 실행 시 시간 소요)...", file=sys.stderr)
         embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-small")
 
         # DB가 이미 존재하면 로드만 수행
         if os.path.exists(DB_DIR) and os.listdir(DB_DIR):
             vector_store = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
-            print("기존 벡터 DB를 로드했습니다.")
+            print("기존 벡터 DB를 로드했습니다.", file=sys.stderr)
             _init_done = True
             return
 
@@ -59,7 +60,7 @@ def _initialize_vector_db():
             embedding=embeddings,
             persist_directory=DB_DIR,
         )
-        print(f"인덱싱 완료! 총 {len(chunks)}개의 코드 청크가 저장되었습니다.")
+        print(f"인덱싱 완료! 총 {len(chunks)}개의 코드 청크가 저장되었습니다.", file=sys.stderr)
         _init_done = True
 
 
