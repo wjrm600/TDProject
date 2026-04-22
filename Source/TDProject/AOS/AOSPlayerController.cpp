@@ -12,6 +12,7 @@
 #include "Camera/CameraActor.h"
 #include "Engine/World.h"
 #include "Blueprint/UserWidget.h"
+#include "HAL/IConsoleManager.h"
 
 AAOSPlayerController::AAOSPlayerController()
 {
@@ -124,6 +125,15 @@ void AAOSPlayerController::SetupInputComponent()
 	InputComponent->BindAxis("MoveRight", this, &AAOSPlayerController::MoveCameraRight);
 	InputComponent->BindAxis("CameraZoom", this, &AAOSPlayerController::ZoomCamera);
 	InputComponent->BindAction("LeftMouseClick", IE_Pressed, this, &AAOSPlayerController::HandleMouseClick);
+
+	// ─── 디버그 치트키 ───────────────────────────────────────
+	// F1: 타워/커맨드센터 박스 표시 토글
+	InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AAOSPlayerController::DebugToggleStructureBoxes);
+	// F2: 공격 범위 표시 토글
+	InputComponent->BindKey(EKeys::F2, IE_Pressed, this, &AAOSPlayerController::DebugToggleAttackRange);
+	// F3: AI 캐릭터 이동 경로 표시 토글
+	InputComponent->BindKey(EKeys::F3, IE_Pressed, this, &AAOSPlayerController::DebugToggleCharacterPaths);
+	// ─────────────────────────────────────────────────────────
 
 	UE_LOG(LogTemp, Warning, TEXT("Input bindings setup for RTS camera (4-directional movement + zoom)"));
 }
@@ -896,3 +906,51 @@ void AAOSPlayerController::SpawnPlayerCharacters()
 	// ... 기존 구현 제거됨
 }
 */
+
+// F1: 타워/커맨드센터 구조물 박스 표시 토글
+void AAOSPlayerController::DebugToggleStructureBoxes()
+{
+	if (!IsLocalPlayerController()) return;
+
+	IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowStructureBoxes"));
+	if (CVar)
+	{
+		int32 NewVal = CVar->GetInt() ? 0 : 1;
+		CVar->Set(NewVal);
+		UE_LOG(LogTemp, Warning, TEXT("[Debug] AOS.Debug.ShowStructureBoxes = %d"), NewVal);
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::White,
+			FString::Printf(TEXT("[Debug] 구조물 박스: %s"), NewVal ? TEXT("ON") : TEXT("OFF")));
+	}
+}
+
+// F2: 공격 범위 표시 토글
+void AAOSPlayerController::DebugToggleAttackRange()
+{
+	if (!IsLocalPlayerController()) return;
+
+	IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
+	if (CVar)
+	{
+		int32 NewVal = CVar->GetInt() ? 0 : 1;
+		CVar->Set(NewVal);
+		UE_LOG(LogTemp, Warning, TEXT("[Debug] AOS.Debug.ShowAttackRange = %d"), NewVal);
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::White,
+			FString::Printf(TEXT("[Debug] 공격 범위: %s"), NewVal ? TEXT("ON") : TEXT("OFF")));
+	}
+}
+
+// F3: AI 캐릭터 이동 경로 표시 토글
+void AAOSPlayerController::DebugToggleCharacterPaths()
+{
+	if (!IsLocalPlayerController()) return;
+
+	IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowCharacterPaths"));
+	if (CVar)
+	{
+		int32 NewVal = CVar->GetInt() ? 0 : 1;
+		CVar->Set(NewVal);
+		UE_LOG(LogTemp, Warning, TEXT("[Debug] AOS.Debug.ShowCharacterPaths = %d"), NewVal);
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::White,
+			FString::Printf(TEXT("[Debug] 캐릭터 경로: %s"), NewVal ? TEXT("ON") : TEXT("OFF")));
+	}
+}

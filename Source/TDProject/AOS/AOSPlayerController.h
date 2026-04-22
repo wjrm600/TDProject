@@ -221,4 +221,9 @@ private:
 	// 메인 메뉴에서 로컬 플레이어가 "게임 시작"을 눌렀는지 여부
 	// false → 상대방 Ready 상태를 UI에 표시하지 않음 (요구사항 1)
 	bool bLocalPressedStart = false;
+
+	// 디버그 치트키
+	void DebugToggleStructureBoxes();
+	void DebugToggleAttackRange();
+	void DebugToggleCharacterPaths();
 };

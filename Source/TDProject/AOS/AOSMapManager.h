@@ -45,6 +45,7 @@ public:
 	AAOSMapManager();
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
 	// 🟢 NEW - 에디터에서 시각화
 #if WITH_EDITOR
@@ -79,6 +80,8 @@ public:
 	// 🟢 NEW - 디버그 기능
 	UFUNCTION(BlueprintCallable, Category = "AOS|Debug")
 	void DrawDebugTowerPositions();
+
+	void DrawRuntimeStructureDebug();
 
 protected:
 	// 라인 정보

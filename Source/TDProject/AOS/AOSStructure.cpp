@@ -8,6 +8,8 @@
 #include "Materials/Material.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
 
 AAOSStructure::AAOSStructure()
 {
@@ -108,6 +110,30 @@ void AAOSStructure::Tick(float DeltaTime)
 				PC->GetPlayerViewPoint(CamLoc, CamRot);
 				FVector CamForward = CamRot.Vector();
 				HealthBarComponent->SetWorldRotation((-CamForward).Rotation());
+			}
+		}
+	}
+
+	// 🟢 NEW - 공격 범위 디버그 시각화 (AOS.Debug.ShowAttackRange CVar)
+	if (GetWorld())
+	{
+		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
+		if (CVar && CVar->GetInt())
+		{
+			FColor TeamColor = (OwnerTeam == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+			FVector Pos = GetActorLocation();
+
+			// 공격 범위 (AttackRange) — 채도 높은 팀 색상
+			DrawDebugSphere(GetWorld(), Pos, AttackRange, 24, TeamColor, false, 0.0f);
+
+			// 감지 범위 (DetectionRange) — 밝은 혼합 색
+			if (DetectionRange)
+			{
+				FColor DetectionColor = FColor(
+					TeamColor.R / 2 + 128,
+					TeamColor.G / 2 + 128,
+					TeamColor.B / 2 + 128);
+				DrawDebugSphere(GetWorld(), Pos, DetectionRange->GetUnscaledSphereRadius(), 24, DetectionColor, false, 0.0f);
 			}
 		}
 	}

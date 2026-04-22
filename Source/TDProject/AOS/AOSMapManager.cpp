@@ -1,10 +1,19 @@
 #include "AOSMapManager.h"
 #include "AOSStructure.h"
 #include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<int32> CVarShowStructureBoxes(
+    TEXT("AOS.Debug.ShowStructureBoxes"), 1,
+    TEXT("1=타워/커맨드센터 디버그 박스 표시, 0=숨김"));
+
+static TAutoConsoleVariable<int32> CVarShowAttackRange(
+    TEXT("AOS.Debug.ShowAttackRange"), 0,
+    TEXT("1=모든 구조물·캐릭터 공격 범위 표시, 0=숨김"));
 
 AAOSMapManager::AAOSMapManager()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 }
 
 void AAOSMapManager::BeginPlay()
@@ -13,11 +22,17 @@ void AAOSMapManager::BeginPlay()
 
 	InitializeMap();
 	SpawnStructures();
+}
 
-	// 🟢 NEW - 타워 위치 디버그 박스 표시
-	if (bShowDebugTowerBoxes)
+void AAOSMapManager::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!GetWorld()) return;
+
+	// StructureBoxes 토글
+	if (CVarShowStructureBoxes.GetValueOnGameThread())
 	{
-		DrawDebugTowerPositions();
+		DrawRuntimeStructureDebug();
 	}
 }
 
@@ -71,35 +86,47 @@ void AAOSMapManager::UpdateEditorVisualization()
 
 	for (const FLaneInfo& LaneInfo : LanesInfo)
 	{
-		FColor Team1Color = FColor::Cyan;    // Team1: 청록색
-		FColor Team2Color = FColor::Magenta; // Team2: 마젠타색
+		// 🟡 MODIFIED - 라인별 색상 (Top=Yellow, Mid=Green, Bottom=Cyan)
+		FColor LaneColor;
+		switch (LaneInfo.LaneType)
+		{
+			case EAOSLane::Top:    LaneColor = FColor::Yellow; break;
+			case EAOSLane::Mid:    LaneColor = FColor::Green;  break;
+			case EAOSLane::Bottom: LaneColor = FColor::Cyan;   break;
+			default:               LaneColor = FColor::White;  break;
+		}
+		// Team1 = 밝은 색, Team2 = 어두운 색
+		FColor Team1Color = LaneColor;
+		FColor Team2Color = FColor(LaneColor.R / 2, LaneColor.G / 2, LaneColor.B / 2);
 
-		// 라인 경로 그리기 (스폰 지점 → 적 본진)
+		// 라인 경로 그리기 - 스폰→타워1→타워2→타워3→적 커맨드 센터
 		if (bShowLanePaths)
 		{
-			// Team1 라인 경로: Team1 스폰 → Team2 본진
-			DrawDebugLine(
-				GetWorld(),
-				LaneInfo.Team1StartPosition,
-				Team2CommandCenterPosition,
-				Team1Color,
-				true,
-				-1.0f,
-				0,
-				EditorVisualizationThickness
-			);
+			// Team1 경로: Team1Start → 각 타워 → Team2 CC
+			TArray<FVector> Team1Path;
+			Team1Path.Add(LaneInfo.Team1StartPosition);
+			for (const FVector& TowerPos : LaneInfo.Team1TowerPositions)
+				Team1Path.Add(TowerPos);
+			Team1Path.Add(Team2CommandCenterPosition);
 
-			// Team2 라인 경로: Team2 스폰 → Team1 본진
-			DrawDebugLine(
-				GetWorld(),
-				LaneInfo.Team2StartPosition,
-				Team1CommandCenterPosition,
-				Team2Color,
-				true,
-				-1.0f,
-				0,
-				EditorVisualizationThickness
-			);
+			for (int32 i = 0; i < Team1Path.Num() - 1; ++i)
+			{
+				DrawDebugLine(GetWorld(), Team1Path[i], Team1Path[i + 1],
+					Team1Color, true, -1.0f, 0, EditorVisualizationThickness);
+			}
+
+			// Team2 경로: Team2Start → 각 타워 → Team1 CC
+			TArray<FVector> Team2Path;
+			Team2Path.Add(LaneInfo.Team2StartPosition);
+			for (const FVector& TowerPos : LaneInfo.Team2TowerPositions)
+				Team2Path.Add(TowerPos);
+			Team2Path.Add(Team1CommandCenterPosition);
+
+			for (int32 i = 0; i < Team2Path.Num() - 1; ++i)
+			{
+				DrawDebugLine(GetWorld(), Team2Path[i], Team2Path[i + 1],
+					Team2Color, true, -1.0f, 0, EditorVisualizationThickness);
+			}
 		}
 
 		// 타워 위치 표시
@@ -490,15 +517,19 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 	}
 }
 
-// 🟢 NEW - 타워 위치에 디버그 박스 그리기
+// 🟢 NEW - 타워 위치에 디버그 박스 그리기 (DrawRuntimeStructureDebug 로 리다이렉트)
 void AAOSMapManager::DrawDebugTowerPositions()
+{
+	DrawRuntimeStructureDebug();
+}
+
+// 🟢 NEW - 런타임 구조물 디버그 시각화 (매 프레임, CVar 토글 가능)
+void AAOSMapManager::DrawRuntimeStructureDebug()
 {
 	if (!GetWorld())
 		return;
 
-	UE_LOG(LogTemp, Warning, TEXT("=== Drawing Debug Tower Boxes ==="));
-
-	// 실제 스폰된 타워들의 위치에 디버그 박스 표시
+	// 실제 스폰된 타워들의 위치에 디버그 박스 표시 (bPersistentLines=false, 매 프레임 갱신)
 	for (AAOSStructure* Tower : AllTowers)
 	{
 		if (!Tower)
@@ -511,58 +542,86 @@ void AAOSMapManager::DrawDebugTowerPositions()
 		FString LaneName;
 		switch (Lane)
 		{
-		case EAOSLane::Top: LaneName = TEXT("Top"); break;
-		case EAOSLane::Mid: LaneName = TEXT("Mid"); break;
+		case EAOSLane::Top:    LaneName = TEXT("Top");    break;
+		case EAOSLane::Mid:    LaneName = TEXT("Mid");    break;
 		case EAOSLane::Bottom: LaneName = TEXT("Bottom"); break;
-		default: LaneName = TEXT("Unknown"); break;
+		default:               LaneName = TEXT("Unknown"); break;
 		}
 
 		FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
-		FString TeamName = (Team == EAOSTeam::Team1) ? TEXT("Team1") : TEXT("Team2");
 
 		DrawDebugBox(
 			GetWorld(),
 			TowerPos,
 			FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),
 			BoxColor,
-			true,  // bPersistentLines
-			-1.0f, // LifeTime (영구)
-			0,     // DepthPriority
-			10.0f  // Thickness
+			false,  // bPersistentLines = false (매 프레임 갱신)
+			0.0f,   // LifeTime = 0 (다음 프레임까지만)
+			0,
+			10.0f
 		);
 
-		UE_LOG(LogTemp, Warning, TEXT("[%s Lane] %s Tower: (%.1f, %.1f, %.1f) - %s BOX"),
-			*LaneName, *TeamName, TowerPos.X, TowerPos.Y, TowerPos.Z,
-			(Team == EAOSTeam::Team1) ? TEXT("BLUE") : TEXT("RED"));
+		// 타워 텍스트 레이블
+		FString Label = FString::Printf(TEXT("[%s] Tower\n%s"),
+			(Team == EAOSTeam::Team1) ? TEXT("T1") : TEXT("T2"),
+			*LaneName);
+
+		DrawDebugString(
+			GetWorld(),
+			TowerPos + FVector(0, 0, DebugBoxSize + 50.0f),
+			Label,
+			nullptr,
+			BoxColor,
+			0.0f,  // 매 프레임 갱신
+			true   // bDrawShadow
+		);
 	}
 
-	// Command Center - 노란색/주황색 박스 (더 큰 사이즈, 팀당 1개)
+	// Command Center - Team1 (노란색), Team2 (주황색)
+	FColor CC1Color = FColor::Yellow;
+	FColor CC2Color = FColor::Orange;
+
 	DrawDebugBox(
 		GetWorld(),
 		Team1CommandCenterPosition,
 		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		FColor::Yellow,
-		true,
-		-1.0f,
+		CC1Color,
+		false,
+		0.0f,
 		0,
 		10.0f
+	);
+
+	FString CC1Label = FString::Printf(TEXT("[T1]\nCommandCenter"));
+	DrawDebugString(
+		GetWorld(),
+		Team1CommandCenterPosition + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
+		CC1Label,
+		nullptr,
+		CC1Color,
+		0.0f,
+		true
 	);
 
 	DrawDebugBox(
 		GetWorld(),
 		Team2CommandCenterPosition,
 		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
-		FColor::Orange,
-		true,
-		-1.0f,
+		CC2Color,
+		false,
+		0.0f,
 		0,
 		10.0f
 	);
 
-	UE_LOG(LogTemp, Warning, TEXT("Team1 Command Center: (%.1f, %.1f, %.1f) - YELLOW BOX"),
-		Team1CommandCenterPosition.X, Team1CommandCenterPosition.Y, Team1CommandCenterPosition.Z);
-	UE_LOG(LogTemp, Warning, TEXT("Team2 Command Center: (%.1f, %.1f, %.1f) - ORANGE BOX"),
-		Team2CommandCenterPosition.X, Team2CommandCenterPosition.Y, Team2CommandCenterPosition.Z);
-
-	UE_LOG(LogTemp, Warning, TEXT("=== Debug Tower Boxes Drawn ==="));
+	FString CC2Label = FString::Printf(TEXT("[T2]\nCommandCenter"));
+	DrawDebugString(
+		GetWorld(),
+		Team2CommandCenterPosition + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
+		CC2Label,
+		nullptr,
+		CC2Color,
+		0.0f,
+		true
+	);
 }

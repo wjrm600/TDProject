@@ -119,4 +119,7 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<AAOSCharacter> LastNavMoveActor = nullptr;
+
+	// 디버그 드로우: 캐릭터 이동 경로 (웨이포인트 선/구체/화살표)
+	void DrawDebugPath();
 };

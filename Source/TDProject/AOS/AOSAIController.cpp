@@ -4,6 +4,14 @@
 #include "AOSMapManager.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<int32> CVarShowCharacterPaths(
+    TEXT("AOS.Debug.ShowCharacterPaths"), 0,
+    TEXT("1=AI 캐릭터 웨이포인트 경로 표시, 0=숨김"));
+
+// AOS.Debug.ShowAttackRange 는 AOSMapManager.cpp 에서 정의됨 — 여기서 재정의 금지
 
 AAOSAIController::AAOSAIController()
 {
@@ -70,6 +78,28 @@ void AAOSAIController::Tick(float DeltaTime)
 	}
 
 	UpdateAIBehavior(DeltaTime);
+
+	// ─── 디버그: 캐릭터 이동 경로 (탑/미드/바텀 라인별) ───
+	if (ControlledCharacter && GetWorld() &&
+	    CVarShowCharacterPaths.GetValueOnGameThread())
+	{
+	    DrawDebugPath();
+	}
+
+	// ─── 디버그: 공격 범위 / 감지 범위 (AOS.Debug.ShowAttackRange — AOSMapManager.cpp 정의) ───
+	{
+		IConsoleVariable* ShowAttackRangeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
+		if (ControlledCharacter && GetWorld() && ShowAttackRangeCVar && ShowAttackRangeCVar->GetInt())
+		{
+	    FVector CharPos = ControlledCharacter->GetActorLocation();
+
+	    // 공격 범위 (AttackRange): 노란색
+	    DrawDebugSphere(GetWorld(), CharPos, AttackRange, 24, FColor::Yellow, false, 0.0f);
+
+	    // 감지 범위 (EnemyDetectionRange): 흰색 (더 큰 원)
+	    DrawDebugSphere(GetWorld(), CharPos, EnemyDetectionRange, 24, FColor::White, false, 0.0f);
+		}
+	}
 }
 
 void AAOSAIController::StartDeployment(EAOSLane Lane)
@@ -477,5 +507,53 @@ void AAOSAIController::AttackTarget(float DeltaTime)
 		CurrentTarget->ReceiveDamage(ControlledCharacter->GetAttackDamage());
 		CurrentAttackCooldown = AttackCooldownDuration;
 		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking enemy! Distance: %.1f"), Distance);
+	}
+}
+
+void AAOSAIController::DrawDebugPath()
+{
+	if (!ControlledCharacter || WaypointQueue.Num() == 0)
+		return;
+
+	// 라인별 색상
+	FColor PathColor;
+	switch (DeployedLane)
+	{
+	case EAOSLane::Top:    PathColor = FColor::Yellow; break;
+	case EAOSLane::Mid:    PathColor = FColor::Green;  break;
+	case EAOSLane::Bottom: PathColor = FColor::Cyan;   break;
+	default:               PathColor = FColor::White;  break;
+	}
+
+	// 팀2는 어두운 버전
+	if (ControlledCharacter->GetTeam() == EAOSTeam::Team2)
+	{
+		PathColor = FColor(PathColor.R / 2, PathColor.G / 2, PathColor.B / 2);
+	}
+
+	FVector CharPos = ControlledCharacter->GetActorLocation();
+
+	// 캐릭터 현재 위치 → 남은 웨이포인트 순서로 선 그리기
+	FVector PrevPos = CharPos;
+	for (int32 i = CurrentWaypointIndex; i < WaypointQueue.Num(); ++i)
+	{
+		if (!WaypointQueue[i] || WaypointQueue[i]->IsDestroyed())
+			continue;
+
+		FVector WPPos = WaypointQueue[i]->GetActorLocation();
+		DrawDebugLine(GetWorld(), PrevPos, WPPos, PathColor, false, 0.0f, 0, 3.0f);
+
+		// 웨이포인트 노드 표시 (작은 구체)
+		DrawDebugSphere(GetWorld(), WPPos, 80.0f, 8, PathColor, false, 0.0f);
+		PrevPos = WPPos;
+	}
+
+	// 캐릭터 위치에 방향 화살표 (현재 이동 목표 방향)
+	if (CurrentWaypointIndex < WaypointQueue.Num() && WaypointQueue[CurrentWaypointIndex])
+	{
+		FVector Dir = (WaypointQueue[CurrentWaypointIndex]->GetActorLocation() - CharPos);
+		Dir.Normalize();
+		DrawDebugDirectionalArrow(GetWorld(), CharPos, CharPos + Dir * 300.0f,
+			60.0f, PathColor, false, 0.0f, 0, 3.0f);
 	}
 }
