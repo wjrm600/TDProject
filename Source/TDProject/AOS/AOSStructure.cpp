@@ -123,17 +123,21 @@ void AAOSStructure::Tick(float DeltaTime)
 			FColor TeamColor = (OwnerTeam == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
 			FVector Pos = GetActorLocation();
 
-			// 공격 범위 (AttackRange) — 채도 높은 팀 색상
-			DrawDebugSphere(GetWorld(), Pos, AttackRange, 24, TeamColor, false, 0.0f);
+			// 공격 범위 (AttackRange) — 수평 원 (XY 평면, 탑뷰에서 정확히 원형으로 보임)
+			DrawDebugCircle(GetWorld(), Pos, AttackRange, 32,
+				TeamColor, false, 0.0f, 0, 3.0f,
+				FVector(1, 0, 0), FVector(0, 1, 0), false);
 
-			// 감지 범위 (DetectionRange) — 밝은 혼합 색
+			// 감지 범위 (DetectionRange) — 밝은 혼합 색, 수평 원
 			if (DetectionRange)
 			{
 				FColor DetectionColor = FColor(
 					TeamColor.R / 2 + 128,
 					TeamColor.G / 2 + 128,
 					TeamColor.B / 2 + 128);
-				DrawDebugSphere(GetWorld(), Pos, DetectionRange->GetUnscaledSphereRadius(), 24, DetectionColor, false, 0.0f);
+				DrawDebugCircle(GetWorld(), Pos, DetectionRange->GetUnscaledSphereRadius(), 32,
+					DetectionColor, false, 0.0f, 0, 3.0f,
+					FVector(1, 0, 0), FVector(0, 1, 0), false);
 			}
 		}
 	}

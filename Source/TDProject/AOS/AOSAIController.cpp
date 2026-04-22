@@ -93,11 +93,15 @@ void AAOSAIController::Tick(float DeltaTime)
 		{
 	    FVector CharPos = ControlledCharacter->GetActorLocation();
 
-	    // 공격 범위 (AttackRange): 노란색
-	    DrawDebugSphere(GetWorld(), CharPos, AttackRange, 24, FColor::Yellow, false, 0.0f);
+	    // 공격 범위 (AttackRange): 노란색 수평 원
+	    DrawDebugCircle(GetWorld(), CharPos, AttackRange, 32,
+	        FColor::Yellow, false, 0.0f, 0, 3.0f,
+	        FVector(1, 0, 0), FVector(0, 1, 0), false);
 
-	    // 감지 범위 (EnemyDetectionRange): 흰색 (더 큰 원)
-	    DrawDebugSphere(GetWorld(), CharPos, EnemyDetectionRange, 24, FColor::White, false, 0.0f);
+	    // 감지 범위 (EnemyDetectionRange): 흰색 수평 원 (더 큰 원)
+	    DrawDebugCircle(GetWorld(), CharPos, EnemyDetectionRange, 32,
+	        FColor::White, false, 0.0f, 0, 3.0f,
+	        FVector(1, 0, 0), FVector(0, 1, 0), false);
 		}
 	}
 }

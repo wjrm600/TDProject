@@ -20,6 +20,9 @@ void AAOSMapManager::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// 이전 PIE 세션이나 에디터에서 남은 persistent 라인 제거
+	FlushPersistentDebugLines(GetWorld());
+
 	InitializeMap();
 	SpawnStructures();
 }
@@ -577,13 +580,19 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 		);
 	}
 
-	// Command Center - Team1 (노란색), Team2 (주황색)
+	// Command Center — 설정 벡터 대신 실제 스폰된 액터 위치 사용
+	// (스폰 시 충돌 조정 등으로 위치가 달라져도 항상 액터에 정확히 일치)
 	FColor CC1Color = FColor::Yellow;
 	FColor CC2Color = FColor::Orange;
 
+	AAOSStructure* CC1Actor = CommandCenters.FindRef(EAOSTeam::Team1);
+	FVector CC1Pos = (CC1Actor && IsValid(CC1Actor))
+		? CC1Actor->GetActorLocation()
+		: Team1CommandCenterPosition;
+
 	DrawDebugBox(
 		GetWorld(),
-		Team1CommandCenterPosition,
+		CC1Pos,
 		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
 		CC1Color,
 		false,
@@ -595,7 +604,7 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 	FString CC1Label = FString::Printf(TEXT("[T1]\nCommandCenter"));
 	DrawDebugString(
 		GetWorld(),
-		Team1CommandCenterPosition + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
+		CC1Pos + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
 		CC1Label,
 		nullptr,
 		CC1Color,
@@ -603,9 +612,14 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 		true
 	);
 
+	AAOSStructure* CC2Actor = CommandCenters.FindRef(EAOSTeam::Team2);
+	FVector CC2Pos = (CC2Actor && IsValid(CC2Actor))
+		? CC2Actor->GetActorLocation()
+		: Team2CommandCenterPosition;
+
 	DrawDebugBox(
 		GetWorld(),
-		Team2CommandCenterPosition,
+		CC2Pos,
 		FVector(DebugBoxSize * 1.5f, DebugBoxSize * 1.5f, DebugBoxSize * 1.5f),
 		CC2Color,
 		false,
@@ -617,7 +631,7 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 	FString CC2Label = FString::Printf(TEXT("[T2]\nCommandCenter"));
 	DrawDebugString(
 		GetWorld(),
-		Team2CommandCenterPosition + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
+		CC2Pos + FVector(0, 0, DebugBoxSize * 1.5f + 80.0f),
 		CC2Label,
 		nullptr,
 		CC2Color,
