@@ -3,7 +3,6 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using EpicGames.Core;
 
 public class McpAutomationBridge : ModuleRules
 {
@@ -120,7 +119,7 @@ public class McpAutomationBridge : ModuleRules
         PCHUsage = PCHUsageMode.NoPCHs;
         
         bUseUnity = true;
-        NumIncludedBytesPerUnityCPPOverride = 256 * 1024;
+        // NumIncludedBytesPerUnityCPPOverride = 256 * 1024; // Not available in this UE build
 
 PublicDependencyModuleNames.AddRange(new string[]
         {

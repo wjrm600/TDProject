@@ -108,6 +108,16 @@ void AAOSCharacter::Tick(float DeltaTime)
 void AAOSCharacter::SetTeam(EAOSTeam NewTeam)
 {
 	Team = NewTeam;
+
+	// 팀 설정 후 HP 바 색상 즉시 반영
+	// (BeginPlay 시점에는 Team이 기본값이므로 SetTeam 호출 시 업데이트 필요)
+	if (HealthBarWidget)
+	{
+		FLinearColor BarColor = (Team == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+		HealthBarWidget->SetBarColor(BarColor);
+		UE_LOG(LogTemp, Warning, TEXT("[Character] Team 설정 → HP 바 색상 업데이트 (Team%d)"),
+			(Team == EAOSTeam::Team1) ? 1 : 2);
+	}
 }
 
 void AAOSCharacter::SetLane(EAOSLane NewLane)

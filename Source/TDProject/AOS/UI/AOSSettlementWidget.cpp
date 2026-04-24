@@ -100,7 +100,14 @@ void UAOSSettlementWidget::SetDraw()
 
 	ResultText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.0f, 1.0f)));
 	ResultText->SetText(FText::FromString(TEXT("무승부\n5초 후 다음 라운드...")));
-	UE_LOG(LogTemp, Warning, TEXT("[Settlement] Draw 표시"));
+
+	// 무승부 시 메인 메뉴 버튼 숨기기 (무승부는 다음 라운드로 자동 전환됨)
+	if (ReturnToMainMenuButton)
+	{
+		ReturnToMainMenuButton->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Settlement] Draw 표시 - 메인 메뉴 버튼 숨김"));
 }
 
 void UAOSSettlementWidget::OnReturnClicked()
