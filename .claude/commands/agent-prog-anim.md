@@ -146,3 +146,23 @@ void PlayHitReactMontage();
 art-anim이 새 C++ 프로퍼티나 Notify를 요청하면:
 - `CROSS_DOMAIN_REQUESTS.md`에서 확인
 - 프로퍼티 추가 후 `INTERFACE_CONTRACTS.md`에 기록
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 실행 위치
+| 코드 | 실행 위치 |
+|------|-----------|
+| GameMode, AIController, GameState | DS (서버) 전용 |
+| PlayerController UI·위젯·카메라 | 각 클라이언트 |
+| Character/Structure 게임로직 | DS에서 실행, 클라이언트에 리플리케이션 |
+| **AnimInstance** | 각 클라이언트 + DS (메시/애니는 클라 렌더) |
+
+### 애니메이션 도메인 핵심 규칙
+- **DS에는 스켈레탈 메시 렌더가 없음** — 애니메이션 시각 효과는 클라이언트에서만 보임
+- `NativeUpdateAnimation()`: DS에서도 실행되지만 렌더 결과 없음 → 가볍게 유지
+- `PlayMontage`: 서버에서 호출 시 리플리케이션됨 (bReplicates=true 체크)
+- AnimNotify 로직: 데미지 적용 등 게임플레이 로직은 `HasAuthority()` 가드 필수
+- 클라이언트 전용 VFX/사운드 Notify는 `if (GetWorld()->GetNetMode() != NM_DedicatedServer)` 가드
+- `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음)

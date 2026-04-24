@@ -84,3 +84,23 @@ UPROPERTY(EditAnywhere) 추가/삭제 시:
 2. **WITH_EDITOR**: 에디터 전용 코드는 `#if WITH_EDITOR` 감싸기
 3. **SpawnActor 후 nullptr 체크 필수**
 4. **커밋 메시지**: 한국어 제목 + 상세 설명, Co-Authored-By 포함
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 실행 위치
+| 코드 | 실행 위치 |
+|------|-----------|
+| GameMode, AIController, GameState | DS (서버) 전용 |
+| **MapManager, Structure** | **DS에서 스폰·파괴, 클라이언트로 리플리케이션** |
+| HP 바 위젯 (3D World) | 클라이언트에서만 렌더 |
+
+### Object 도메인 핵심 규칙
+- **구조물 스폰은 DS 전용** — `MapManager::SpawnStructures()`는 서버에서만 호출
+- 모든 Structure 액터: `bReplicates = true`, 이동하면 `bReplicateMovement = true`
+- `HP`, `bIsDestroyed` 등 상태: `UPROPERTY(ReplicatedUsing=OnRep_*)` + `DOREPLIFETIME`
+- `ReceiveDamage()`는 `HasAuthority()` 가드 — 서버에서만 데미지 적용
+- 파괴 애니메이션/VFX는 `OnRep_*` 콜백에서 재생 (클라이언트 로컬)
+- `DrawDebugTowerPositions()` 등 시각 디버그는 DS에서 의미 없음 → NetMode 체크 또는 클라이언트에서만 호출
+- `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음)

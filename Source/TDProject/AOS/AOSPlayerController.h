@@ -81,6 +81,11 @@ public:
 	UFUNCTION(Server, Reliable, WithValidation, Category = "AOS|Network")
 	void Server_SetLaneDeployCount(EAOSLane Lane, int32 Count);
 
+	// 라인별 배치 클래스 목록 설정 (드래그앤드롭 UI 용)
+	UFUNCTION(Server, Reliable, WithValidation, Category = "AOS|Network")
+	void Server_SetLaneDeployClasses(EAOSLane Lane,
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
+
 	// 준비 상태 토글 (로비/라운드 준비 시 사용)
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_SetReady(bool bReady);
@@ -88,6 +93,10 @@ public:
 	// 라운드 시작 요청 (서버에서 조건 검증 후 StartRound 호출)
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_RequestStartRound();
+
+	// 서버 → 클라이언트: 캐릭터 로스터 전달
+	UFUNCTION(Client, Reliable, Category = "AOS|Network")
+	void Client_ReceiveCharacterRoster(const TArray<FCharacterRosterEntry>& Roster);
 
 protected:
 	// UI 위젯 클래스 (에디터에서 설정)
@@ -166,8 +175,14 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Deployment")
 	TArray<EAOSLane> CurrentDeployment;
 
-	// 라운드별 라인 배치 수 (캐릭터 선택 UI에서 설정)
+	// 서버에서 받은 캐릭터 로스터 캐시 (클라이언트에서도 사용)
+	TArray<FCharacterRosterEntry> CachedCharacterRoster;
+
+	// 라운드별 라인 배치 수 (하위 호환)
 	TMap<EAOSLane, int32> LocalDeployPlan;
+
+	// 라운드별 라인 배치 클래스 (드래그앤드롭 UI)
+	TMap<EAOSLane, TArray<TSubclassOf<AAOSCharacter>>> LocalDeployPlanClasses;
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	class AAOSGameMode* GameMode;
@@ -221,6 +236,9 @@ private:
 	// 메인 메뉴에서 로컬 플레이어가 "게임 시작"을 눌렀는지 여부
 	// false → 상대방 Ready 상태를 UI에 표시하지 않음 (요구사항 1)
 	bool bLocalPressedStart = false;
+
+	// 준비 단계 자동 배치 전송 완료 여부 (타이머 만료 전 자동 제출 중복 방지)
+	bool bAutoSubmittedConfig = false;
 
 	// 디버그 치트키
 	void DebugToggleStructureBoxes();

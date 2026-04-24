@@ -98,3 +98,22 @@ enum class EAOSGameState : uint8 { Preparation, GameRunning, GameEnded };
 1. `.claude/coordination/INTERFACE_CONTRACTS.md`에 변경 요청 추가
 2. `.claude/coordination/CROSS_DOMAIN_REQUESTS.md`에 도메인 간 요청 등록
 3. 해당 담당자와 조율 필요함을 사용자에게 알림
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+**AIController는 DS(서버) 전용 코드** — 클라이언트에는 AI 로직이 존재하지 않습니다.
+
+### 실행 위치
+| 코드 | 실행 위치 |
+|------|-----------|
+| GameMode, AIController, GameState | DS (서버) 전용 |
+| PlayerController UI·위젯·카메라 | 각 클라이언트 |
+| Character/Structure 게임로직 | DS에서 실행, 클라이언트에 리플리케이션 |
+
+### AI 도메인 핵심 규칙
+- `HasAuthority()` = true 에서만 AI 판단/이동/공격 실행
+- `ReceiveDamage()` 등 상태 변경은 서버에서만 호출 → 리플리케이션
+- `DrawDebugLine` 등 시각 디버그는 DS에서 호출해도 렌더 없음 (클라이언트에서 보려면 NetMode 체크)
+- `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음)
+- 웨이포인트/타겟 캐싱은 서버 전용 — 리플리케이션 불필요

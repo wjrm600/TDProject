@@ -115,3 +115,20 @@ $ARGUMENTS
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 문서 작성 시 반드시 반영해야 할 DS 사실
+- **GameMode**: DS 전용 — 클라이언트에서 `GetAuthGameMode()` = null
+- **GameState**: 서버에서 업데이트, 모든 클라이언트로 리플리케이션 (클라이언트 UI용 데이터는 반드시 GameState에)
+- **AIController**: DS에서만 실행 (클라이언트에 AI 인스턴스 없음)
+- **PlayerController**: DS(서버사이드 PC) + 각 클라이언트에 존재 → UI/카메라는 `IsLocalPlayerController()` 가드
+- **Character/Structure**: DS에서 스폰·파괴, 클라이언트로 리플리케이션
+- **디버그 시각화**: `DrawDebugLine` 등은 DS에서 호출해도 렌더 없음 — NetMode 체크 또는 Client RPC 경유
+
+### 아키텍처 문서 작성 시
+- 새 기능의 "실행 위치(서버/클라이언트/양쪽)"를 명시적으로 기술
+- 리플리케이션 다이어그램: Server → GameState → OnRep → Client UI 흐름을 그리기
+- CLAUDE.md의 "Dedicated Server 환경" 섹션과 일관성 유지

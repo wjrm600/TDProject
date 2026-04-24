@@ -16,6 +16,8 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, bTeam1Ready);
 	DOREPLIFETIME(AAOSGameState, bTeam2Ready);
 	DOREPLIFETIME(AAOSGameState, ConnectedCount);
+	DOREPLIFETIME(AAOSGameState, PreparationTimeRemaining);
+	DOREPLIFETIME(AAOSGameState, bIsDraw);
 }
 
 void AAOSGameState::ServerSetCurrentState(EAOSGameState NewState)
@@ -124,4 +126,21 @@ void AAOSGameState::OnRep_ConnectedCount()
 {
 	// 클라이언트: 리플리케이션 수신 시 UI 갱신
 	OnPlayerCountChanged.Broadcast(ConnectedCount);
+}
+
+void AAOSGameState::ServerSetPreparationTime(float Time)
+{
+	if (!HasAuthority()) return;
+	PreparationTimeRemaining = Time;
+}
+
+void AAOSGameState::SetIsDraw(bool bDraw)
+{
+	if (!HasAuthority()) return;
+	bIsDraw = bDraw;
+}
+
+void AAOSGameState::OnRep_IsDraw()
+{
+	// Settlement 표시 시 bIsDraw를 직접 읽으므로 별도 델리게이트 불필요
 }

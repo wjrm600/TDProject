@@ -91,6 +91,18 @@ void UAOSSettlementWidget::SetResult(EAOSTeam WinningTeam)
 	UE_LOG(LogTemp, Warning, TEXT("[Settlement] 결과 표시: %s"), *ResultString);
 }
 
+void UAOSSettlementWidget::SetDraw()
+{
+	if (!ResultText)
+	{
+		return;
+	}
+
+	ResultText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.0f, 1.0f)));
+	ResultText->SetText(FText::FromString(TEXT("무승부\n5초 후 다음 라운드...")));
+	UE_LOG(LogTemp, Warning, TEXT("[Settlement] Draw 표시"));
+}
+
 void UAOSSettlementWidget::OnReturnClicked()
 {
 	UWorld* World = GetWorld();

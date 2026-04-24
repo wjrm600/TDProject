@@ -411,6 +411,56 @@ enum 변경이 필요하면 **반드시 main에 먼저 커밋한 후** 에이전
 - `.claude/coordination/CROSS_DOMAIN_REQUESTS.md` — 도메인 간 변경 요청 추적
 - `.claude/coordination/ASSET_OWNERSHIP.md` — Content/ 에셋 소유권 매핑
 
+## Dedicated Server 환경
+
+이 프로젝트는 **Dedicated Server (DS)** 로 실행됩니다. 모든 에이전트는 아래 사실을 전제로 작업해야 합니다.
+
+### 실행 위치 표
+
+| 시스템 | DS (서버) | 각 클라이언트 |
+|--------|:--------:|:------------:|
+| **GameMode** (`AAOSGameMode`) | ✅ 유일 인스턴스 | ❌ `GetAuthGameMode()` = null |
+| **GameState** (`AAOSGameState`) | ✅ 권한 (Authority) | ✅ 리플리케이션된 읽기 전용 복제본 |
+| **AIController** (`AAOSAIController`) | ✅ 모든 AI 인스턴스 | ❌ 없음 |
+| **PlayerController** (`AAOSPlayerController`) | ✅ 각 접속자의 서버사이드 PC | ✅ 로컬 PC (LocalPlayerController) |
+| **Character/Structure** | ✅ 스폰/파괴 권한 | ✅ 리플리케이션된 복제본 |
+| **UI 위젯·카메라** | ❌ 생성 금지 | ✅ `IsLocalPlayerController()` 블록 내에서만 |
+| **VFX/사운드/머티리얼 렌더** | ❌ 렌더 파이프라인 없음 | ✅ 시각/청각 출력 |
+
+### 핵심 규칙
+
+1. **`HasAuthority()` 가드** — 상태 변경(HP, 스폰, 파괴, 라운드 전환 등)은 반드시 서버에서만 실행
+2. **`IsLocalPlayerController()` 가드** — 모든 `CreateWidget` / `AddToViewport` / 카메라 생성 앞에 필수
+3. **`GetAuthGameMode()` 사용 금지 (클라이언트 로직)** — 클라이언트는 null을 받으므로 **GameState** 경유
+4. **디버그 출력**: `GEngine->AddOnScreenDebugMessage()`, `DrawDebugLine()` 등은 DS에서 렌더 없음 → NetMode 체크 또는 클라이언트 RPC 경유
+5. **리플리케이션 패턴**: `UPROPERTY(ReplicatedUsing = OnRep_*)` + `DOREPLIFETIME(...)` + `OnRep_*()` 콜백 세트
+6. **클라 → 서버 요청**: `UFUNCTION(Server, Reliable)` + `Server_*_Implementation`
+7. **서버 → 모든 클라 방송**: `UFUNCTION(NetMulticast, Reliable)` 또는 Replicated 프로퍼티 + OnRep
+
+### 클라이언트 UI가 서버 상태를 읽는 흐름
+
+```
+[서버] GameMode 상태 변경
+   ↓
+[서버] GameState::ServerSet*() → Replicated 프로퍼티 갱신
+   ↓
+[네트워크 리플리케이션]
+   ↓
+[클라이언트] GameState::OnRep_*() 콜백
+   ↓
+[클라이언트] Dynamic Multicast Delegate 브로드캐스트
+   ↓
+[클라이언트] PlayerController → Widget::UpdateXxx()
+```
+
+**안티패턴**: 클라이언트 코드에서 `GetWorld()->GetAuthGameMode<AAOSGameMode>()->GetCurrentRound()` — 클라이언트에서 null crash.
+**올바른 패턴**: `GetWorld()->GetGameState<AAOSGameState>()->GetCurrentRound()`
+
+### PIE 테스트
+
+- 반드시 **Play As Dedicated Server** 또는 Listen Server 2-Client 모드로 테스트
+- 단일 프로세스(Single Process)는 DS 환경을 정확히 재현하지 못함
+
 ## Language Notes
 
 - **User messages**: Often in English asking for Korean translations

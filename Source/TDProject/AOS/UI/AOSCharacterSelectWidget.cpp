@@ -1,4 +1,5 @@
 #include "AOSCharacterSelectWidget.h"
+#include "AOSCharacterDragDropOperation.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
@@ -8,13 +9,212 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
-#include "Components/Spacer.h"
+#include "Components/WrapBox.h"
+#include "Components/WrapBoxSlot.h"
+#include "Components/Border.h"
+#include "Components/Image.h"
+
+// ─────────────────────────────────────────────────────────────
+// UAOSLaneSlotWidget
+// ─────────────────────────────────────────────────────────────
+
+void UAOSLaneSlotWidget::BuildSlotUI(UWidgetTree* /*unused*/)
+{
+	// 이 위젯 자신의 WidgetTree를 사용하여 내부 UI 구성
+	SlotBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
+		*FString::Printf(TEXT("SlotBorder_L%d_S%d"), (int32)OwnerLane, SlotIndex));
+	SlotBorder->SetBrushColor(FLinearColor(0.1f, 0.1f, 0.15f, 0.9f));
+	SlotBorder->SetPadding(FMargin(14.0f, 22.0f));
+	WidgetTree->RootWidget = SlotBorder;
+
+	UHorizontalBox* InnerHBox = WidgetTree->ConstructWidget<UHorizontalBox>(
+		UHorizontalBox::StaticClass(),
+		*FString::Printf(TEXT("SlotHBox_L%d_S%d"), (int32)OwnerLane, SlotIndex));
+	SlotBorder->SetContent(InnerHBox);
+
+	// 캐릭터 이름 텍스트
+	SlotNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
+		*FString::Printf(TEXT("SlotName_L%d_S%d"), (int32)OwnerLane, SlotIndex));
+	SlotNameText->SetText(FText::FromString(TEXT("[ 비어있음 ]")));
+	FSlateFontInfo SlotFont = SlotNameText->GetFont();
+	SlotFont.Size = 16;
+	SlotNameText->SetFont(SlotFont);
+	UHorizontalBoxSlot* NameHSlot = InnerHBox->AddChildToHorizontalBox(SlotNameText);
+	NameHSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	NameHSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+
+	// X 버튼 (슬롯 클리어)
+	ClearButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),
+		*FString::Printf(TEXT("ClearBtn_L%d_S%d"), (int32)OwnerLane, SlotIndex));
+	ClearButton->SetVisibility(ESlateVisibility::Collapsed);
+	UHorizontalBoxSlot* ClearHSlot = InnerHBox->AddChildToHorizontalBox(ClearButton);
+	ClearHSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+	ClearHSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+	ClearHSlot->SetPadding(FMargin(4.0f, 0, 0, 0));
+
+	UTextBlock* ClearText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
+		*FString::Printf(TEXT("ClearText_L%d_S%d"), (int32)OwnerLane, SlotIndex));
+	ClearText->SetText(FText::FromString(TEXT(" X ")));
+	FSlateFontInfo ClearFont = ClearText->GetFont();
+	ClearFont.Size = 14;
+	ClearText->SetFont(ClearFont);
+	ClearButton->AddChild(ClearText);
+	ClearButton->OnClicked.AddDynamic(this, &UAOSLaneSlotWidget::OnClearButtonClicked);
+}
+
+void UAOSLaneSlotWidget::SetAssigned(TSubclassOf<AAOSCharacter> InClass, const FText& InName)
+{
+	AssignedClass = InClass;
+	if (SlotNameText) SlotNameText->SetText(InName);
+	if (ClearButton) ClearButton->SetVisibility(ESlateVisibility::Visible);
+	if (SlotBorder) SlotBorder->SetBrushColor(FLinearColor(0.05f, 0.25f, 0.05f, 0.9f));
+}
+
+void UAOSLaneSlotWidget::ClearAssignment()
+{
+	AssignedClass = nullptr;
+	if (SlotNameText) SlotNameText->SetText(FText::FromString(TEXT("[ 비어있음 ]")));
+	if (ClearButton) ClearButton->SetVisibility(ESlateVisibility::Collapsed);
+	if (SlotBorder) SlotBorder->SetBrushColor(FLinearColor(0.1f, 0.1f, 0.15f, 0.9f));
+}
+
+void UAOSLaneSlotWidget::OnClearButtonClicked()
+{
+	if (OwnerSelectWidget) OwnerSelectWidget->HandleClearSlot(OwnerLane, SlotIndex);
+}
+
+FReply UAOSLaneSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent)
+{
+	if (AssignedClass && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void UAOSLaneSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
+{
+	if (!AssignedClass) return;
+
+	UAOSCharacterDragDropOperation* Op = NewObject<UAOSCharacterDragDropOperation>();
+	Op->CharacterClass = AssignedClass;
+	Op->bFromLaneSlot = true;
+	Op->SourceLane = OwnerLane;
+	Op->SourceSlotIndex = SlotIndex;
+	Op->DefaultDragVisual = this;
+	Op->Pivot = EDragPivot::CenterCenter;
+	OutOperation = Op;
+}
+
+bool UAOSLaneSlotWidget::NativeOnDragOver(const FGeometry& InGeometry,
+	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	if (!Cast<UAOSCharacterDragDropOperation>(InOperation)) return false;
+	if (SlotBorder) SlotBorder->SetBrushColor(FLinearColor(0.1f, 0.4f, 0.1f, 0.95f));
+	return true;
+}
+
+void UAOSLaneSlotWidget::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
+	UDragDropOperation* InOperation)
+{
+	if (SlotBorder)
+	{
+		if (AssignedClass) SlotBorder->SetBrushColor(FLinearColor(0.05f, 0.25f, 0.05f, 0.9f));
+		else               SlotBorder->SetBrushColor(FLinearColor(0.1f, 0.1f, 0.15f, 0.9f));
+	}
+}
+
+bool UAOSLaneSlotWidget::NativeOnDrop(const FGeometry& InGeometry,
+	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	UAOSCharacterDragDropOperation* Op = Cast<UAOSCharacterDragDropOperation>(InOperation);
+	if (!Op || !OwnerSelectWidget) return false;
+
+	OwnerSelectWidget->HandleDropOnLaneSlot(OwnerLane, SlotIndex, Op);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────
+// UAOSCharacterCardWidget
+// ─────────────────────────────────────────────────────────────
+
+void UAOSCharacterCardWidget::SetupCard(int32 InIdx, TSubclassOf<AAOSCharacter> InClass,
+	const FText& InName, UTexture2D* InPortrait,
+	UAOSCharacterSelectWidget* InOwner, UWidgetTree* /*unused*/)
+{
+	RosterIndex = InIdx;
+	CharacterClass = InClass;
+	OwnerSelectWidget = InOwner;
+
+	// 이 카드 위젯 자신의 WidgetTree로 내부 UI 구성
+	UBorder* CardBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
+		*FString::Printf(TEXT("CardBorder_%d"), InIdx));
+	CardBorder->SetBrushColor(FLinearColor(0.15f, 0.15f, 0.2f, 0.95f));
+	CardBorder->SetPadding(FMargin(8.0f));
+	WidgetTree->RootWidget = CardBorder;
+
+	UVerticalBox* CardVBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(),
+		*FString::Printf(TEXT("CardVBox_%d"), InIdx));
+	CardBorder->SetContent(CardVBox);
+
+	// 초상화 이미지
+	PortraitImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(),
+		*FString::Printf(TEXT("CardPortrait_%d"), InIdx));
+	PortraitImage->SetDesiredSizeOverride(FVector2D(64.0f, 64.0f));
+	if (InPortrait)
+		PortraitImage->SetBrushFromTexture(InPortrait);
+	else
+		PortraitImage->SetColorAndOpacity(FLinearColor(0.3f, 0.3f, 0.5f, 1.0f));
+	UVerticalBoxSlot* PortraitVSlot = CardVBox->AddChildToVerticalBox(PortraitImage);
+	PortraitVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	PortraitVSlot->SetPadding(FMargin(0, 0, 0, 4));
+
+	// 이름 텍스트
+	NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(),
+		*FString::Printf(TEXT("CardName_%d"), InIdx));
+	const FText DisplayName = InName.IsEmpty()
+		? FText::FromString(FString::Printf(TEXT("캐릭터 %d"), InIdx + 1))
+		: InName;
+	NameText->SetText(DisplayName);
+	FSlateFontInfo NameFont = NameText->GetFont();
+	NameFont.Size = 14;
+	NameText->SetFont(NameFont);
+	NameText->SetJustification(ETextJustify::Center);
+	UVerticalBoxSlot* NameVSlot = CardVBox->AddChildToVerticalBox(NameText);
+	NameVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+}
+
+FReply UAOSCharacterCardWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent)
+{
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void UAOSCharacterCardWidget::NativeOnDragDetected(const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
+{
+	UAOSCharacterDragDropOperation* Op = NewObject<UAOSCharacterDragDropOperation>();
+	Op->CharacterClass = CharacterClass;
+	Op->RosterIndex = RosterIndex;
+	Op->bFromLaneSlot = false;
+	Op->SourceSlotIndex = -1;
+	Op->DefaultDragVisual = this;
+	Op->Pivot = EDragPivot::CenterCenter;
+	OutOperation = Op;
+}
+
+// ─────────────────────────────────────────────────────────────
+// UAOSCharacterSelectWidget
+// ─────────────────────────────────────────────────────────────
 
 bool UAOSCharacterSelectWidget::Initialize()
 {
 	bool bSuccess = Super::Initialize();
 	if (bSuccess)
 	{
+		LaneSlotWidgets.Init(nullptr, 6);
 		BuildUI();
 	}
 	return bSuccess;
@@ -23,179 +223,262 @@ bool UAOSCharacterSelectWidget::Initialize()
 void UAOSCharacterSelectWidget::BuildUI()
 {
 	// Root CanvasPanel
-	UCanvasPanel* RootPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
+	UCanvasPanel* RootPanel = WidgetTree->ConstructWidget<UCanvasPanel>(
+		UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
 	WidgetTree->RootWidget = RootPanel;
 
-	// VerticalBox (centered)
-	UVerticalBox* VBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ContentBox"));
-	UCanvasPanelSlot* VBoxSlot = RootPanel->AddChildToCanvas(VBox);
-	VBoxSlot->SetAnchors(FAnchors(0.5f, 0.5f, 0.5f, 0.5f));
-	VBoxSlot->SetAlignment(FVector2D(0.5f, 0.5f));
-	VBoxSlot->SetAutoSize(true);
+	// ── 전체 화면 불투명 배경 (게임 뷰포트 차단) ──
+	UBorder* BgBorder = WidgetTree->ConstructWidget<UBorder>(
+		UBorder::StaticClass(), TEXT("Background"));
+	BgBorder->SetBrushColor(FLinearColor(0.04f, 0.04f, 0.09f, 0.93f));
+	BgBorder->SetPadding(FMargin(0));
+	UCanvasPanelSlot* BgSlot = RootPanel->AddChildToCanvas(BgBorder);
+	BgSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
+	BgSlot->SetOffsets(FMargin(0));
+	BgSlot->SetZOrder(-1);
 
-	// Title Text
-	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TitleText"));
+	// 중앙 VerticalBox
+	UVerticalBox* VBox = WidgetTree->ConstructWidget<UVerticalBox>(
+		UVerticalBox::StaticClass(), TEXT("ContentBox"));
+	UCanvasPanelSlot* VBoxSlot = RootPanel->AddChildToCanvas(VBox);
+	VBoxSlot->SetAnchors(FAnchors(0.05f, 0.02f, 0.95f, 0.98f));
+	VBoxSlot->SetOffsets(FMargin(0));
+
+	// 타이틀
+	TitleText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("TitleText"));
 	TitleText->SetText(FText::FromString(TEXT("Round 1 - 캐릭터 배치")));
 	FSlateFontInfo TitleFont = TitleText->GetFont();
-	TitleFont.Size = 36;
+	TitleFont.Size = 32;
 	TitleText->SetFont(TitleFont);
 	TitleText->SetJustification(ETextJustify::Center);
-	UVerticalBoxSlot* TitleSlot = VBox->AddChildToVerticalBox(TitleText);
-	TitleSlot->SetPadding(FMargin(0, 0, 0, 30));
-	TitleSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	UVerticalBoxSlot* TitleVSlot = VBox->AddChildToVerticalBox(TitleText);
+	TitleVSlot->SetPadding(FMargin(0, 0, 0, 16));
+	TitleVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
-	// Separator line (using text)
-	UTextBlock* SepTop = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SepTop"));
-	SepTop->SetText(FText::FromString(TEXT("----------------------------------------")));
-	FSlateFontInfo SepFont = SepTop->GetFont();
-	SepFont.Size = 14;
-	SepTop->SetFont(SepFont);
-	SepTop->SetJustification(ETextJustify::Center);
-	UVerticalBoxSlot* SepTopSlot = VBox->AddChildToVerticalBox(SepTop);
-	SepTopSlot->SetPadding(FMargin(0, 0, 0, 15));
-	SepTopSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	// 준비 타이머 텍스트
+	TimerText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("TimerText"));
+	TimerText->SetText(FText::FromString(TEXT("준비 시간: 30초")));
+	FSlateFontInfo TimerFont = TimerText->GetFont();
+	TimerFont.Size = 24;
+	TimerText->SetFont(TimerFont);
+	TimerText->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.85f, 0.2f, 1.0f)));
+	TimerText->SetJustification(ETextJustify::Center);
+	UVerticalBoxSlot* TimerVSlot = VBox->AddChildToVerticalBox(TimerText);
+	TimerVSlot->SetPadding(FMargin(0, 0, 0, 16));
+	TimerVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
-	// Lane rows
-	CreateLaneRow(VBox, TEXT("Top Lane"), TopLaneCountText, TopMinusButton, TopPlusButton, 0);
-	CreateLaneRow(VBox, TEXT("Mid Lane"), MidLaneCountText, MidMinusButton, MidPlusButton, 1);
-	CreateLaneRow(VBox, TEXT("Bottom Lane"), BottomLaneCountText, BottomMinusButton, BottomPlusButton, 2);
+	// ── 상단: 3개 레인 슬롯 영역 ──
+	UHorizontalBox* UpperPanel = WidgetTree->ConstructWidget<UHorizontalBox>(
+		UHorizontalBox::StaticClass(), TEXT("UpperPanel"));
+	UVerticalBoxSlot* UpperVSlot = VBox->AddChildToVerticalBox(UpperPanel);
+	UpperVSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+	UpperVSlot->SetPadding(FMargin(0, 0, 0, 12));
 
-	// Bind button events
-	TopMinusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnTopMinusClicked);
-	TopPlusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnTopPlusClicked);
-	MidMinusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnMidMinusClicked);
-	MidPlusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnMidPlusClicked);
-	BottomMinusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnBottomMinusClicked);
-	BottomPlusButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnBottomPlusClicked);
+	const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+	const FString LaneNames[] = { TEXT("Top Lane"), TEXT("Mid Lane"), TEXT("Bottom Lane") };
 
-	// Separator line (bottom)
-	UTextBlock* SepBottom = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SepBottom"));
-	SepBottom->SetText(FText::FromString(TEXT("----------------------------------------")));
-	SepBottom->SetFont(SepFont);
-	SepBottom->SetJustification(ETextJustify::Center);
-	UVerticalBoxSlot* SepBottomSlot = VBox->AddChildToVerticalBox(SepBottom);
-	SepBottomSlot->SetPadding(FMargin(0, 15, 0, 10));
-	SepBottomSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	for (int32 L = 0; L < 3; ++L)
+	{
+		UVerticalBox* LaneCol = WidgetTree->ConstructWidget<UVerticalBox>(
+			UVerticalBox::StaticClass(), *FString::Printf(TEXT("LaneCol_%d"), L));
+		UHorizontalBoxSlot* ColHSlot = UpperPanel->AddChildToHorizontalBox(LaneCol);
+		ColHSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		ColHSlot->SetPadding(FMargin(8.0f, 0));
 
-	// Total count text
-	TotalCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TotalCountText"));
-	TotalCountText->SetText(FText::FromString(TEXT("")));
+		// 레인 라벨
+		UTextBlock* LaneLabel = WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(), *FString::Printf(TEXT("LaneLabel_%d"), L));
+		LaneLabel->SetText(FText::FromString(LaneNames[L]));
+		FSlateFontInfo LabelFont = LaneLabel->GetFont();
+		LabelFont.Size = 20;
+		LaneLabel->SetFont(LabelFont);
+		LaneLabel->SetJustification(ETextJustify::Center);
+		UVerticalBoxSlot* LabelVSlot = LaneCol->AddChildToVerticalBox(LaneLabel);
+		LabelVSlot->SetPadding(FMargin(0, 0, 0, 8));
+		LabelVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+
+		// 2개 슬롯 생성
+		for (int32 S = 0; S < 2; ++S)
+		{
+			UAOSLaneSlotWidget* SlotWidget = WidgetTree->ConstructWidget<UAOSLaneSlotWidget>(
+				UAOSLaneSlotWidget::StaticClass(),
+				*FString::Printf(TEXT("LaneSlot_L%d_S%d"), L, S));
+			SlotWidget->OwnerLane = Lanes[L];
+			SlotWidget->SlotIndex = S;
+			SlotWidget->OwnerSelectWidget = this;
+			SlotWidget->BuildSlotUI(WidgetTree); // 슬롯 내부 UI 구성
+
+			LaneSlotWidgets[L * 2 + S] = SlotWidget;
+
+			UVerticalBoxSlot* SlotVSlot = LaneCol->AddChildToVerticalBox(SlotWidget);
+			SlotVSlot->SetPadding(FMargin(0, 4));
+			SlotVSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+		}
+	}
+
+	// 총 배치 표시
+	TotalCountText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("TotalCountText"));
+	TotalCountText->SetText(FText::FromString(TEXT("총 배치: 0/5")));
 	FSlateFontInfo TotalFont = TotalCountText->GetFont();
-	TotalFont.Size = 20;
+	TotalFont.Size = 18;
 	TotalCountText->SetFont(TotalFont);
 	TotalCountText->SetJustification(ETextJustify::Center);
-	UVerticalBoxSlot* TotalSlot = VBox->AddChildToVerticalBox(TotalCountText);
-	TotalSlot->SetPadding(FMargin(0, 0, 0, 20));
-	TotalSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	UVerticalBoxSlot* TotalVSlot = VBox->AddChildToVerticalBox(TotalCountText);
+	TotalVSlot->SetPadding(FMargin(0, 0, 0, 10));
+	TotalVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
-	// Start Round Button
-	StartRoundButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("StartRoundButton"));
-	UVerticalBoxSlot* BtnSlot = VBox->AddChildToVerticalBox(StartRoundButton);
-	BtnSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
-	BtnSlot->SetPadding(FMargin(0, 0, 0, 10));
+	// ── 하단: 캐릭터 카드 그리드 ──
+	CardGrid = WidgetTree->ConstructWidget<UWrapBox>(
+		UWrapBox::StaticClass(), TEXT("CardGrid"));
+	CardGrid->SetInnerSlotPadding(FVector2D(8.0f, 8.0f));
+	UVerticalBoxSlot* GridVSlot = VBox->AddChildToVerticalBox(CardGrid);
+	GridVSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+	GridVSlot->SetPadding(FMargin(0, 8, 0, 12));
+	GridVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
 
-	UTextBlock* BtnText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("StartRoundText"));
+	// 라운드 시작 버튼
+	StartRoundButton = WidgetTree->ConstructWidget<UButton>(
+		UButton::StaticClass(), TEXT("StartRoundButton"));
+	UVerticalBoxSlot* BtnVSlot = VBox->AddChildToVerticalBox(StartRoundButton);
+	BtnVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	BtnVSlot->SetPadding(FMargin(0, 0, 0, 8));
+
+	UTextBlock* BtnText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("StartRoundText"));
 	BtnText->SetText(FText::FromString(TEXT("라운드 시작")));
 	FSlateFontInfo BtnFont = BtnText->GetFont();
-	BtnFont.Size = 24;
+	BtnFont.Size = 22;
 	BtnText->SetFont(BtnFont);
 	StartRoundButton->AddChild(BtnText);
 	StartRoundButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnStartRoundButtonClicked);
 
-	// Set initial display values
-	UpdateCountDisplays();
-	UpdateButtonStates();
-
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] UI 동적 생성 완료"));
 }
 
-UHorizontalBox* UAOSCharacterSelectWidget::CreateLaneRow(UVerticalBox* Parent, const FString& LaneName,
-	UTextBlock*& OutCountText, UButton*& OutMinusButton, UButton*& OutPlusButton, int32 RowIndex)
+void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>& Roster)
 {
-	FString RowName = FString::Printf(TEXT("LaneRow_%d"), RowIndex);
+	CachedRoster = Roster;
 
-	UHorizontalBox* HBox = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), *RowName);
-	UVerticalBoxSlot* RowSlot = Parent->AddChildToVerticalBox(HBox);
-	RowSlot->SetPadding(FMargin(20, 5, 20, 5));
-	RowSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	// 기존 카드 제거
+	for (UAOSCharacterCardWidget* Card : CharacterCardWidgets)
+	{
+		if (Card) Card->RemoveFromParent();
+	}
+	CharacterCardWidgets.Empty();
 
-	// Lane Name Text
-	FString LaneTextName = FString::Printf(TEXT("LaneName_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	UTextBlock* LaneNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), *LaneTextName);
-	LaneNameText->SetText(FText::FromString(LaneName));
-	FSlateFontInfo LaneFont = LaneNameText->GetFont();
-	LaneFont.Size = 20;
-	LaneNameText->SetFont(LaneFont);
-	UHorizontalBoxSlot* LaneNameSlot = HBox->AddChildToHorizontalBox(LaneNameText);
-	LaneNameSlot->SetPadding(FMargin(0, 0, 30, 0));
-	LaneNameSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+	// 슬롯 초기화
+	for (UAOSLaneSlotWidget* LaneSlot : LaneSlotWidgets)
+	{
+		if (LaneSlot) LaneSlot->ClearAssignment();
+	}
+	TopLaneCount = MidLaneCount = BottomLaneCount = 0;
+	RefreshTotalCountDisplay();
 
-	// Count display text
-	FString CountTextName = FString::Printf(TEXT("Count_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	OutCountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), *CountTextName);
-	OutCountText->SetText(FText::FromString(TEXT("2")));
-	FSlateFontInfo CountFont = OutCountText->GetFont();
-	CountFont.Size = 24;
-	OutCountText->SetFont(CountFont);
-	OutCountText->SetJustification(ETextJustify::Center);
-	OutCountText->SetMinDesiredWidth(40.0f);
-	UHorizontalBoxSlot* CountSlot = HBox->AddChildToHorizontalBox(OutCountText);
-	CountSlot->SetPadding(FMargin(0, 0, 15, 0));
-	CountSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+	if (!CardGrid) return;
 
-	// Minus Button [-]
-	FString MinusBtnName = FString::Printf(TEXT("MinusBtn_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	OutMinusButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), *MinusBtnName);
-	UHorizontalBoxSlot* MinusBtnSlot = HBox->AddChildToHorizontalBox(OutMinusButton);
-	MinusBtnSlot->SetPadding(FMargin(0, 0, 5, 0));
-	MinusBtnSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+	// 로스터 카드 생성
+	for (int32 i = 0; i < Roster.Num(); ++i)
+	{
+		UAOSCharacterCardWidget* Card = WidgetTree->ConstructWidget<UAOSCharacterCardWidget>(
+			UAOSCharacterCardWidget::StaticClass(),
+			*FString::Printf(TEXT("CharCard_%d"), i));
+		Card->SetupCard(i, Roster[i].CharacterClass, Roster[i].DisplayName,
+			Roster[i].Portrait, this, WidgetTree);
 
-	FString MinusTextName = FString::Printf(TEXT("MinusText_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	UTextBlock* MinusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), *MinusTextName);
-	MinusText->SetText(FText::FromString(TEXT(" - ")));
-	FSlateFontInfo MinusFont = MinusText->GetFont();
-	MinusFont.Size = 20;
-	MinusText->SetFont(MinusFont);
-	OutMinusButton->AddChild(MinusText);
+		UWrapBoxSlot* WrapSlot = CardGrid->AddChildToWrapBox(Card);
+		if (WrapSlot) WrapSlot->SetPadding(FMargin(4.0f));
 
-	// Plus Button [+]
-	FString PlusBtnName = FString::Printf(TEXT("PlusBtn_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	OutPlusButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), *PlusBtnName);
-	UHorizontalBoxSlot* PlusBtnSlot = HBox->AddChildToHorizontalBox(OutPlusButton);
-	PlusBtnSlot->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+		CharacterCardWidgets.Add(Card);
+	}
 
-	FString PlusTextName = FString::Printf(TEXT("PlusText_%s"), *LaneName.Replace(TEXT(" "), TEXT("")));
-	UTextBlock* PlusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), *PlusTextName);
-	PlusText->SetText(FText::FromString(TEXT(" + ")));
-	FSlateFontInfo PlusFont = PlusText->GetFont();
-	PlusFont.Size = 20;
-	PlusText->SetFont(PlusFont);
-	OutPlusButton->AddChild(PlusText);
-
-	return HBox;
+	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 로스터 초기화 완료 (%d개 캐릭터)"), Roster.Num());
 }
 
-void UAOSCharacterSelectWidget::SetRoundNumber(int32 RoundNum)
+void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIndex,
+	UAOSCharacterDragDropOperation* Op)
 {
-	if (TitleText)
+	if (!Op) return;
+
+	int32 L = static_cast<int32>(Lane);
+	int32 FlatIdx = L * 2 + SlotIndex;
+	if (FlatIdx < 0 || FlatIdx >= LaneSlotWidgets.Num()) return;
+
+	UAOSLaneSlotWidget* TargetSlot = LaneSlotWidgets[FlatIdx];
+	if (!TargetSlot) return;
+
+	bool bTargetWasEmpty = (TargetSlot->GetAssignedClass() == nullptr);
+
+	// 빈 슬롯 + 총합 5명 초과면 거부
+	if (bTargetWasEmpty && GetTotalAssignedCount() >= MaxTotalCount)
 	{
-		FString Title = FString::Printf(TEXT("Round %d - 캐릭터 배치"), RoundNum);
-		TitleText->SetText(FText::FromString(Title));
+		UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 총 배치 수 초과 — 드롭 거부"));
+		return;
 	}
+
+	// 소스가 레인 슬롯이었다면 원래 슬롯 비우기
+	if (Op->bFromLaneSlot)
+	{
+		int32 SrcFlatIdx = static_cast<int32>(Op->SourceLane) * 2 + Op->SourceSlotIndex;
+		if (SrcFlatIdx >= 0 && SrcFlatIdx < LaneSlotWidgets.Num())
+		{
+			if (UAOSLaneSlotWidget* SrcSlot = LaneSlotWidgets[SrcFlatIdx])
+				SrcSlot->ClearAssignment();
+		}
+	}
+
+	// 대상 슬롯에 배정
+	FText CharName = FText::FromString(TEXT("캐릭터"));
+	if (Op->RosterIndex >= 0 && Op->RosterIndex < CachedRoster.Num())
+		CharName = CachedRoster[Op->RosterIndex].DisplayName;
+
+	TargetSlot->SetAssigned(Op->CharacterClass, CharName);
+
+	UpdateCountsFromSlots();
+	RefreshTotalCountDisplay();
+}
+
+void UAOSCharacterSelectWidget::HandleClearSlot(EAOSLane Lane, int32 SlotIndex)
+{
+	int32 FlatIdx = static_cast<int32>(Lane) * 2 + SlotIndex;
+	if (FlatIdx >= 0 && FlatIdx < LaneSlotWidgets.Num())
+	{
+		if (UAOSLaneSlotWidget* SlotPtr = LaneSlotWidgets[FlatIdx])
+			SlotPtr->ClearAssignment();
+	}
+	UpdateCountsFromSlots();
+	RefreshTotalCountDisplay();
+}
+
+TArray<TSubclassOf<AAOSCharacter>> UAOSCharacterSelectWidget::GetLaneClasses(EAOSLane Lane) const
+{
+	TArray<TSubclassOf<AAOSCharacter>> Result;
+	int32 L = static_cast<int32>(Lane);
+	for (int32 S = 0; S < 2; ++S)
+	{
+		int32 FlatIdx = L * 2 + S;
+		if (FlatIdx < LaneSlotWidgets.Num())
+		{
+			if (const UAOSLaneSlotWidget* SlotPtr = LaneSlotWidgets[FlatIdx])
+			{
+				if (TSubclassOf<AAOSCharacter> Cls = SlotPtr->GetAssignedClass())
+					Result.Add(Cls);
+			}
+		}
+	}
+	return Result;
 }
 
 int32 UAOSCharacterSelectWidget::GetLaneCount(EAOSLane Lane) const
 {
 	switch (Lane)
 	{
-	case EAOSLane::Top:
-		return TopLaneCount;
-	case EAOSLane::Mid:
-		return MidLaneCount;
-	case EAOSLane::Bottom:
-		return BottomLaneCount;
-	default:
-		return 0;
+	case EAOSLane::Top:    return TopLaneCount;
+	case EAOSLane::Mid:    return MidLaneCount;
+	case EAOSLane::Bottom: return BottomLaneCount;
+	default: return 0;
 	}
 }
 
@@ -206,129 +489,38 @@ int32 UAOSCharacterSelectWidget::GetTotalCount() const
 
 void UAOSCharacterSelectWidget::SetLaneCount(EAOSLane Lane, int32 Count)
 {
-	Count = FMath::Clamp(Count, MinPerLane, MaxPerLane);
-
+	Count = FMath::Clamp(Count, 0, MaxPerLane);
 	switch (Lane)
 	{
-	case EAOSLane::Top:
-		TopLaneCount = Count;
-		break;
-	case EAOSLane::Mid:
-		MidLaneCount = Count;
-		break;
-	case EAOSLane::Bottom:
-		BottomLaneCount = Count;
-		break;
+	case EAOSLane::Top:    TopLaneCount = Count; break;
+	case EAOSLane::Mid:    MidLaneCount = Count; break;
+	case EAOSLane::Bottom: BottomLaneCount = Count; break;
 	}
-
-	UpdateCountDisplays();
-	UpdateButtonStates();
+	RefreshTotalCountDisplay();
 }
 
-void UAOSCharacterSelectWidget::ChangeLaneCount(EAOSLane Lane, int32 Delta)
+void UAOSCharacterSelectWidget::SetRoundNumber(int32 RoundNum)
 {
-	int32 CurrentCount = GetLaneCount(Lane);
-	int32 NewCount = CurrentCount + Delta;
-
-	// 범위 체크 (라인당)
-	if (NewCount < MinPerLane || NewCount > MaxPerLane)
+	if (TitleText)
 	{
-		return;
-	}
-
-	// 총합 체크
-	int32 NewTotal = GetTotalCount() + Delta;
-	if (NewTotal > MaxTotalCount || NewTotal < 0)
-	{
-		return;
-	}
-
-	SetLaneCount(Lane, NewCount);
-}
-
-void UAOSCharacterSelectWidget::UpdateCountDisplays()
-{
-	if (TopLaneCountText)
-	{
-		TopLaneCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), TopLaneCount)));
-	}
-	if (MidLaneCountText)
-	{
-		MidLaneCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), MidLaneCount)));
-	}
-	if (BottomLaneCountText)
-	{
-		BottomLaneCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), BottomLaneCount)));
-	}
-	if (TotalCountText)
-	{
-		FString TotalStr = FString::Printf(TEXT("총 배치: %d/%d"), GetTotalCount(), MaxTotalCount);
-		TotalCountText->SetText(FText::FromString(TotalStr));
+		TitleText->SetText(FText::FromString(
+			FString::Printf(TEXT("Round %d - 캐릭터 배치"), RoundNum)));
 	}
 }
 
-void UAOSCharacterSelectWidget::UpdateButtonStates()
+void UAOSCharacterSelectWidget::UpdatePreparationTimer(float RemainingSeconds)
 {
-	int32 Total = GetTotalCount();
-	bool bAtMax = (Total >= MaxTotalCount);
+	if (!TimerText) return;
 
-	// Minus buttons: disabled if lane count is at minimum
-	if (TopMinusButton)
-	{
-		TopMinusButton->SetIsEnabled(TopLaneCount > MinPerLane);
-	}
-	if (MidMinusButton)
-	{
-		MidMinusButton->SetIsEnabled(MidLaneCount > MinPerLane);
-	}
-	if (BottomMinusButton)
-	{
-		BottomMinusButton->SetIsEnabled(BottomLaneCount > MinPerLane);
-	}
+	int32 Seconds = FMath::CeilToInt(RemainingSeconds);
+	TimerText->SetText(FText::FromString(
+		FString::Printf(TEXT("준비 시간: %d초"), Seconds)));
 
-	// Plus buttons: disabled if lane count is at max or total is at max
-	if (TopPlusButton)
-	{
-		TopPlusButton->SetIsEnabled(!bAtMax && TopLaneCount < MaxPerLane);
-	}
-	if (MidPlusButton)
-	{
-		MidPlusButton->SetIsEnabled(!bAtMax && MidLaneCount < MaxPerLane);
-	}
-	if (BottomPlusButton)
-	{
-		BottomPlusButton->SetIsEnabled(!bAtMax && BottomLaneCount < MaxPerLane);
-	}
-}
-
-void UAOSCharacterSelectWidget::OnTopMinusClicked()
-{
-	ChangeLaneCount(EAOSLane::Top, -1);
-}
-
-void UAOSCharacterSelectWidget::OnTopPlusClicked()
-{
-	ChangeLaneCount(EAOSLane::Top, 1);
-}
-
-void UAOSCharacterSelectWidget::OnMidMinusClicked()
-{
-	ChangeLaneCount(EAOSLane::Mid, -1);
-}
-
-void UAOSCharacterSelectWidget::OnMidPlusClicked()
-{
-	ChangeLaneCount(EAOSLane::Mid, 1);
-}
-
-void UAOSCharacterSelectWidget::OnBottomMinusClicked()
-{
-	ChangeLaneCount(EAOSLane::Bottom, -1);
-}
-
-void UAOSCharacterSelectWidget::OnBottomPlusClicked()
-{
-	ChangeLaneCount(EAOSLane::Bottom, 1);
+	// 10초 이하면 빨간색으로 강조
+	FLinearColor Color = (Seconds <= 10)
+		? FLinearColor(1.0f, 0.2f, 0.2f, 1.0f)
+		: FLinearColor(1.0f, 0.85f, 0.2f, 1.0f);
+	TimerText->SetColorAndOpacity(FSlateColor(Color));
 }
 
 void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
@@ -336,4 +528,39 @@ void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 라운드 시작 클릭 (Top:%d, Mid:%d, Bottom:%d, Total:%d)"),
 		TopLaneCount, MidLaneCount, BottomLaneCount, GetTotalCount());
 	OnStartRoundClicked.Broadcast();
+}
+
+void UAOSCharacterSelectWidget::UpdateCountsFromSlots()
+{
+	TopLaneCount = MidLaneCount = BottomLaneCount = 0;
+	for (int32 S = 0; S < 2; ++S)
+	{
+		if (LaneSlotWidgets.IsValidIndex(0 * 2 + S) && LaneSlotWidgets[0 * 2 + S] && LaneSlotWidgets[0 * 2 + S]->GetAssignedClass()) ++TopLaneCount;
+		if (LaneSlotWidgets.IsValidIndex(1 * 2 + S) && LaneSlotWidgets[1 * 2 + S] && LaneSlotWidgets[1 * 2 + S]->GetAssignedClass()) ++MidLaneCount;
+		if (LaneSlotWidgets.IsValidIndex(2 * 2 + S) && LaneSlotWidgets[2 * 2 + S] && LaneSlotWidgets[2 * 2 + S]->GetAssignedClass()) ++BottomLaneCount;
+	}
+}
+
+void UAOSCharacterSelectWidget::RefreshLaneSlotDisplay(EAOSLane /*Lane*/, int32 /*SlotIndex*/)
+{
+	// SetAssigned/ClearAssignment에서 직접 갱신하므로 현재 별도 처리 불필요
+}
+
+void UAOSCharacterSelectWidget::RefreshTotalCountDisplay()
+{
+	if (TotalCountText)
+	{
+		TotalCountText->SetText(FText::FromString(
+			FString::Printf(TEXT("총 배치: %d/%d"), GetTotalCount(), MaxTotalCount)));
+	}
+}
+
+int32 UAOSCharacterSelectWidget::GetTotalAssignedCount() const
+{
+	int32 Total = 0;
+	for (const UAOSLaneSlotWidget* LaneSlot : LaneSlotWidgets)
+	{
+		if (LaneSlot && LaneSlot->GetAssignedClass()) ++Total;
+	}
+	return Total;
 }

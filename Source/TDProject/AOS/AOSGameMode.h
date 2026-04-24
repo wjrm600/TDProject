@@ -11,6 +11,30 @@ class AAOSMapManager;
 class AAOSGameState;
 class AAOSPlayerState;
 
+// 레인 배치 계획: TArray 2중 중첩을 UHT가 지원 안 하므로 구조체로 래핑
+USTRUCT()
+struct FAOSLaneDeployPlan
+{
+	GENERATED_BODY()
+	TArray<TSubclassOf<AAOSCharacter>> Classes;
+};
+
+// 에디터에서 등록하는 캐릭터 Blueprint 정보
+USTRUCT(BlueprintType)
+struct FCharacterRosterEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Roster")
+	TSubclassOf<AAOSCharacter> CharacterClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Roster")
+	FText DisplayName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Roster")
+	UTexture2D* Portrait = nullptr;
+};
+
 UENUM(BlueprintType)
 enum class EAOSLane : uint8
 {
@@ -96,9 +120,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Spawn")
 	AAOSSpawnPoint* GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane);
 
-	// RTS용 캐릭터 클래스 (DefaultPawnClass와 분리)
+	// RTS용 캐릭터 클래스 (DefaultPawnClass와 분리, 로스터 미설정 시 폴백)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Spawn")
 	TSubclassOf<AAOSCharacter> CharacterClass;
+
+	// 다수 캐릭터 Blueprint 등록 (에디터에서 설정)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Roster")
+	TArray<FCharacterRosterEntry> CharacterRoster;
+
+	// 로스터 조회
+	UFUNCTION(BlueprintCallable, Category = "AOS|Roster")
+	const TArray<FCharacterRosterEntry>& GetCharacterRoster() const { return CharacterRoster; }
+
+	// 레인 배치 클래스 목록 설정/조회 (신규 API)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void SetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane,
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	const TArray<TSubclassOf<AAOSCharacter>>& GetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane) const;
+
+	// 네트워크 경유 버전
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerState, EAOSLane Lane,
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
 
 	// 구조물 생성 및 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
@@ -117,6 +162,9 @@ public:
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	float GetRemainingTime() const { return RemainingGameTime; }
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	float GetRemainingPreparationTime() const { return PreparationTimeRemaining; }
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	EAOSGameState GetAOSGameState() const { return AOSGameState; }
@@ -142,6 +190,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void TransitionToRoundPreparation();
+
+	// Draw 라운드 처리 — 5초 타이머 후 다음 라운드 준비로 전환
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void HandleDrawRound();
 
 	// 게임 상태 변경 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
@@ -195,6 +247,13 @@ protected:
 	// 라운드 준비 자동 시작 타이머 (30초)
 	FTimerHandle RoundPreparationTimerHandle;
 
+	// Draw 라운드 자동 전환 타이머 (5초 후 다음 라운드 준비)
+	FTimerHandle DrawTransitionHandle;
+
+	// 라운드 준비 남은 시간 (UI 표시용)
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
+	float PreparationTimeRemaining = 30.0f;
+
 	// 팀 별 구조물 참조
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structures")
 	TMap<EAOSTeam, AAOSStructure*> CommandCenters;
@@ -237,6 +296,6 @@ private:
 	void CheckVictoryConditions();
 
 	// 배치 계획 저장 (TMap<EAOSTeam, TMap<>> 은 UHT 미지원이므로 배열로 관리)
-	// DeployPlan[TeamIndex][LaneIndex] = Count
-	int32 DeployPlan[2][3];
+	// DeployPlan[TeamIndex][LaneIndex].Classes = 배치할 캐릭터 클래스 목록
+	FAOSLaneDeployPlan DeployPlan[2][3];
 };

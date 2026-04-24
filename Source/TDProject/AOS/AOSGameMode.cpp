@@ -13,6 +13,10 @@
 
 AAOSGameMode::AAOSGameMode()
 {
+	// Tick 활성화 (준비 단계 타이머 + 라운드 시간 카운트다운 용)
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
 	// PlayerStart에서 자동 생성되는 캐릭터를 방지
 	// DefaultPawnClass를 nullptr로 명시적으로 설정하여 자동 생성 완전히 비활성화
 	DefaultPawnClass = nullptr;
@@ -25,14 +29,8 @@ AAOSGameMode::AAOSGameMode()
 	GameStateClass = AAOSGameState::StaticClass();
 	PlayerStateClass = AAOSPlayerState::StaticClass();
 
-	// 배치 계획 초기화 (기본값: 라인당 2명)
-	for (int32 TeamIdx = 0; TeamIdx < 2; ++TeamIdx)
-	{
-		for (int32 LaneIdx = 0; LaneIdx < 3; ++LaneIdx)
-		{
-			DeployPlan[TeamIdx][LaneIdx] = MaxCharactersPerLane;
-		}
-	}
+	// DeployPlan은 FAOSLaneDeployPlan 구조체 배열 — 기본값은 빈 Classes 배열
+	// InitializeDefaultDeployPlan()에서 TransitionToRoundPreparation 시 채워짐
 }
 
 // Phase 3A: 접속 시 팀 자동 할당
@@ -139,7 +137,22 @@ void AAOSGameMode::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (AOSGameState == EAOSGameState::RoundRunning)
+	if (AOSGameState == EAOSGameState::RoundPreparation)
+	{
+		int32 PrevSecond = FMath::CeilToInt(PreparationTimeRemaining);
+		PreparationTimeRemaining = FMath::Max(0.0f, PreparationTimeRemaining - DeltaTime);
+		int32 CurrSecond = FMath::CeilToInt(PreparationTimeRemaining);
+
+		// 1초 변경 시마다 GameState를 통해 클라이언트로 리플리케이션
+		if (PrevSecond != CurrSecond)
+		{
+			if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+			{
+				AOSGS->ServerSetPreparationTime(PreparationTimeRemaining);
+			}
+		}
+	}
+	else if (AOSGameState == EAOSGameState::RoundRunning)
 	{
 		UpdateGameTime(DeltaTime);
 		CheckVictoryConditions();
@@ -193,15 +206,39 @@ void AAOSGameMode::StartRound()
 	// 게임 시간 초기화
 	RemainingGameTime = GameDuration;
 
-	// RoundRunning 상태로 전이
-	SetGameState(EAOSGameState::RoundRunning);
-
-	// 배치 계획에 따라 캐릭터 생성
+	// 배치 계획에 따라 캐릭터 생성 (먼저 스폰 후 0명 여부 확인)
 	SpawnCharactersForRound();
 
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] ===== 라운드 %d 시작 ====="), CurrentRound);
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] ===== 라운드 %d 시작 시도 ====="), CurrentRound);
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team1: %d명, Team2: %d명 배치"),
 		Team1Characters.Num(), Team2Characters.Num());
+
+	// 양쪽 배치 0명 → Draw 처리 (RoundRunning 진입 안 함)
+	if (Team1Characters.Num() == 0 && Team2Characters.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 배치 0명 → 무승부 처리. 5초 후 다음 라운드 준비."));
+
+		if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+		{
+			AOSGS->SetIsDraw(true);
+		}
+		SetGameState(EAOSGameState::Settlement);
+
+		GetWorldTimerManager().SetTimer(DrawTransitionHandle, this, &AAOSGameMode::HandleDrawRound, 5.0f, false);
+		return;
+	}
+
+	// 정상 라운드 시작
+	SetGameState(EAOSGameState::RoundRunning);
+}
+
+void AAOSGameMode::HandleDrawRound()
+{
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->SetIsDraw(false);
+	}
+	TransitionToRoundPreparation();
 }
 
 void AAOSGameMode::EndRound()
@@ -305,38 +342,87 @@ int32 AAOSGameMode::GetTotalDeployCount(EAOSTeam Team) const
 	return Total;
 }
 
-// 내부 배치 계획 접근 함수
+// 내부 배치 계획 접근 함수 (하위 호환: Count 기반)
 void AAOSGameMode::SetDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count)
 {
-	int32 TeamIdx = (Team == EAOSTeam::Team1) ? 0 : 1;
-	int32 LaneIdx = static_cast<int32>(Lane);
-	if (LaneIdx >= 0 && LaneIdx < 3)
-	{
-		DeployPlan[TeamIdx][LaneIdx] = Count;
-	}
+	int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 L = static_cast<int32>(Lane);
+	if (L < 0 || L >= 3) return;
+
+	TSubclassOf<AAOSCharacter> FB =
+		(CharacterRoster.Num() > 0) ? CharacterRoster[0].CharacterClass : CharacterClass;
+
+	DeployPlan[T][L].Classes.SetNum(Count);
+	for (auto& Cls : DeployPlan[T][L].Classes)
+		if (!Cls) Cls = FB;
 }
 
 int32 AAOSGameMode::GetDeployCount(EAOSTeam Team, EAOSLane Lane) const
 {
-	int32 TeamIdx = (Team == EAOSTeam::Team1) ? 0 : 1;
-	int32 LaneIdx = static_cast<int32>(Lane);
-	if (LaneIdx >= 0 && LaneIdx < 3)
-	{
-		return DeployPlan[TeamIdx][LaneIdx];
-	}
-	return 0;
+	int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 L = static_cast<int32>(Lane);
+	return (L >= 0 && L < 3) ? DeployPlan[T][L].Classes.Num() : 0;
 }
 
-// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)
+// 기본 배치 계획 초기화 (로스터 첫 번째 캐릭터 또는 폴백으로 Top2/Mid2/Bottom1)
 void AAOSGameMode::InitializeDefaultDeployPlan()
 {
-	for (int32 TeamIdx = 0; TeamIdx < 2; ++TeamIdx)
+	TSubclassOf<AAOSCharacter> DefaultClass =
+		(CharacterRoster.Num() > 0) ? CharacterRoster[0].CharacterClass : CharacterClass;
+
+	for (int32 T = 0; T < 2; ++T)
 	{
-		for (int32 LaneIdx = 0; LaneIdx < 3; ++LaneIdx)
-		{
-			DeployPlan[TeamIdx][LaneIdx] = MaxCharactersPerLane;
-		}
+		for (int32 L = 0; L < 3; ++L)
+			DeployPlan[T][L].Classes.Empty();
+
+		// 기본: Top 2, Mid 2, Bottom 1
+		DeployPlan[T][0].Classes = { DefaultClass, DefaultClass };
+		DeployPlan[T][1].Classes = { DefaultClass, DefaultClass };
+		DeployPlan[T][2].Classes = { DefaultClass };
 	}
+}
+
+// 레인 배치 클래스 목록 설정 (신규 API)
+void AAOSGameMode::SetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane,
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+{
+	if (!HasAuthority()) return;
+	int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 L = static_cast<int32>(Lane);
+	if (L < 0 || L >= 3) return;
+
+	DeployPlan[T][L].Classes.Empty();
+	for (int32 i = 0; i < FMath::Min(Classes.Num(), MaxCharactersPerLane); ++i)
+		if (Classes[i]) DeployPlan[T][L].Classes.Add(Classes[i]);
+}
+
+const TArray<TSubclassOf<AAOSCharacter>>& AAOSGameMode::GetLaneDeployClasses(
+	EAOSTeam Team, EAOSLane Lane) const
+{
+	static TArray<TSubclassOf<AAOSCharacter>> Empty;
+	int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	int32 L = static_cast<int32>(Lane);
+	return (L >= 0 && L < 3) ? DeployPlan[T][L].Classes : Empty;
+}
+
+void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerState,
+	EAOSLane Lane, const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+{
+	if (!HasAuthority() || !PlayerState) return;
+	if (AOSGameState != EAOSGameState::RoundPreparation) return;
+
+	int32 T = (PlayerState->GetTeam() == EAOSTeam::Team1) ? 0 : 1;
+	int32 NewCount = FMath::Min(Classes.Num(), MaxCharactersPerLane);
+
+	// 총합 5명 초과 방지
+	int32 Others = 0;
+	for (int32 OtherL = 0; OtherL < 3; ++OtherL)
+		if (OtherL != static_cast<int32>(Lane))
+			Others += DeployPlan[T][OtherL].Classes.Num();
+	if (Others + NewCount > 5) return;
+
+	SetLaneDeployClasses(PlayerState->GetTeam(), Lane, Classes);
+	PlayerState->ServerSetDeployCount(Lane, NewCount);
 }
 
 void AAOSGameMode::DeployCharacters(EAOSTeam Team, const TArray<EAOSLane>& LaneAssignments)
@@ -400,28 +486,12 @@ AAOSSpawnPoint* AAOSGameMode::GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane)
 // 라운드 배치 계획에 따라 캐릭터 생성
 void AAOSGameMode::SpawnCharactersForRound()
 {
-	if (!CharacterClass)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[GameMode] CharacterClass 미설정! GameMode 블루프린트에서 설정해주세요."));
-		return;
-	}
-
-	if (!CharacterClass->IsChildOf(AAOSCharacter::StaticClass()))
-	{
-		UE_LOG(LogTemp, Error, TEXT("[GameMode] CharacterClass가 AAOSCharacter 파생이 아닙니다!"));
-		return;
-	}
-
 	// 스폰 포인트의 Occupied 상태 초기화
 	for (AAOSSpawnPoint* SP : AllSpawnPoints)
 	{
-		if (SP)
-		{
-			SP->ReleaseCharacter();
-		}
+		if (SP) SP->ReleaseCharacter();
 	}
 
-	// 각 팀, 각 라인에 대해 배치 계획에 따라 캐릭터 생성
 	const EAOSTeam Teams[] = { EAOSTeam::Team1, EAOSTeam::Team2 };
 	const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
 
@@ -429,12 +499,11 @@ void AAOSGameMode::SpawnCharactersForRound()
 	{
 		for (EAOSLane CurrentLane : Lanes)
 		{
-			int32 PlannedCount = GetDeployCount(CurrentTeam, CurrentLane);
+			int32 T = (CurrentTeam == EAOSTeam::Team1) ? 0 : 1;
+			int32 L = static_cast<int32>(CurrentLane);
+			const TArray<TSubclassOf<AAOSCharacter>>& PlannedClasses = DeployPlan[T][L].Classes;
 
-			if (PlannedCount <= 0)
-			{
-				continue;
-			}
+			if (PlannedClasses.Num() == 0) continue;
 
 			// 해당 팀/라인의 스폰 포인트 수집
 			TArray<AAOSSpawnPoint*> LaneSpawnPoints;
@@ -443,38 +512,34 @@ void AAOSGameMode::SpawnCharactersForRound()
 				for (AAOSSpawnPoint* SP : TeamSpawnPoints[CurrentTeam])
 				{
 					if (SP && SP->GetLane() == CurrentLane)
-					{
 						LaneSpawnPoints.Add(SP);
-					}
 				}
 			}
 
-			// 계획된 수만큼 (스폰 포인트 수 제한 내에서) 캐릭터 생성
-			int32 SpawnCount = FMath::Min(PlannedCount, LaneSpawnPoints.Num());
+			int32 SpawnCount = FMath::Min(PlannedClasses.Num(), LaneSpawnPoints.Num());
 
 			for (int32 i = 0; i < SpawnCount; ++i)
 			{
-				AAOSCharacter* NewCharacter = LaneSpawnPoints[i]->SpawnCharacterAtPoint(CharacterClass);
+				TSubclassOf<AAOSCharacter> ClassToSpawn = PlannedClasses[i];
+				if (!ClassToSpawn) ClassToSpawn = CharacterClass; // 폴백
+				if (!ClassToSpawn) continue;
 
+				AAOSCharacter* NewCharacter = LaneSpawnPoints[i]->SpawnCharacterAtPoint(ClassToSpawn);
 				if (NewCharacter)
 				{
 					if (CurrentTeam == EAOSTeam::Team1)
-					{
 						Team1Characters.Add(NewCharacter);
-					}
 					else
-					{
 						Team2Characters.Add(NewCharacter);
-					}
 				}
 			}
 
-			if (SpawnCount < PlannedCount)
+			if (SpawnCount < PlannedClasses.Num())
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[GameMode] %s %s 라인: 스폰 포인트 부족 (%d/%d)"),
 					CurrentTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
 					CurrentLane == EAOSLane::Top ? TEXT("Top") : CurrentLane == EAOSLane::Mid ? TEXT("Mid") : TEXT("Bottom"),
-					SpawnCount, PlannedCount);
+					SpawnCount, PlannedClasses.Num());
 			}
 		}
 	}
@@ -742,6 +807,31 @@ void AAOSGameMode::TransitionToRoundPreparation()
 
 	RemainingGameTime = GameDuration;
 	SetGameState(EAOSGameState::RoundPreparation);
+
+	// ── 모든 PlayerController에 로스터 RPC 전송 (원격 클라이언트 포함) ──────────────
+	// ShowCharacterSelect()는 IsLocalPlayerController()==true 인 PC에만 바인딩되므로,
+	// 원격 클라이언트의 서버사이드 PC는 OnGameStateChanged가 실행되지 않아
+	// Client_ReceiveCharacterRoster RPC가 전달되지 않는다.
+	// GameMode에서 직접 모든 PC를 순회하여 RPC를 전송하면 이 문제가 해결된다.
+	{
+		const TArray<FCharacterRosterEntry>& Roster = GetCharacterRoster();
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (AAOSPlayerController* PC = Cast<AAOSPlayerController>(It->Get()))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameMode] 로스터 RPC → %s (IsLocal:%d, 로스터:%d개)"),
+					*PC->GetName(), PC->IsLocalPlayerController() ? 1 : 0, Roster.Num());
+				PC->Client_ReceiveCharacterRoster(Roster);
+			}
+		}
+	}
+	// ──────────────────────────────────────────────────────────────────────────────────
+
+	PreparationTimeRemaining = 30.0f;
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetPreparationTime(PreparationTimeRemaining);
+	}
 
 	// 30초 후 자동 라운드 시작 (양쪽이 준비 버튼을 누르지 않아도 자동 시작)
 	GetWorldTimerManager().SetTimer(RoundPreparationTimerHandle, this, &AAOSGameMode::StartRound, 30.0f, false);

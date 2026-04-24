@@ -91,3 +91,27 @@ UPROPERTY(EditAnywhere) 추가/삭제 시:
 1. **UPROPERTY()**: UObject* 배열에 반드시 마킹
 2. **사망 처리**: 반드시 Hide → Disable Collision → Notify → Destroy 순서
 3. **커밋 메시지**: 한국어 제목 + 상세 설명, Co-Authored-By 포함
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+**GameMode는 DS 전용 클래스** — 클라이언트에서 `GetAuthGameMode()`는 항상 null을 반환합니다.
+
+### 실행 위치
+| 코드 | 실행 위치 |
+|------|-----------|
+| **GameMode** | **DS (서버) 전용** — 클라이언트 접근 불가 |
+| GameState | 서버에서 업데이트, 모든 클라이언트로 리플리케이션 |
+| AIController | DS에서만 실행 (클라이언트에 AI 없음) |
+| Character/SpawnPoint | DS에서 스폰·파괴, 클라이언트로 리플리케이션 |
+
+### Character 도메인 핵심 규칙
+- **캐릭터 스폰은 DS 전용** — `SpawnActor<AAOSCharacter>`는 서버에서만 호출
+- `bReplicates = true` + `bReplicateMovement = true` 필수 (Character 기본값)
+- `ReceiveDamage()`, `OnCharacterDeath()` 등 상태 변경은 `HasAuthority()` 가드
+- HP 등 리플리케이션 값: `UPROPERTY(ReplicatedUsing=OnRep_Health)` + `DOREPLIFETIME`
+- **클라이언트는 GameMode에 접근할 수 없음** — 클라이언트가 읽어야 하는 데이터는 반드시 GameState로 옮기기
+- `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음)
+
+### GameState 활용 패턴
+서버에서만 존재하는 GameMode 대신, 모든 참가자가 읽을 수 있는 GameState에 리플리케이션 프로퍼티를 두고 `ServerSet*` / `OnRep_*` 패턴으로 동기화합니다.

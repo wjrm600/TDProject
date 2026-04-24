@@ -102,3 +102,18 @@ $ARGUMENTS
 - BP_Character.MaxHealth: 100 → 120 (사유: 타워 공격에 너무 빨리 사망)
 - BP_Team1Tower.AttackDamage: 20 → 15 (사유: 캐릭터 체력 증가에 맞춤)
 ```
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### Blueprint 프로퍼티와 DS
+- **Blueprint CDO 값**은 DS/클라이언트 모두에 배포됨 → `set_property`로 변경한 값은 빌드/쿠킹 후 양쪽에 반영됨
+- **런타임에 변경된 Actor 프로퍼티**는 리플리케이션 설정(`UPROPERTY(Replicated)`)이 있어야 클라이언트에 전파됨
+- **PIE 단일 프로세스 테스트 시**: Play As Listen Server / Dedicated Server 모드에서 밸런스 값이 정상 동작하는지 확인
+- AIController Blueprint의 감지/공격 범위는 DS에서 사용됨 → 값 변경 후 DS 플레이모드에서 실테스트 필요
+
+### 변경 후 검증 체크리스트
+1. `save_level`로 레벨 저장 (필수)
+2. PIE Dedicated Server 모드로 실행하여 값 적용 확인
+3. 하드코딩 값 발견 시 `CROSS_DOMAIN_REQUESTS.md`에 프로그래머 요청 등록

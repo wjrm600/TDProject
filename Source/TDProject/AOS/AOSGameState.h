@@ -48,11 +48,21 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_ConnectedCount, BlueprintReadOnly, Category = "AOS|Game")
 	int32 ConnectedCount = 0;
 
+	// 라운드 준비 남은 시간 (클라이언트 UI 표시용 — 1초 단위로 갱신)
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "AOS|Game")
+	float PreparationTimeRemaining = 30.0f;
+
+	// Draw 결과 플래그 (양쪽 배치 0명 시 Settlement Draw 표시용)
+	UPROPERTY(ReplicatedUsing = OnRep_IsDraw, BlueprintReadOnly, Category = "AOS|Game")
+	bool bIsDraw = false;
+
 	// 서버 전용: 상태 업데이트 (AOSGameMode에서 호출)
 	void ServerSetCurrentState(EAOSGameState NewState);
 	void ServerSetCurrentRound(int32 NewRound);
 	void ServerSetTeamReady(EAOSTeam Team, bool bReady);
 	void ServerSetConnectedCount(int32 Count);
+	void ServerSetPreparationTime(float Time);
+	void SetIsDraw(bool bDraw);
 
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -92,4 +102,7 @@ protected:
 
 	UFUNCTION()
 	void OnRep_ConnectedCount();
+
+	UFUNCTION()
+	void OnRep_IsDraw();
 };

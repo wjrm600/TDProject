@@ -26,6 +26,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	void SetResult(EAOSTeam WinningTeam);
 
+	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
+	void SetDraw();
+
 protected:
 	UPROPERTY()
 	UTextBlock* ResultText;

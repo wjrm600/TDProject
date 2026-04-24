@@ -111,3 +111,22 @@ $ARGUMENTS
 - ABP 수정 시 기존 스테이트 머신 구조를 먼저 `anim_blueprint_query`로 확인
 - 캐릭터 BP의 AnimClass 변경은 모든 스폰된 캐릭터에 영향 → 신중하게 작업
 - **작업 완료 후 `level_ops` → `save_level`로 레벨 저장 필수** (저장하지 않으면 에디터 재시작 시 변경 소실)
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 애니메이션과 DS의 관계
+- **DS에는 스켈레탈 메시 렌더 없음** — 애니메이션의 **시각적** 결과물은 DS에서 보이지 않음
+- **ABP는 DS에서도 실행됨** — `EventBlueprintUpdateAnimation`은 매 프레임 호출 (최적화 필요)
+- **몽타주 재생 + 리플리케이션**: 서버에서 `PlayMontage` 호출 시 Character의 `AnimReplication`이 자동으로 동기화
+- **AnimNotify**:
+  - 게임플레이 영향 (데미지, 사망 완료 등) → 서버에서만 실행되어야 함 (`HasAuthority()` 가드)
+  - VFX/사운드 → 클라이언트 전용 (`NM_DedicatedServer` 아닐 때만)
+- **테스트**: PIE Dedicated Server 모드에서 실행하여 서버/클라 각각 애니메이션 정상 동작 확인
+
+### 아트-anim 검증 워크플로
+1. 에디터에서 ABP 수정 후 `save_level`
+2. PIE Dedicated Server 2인 모드 실행
+3. 클라이언트 창에서 애니메이션 정상 재생 확인 (서버 창엔 메시 없음)
+4. `capture_viewport`로 클라이언트 시점 스크린샷 검증

@@ -81,3 +81,24 @@ $ARGUMENTS
 - `AGENT_STATUS.md`에 작업 시작/완료 기록
 - 새 VFX 네이밍: `NS_AOS_[용도]` (예: `NS_AOS_TowerAttack`)
 - 새 애니메이션 BP 네이밍: `ABP_AOS_[용도]` (예: `ABP_AOS_Combat`)
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### VFX와 DS의 관계
+- **DS에는 렌더 파이프라인 없음** — Niagara 파티클은 DS에서 보이지 않음 (리소스 낭비 방지)
+- **VFX 트리거**: 서버에서 상태 변경 → 클라이언트 `OnRep_*` 콜백에서 VFX 재생 (가장 안전)
+- **Multicast RPC**: 이벤트성 VFX는 `NetMulticast` RPC로 모든 클라이언트에 전파 (서버 자체도 실행하므로 DS면 스킵되게 함)
+- **UI 스타일링**: 위젯은 클라이언트 전용 — DS에서 생성되지 않음
+- **중요**: VFX 컴포넌트를 `bAutoActivate = false`로 두고 `OnRep_*` 콜백에서 Activate 하는 패턴 권장
+
+### VFX 트리거 패턴
+```
+서버: HP=0 → bIsDestroyed=true (Replicated) → 클라이언트 OnRep_IsDestroyed → NS_AOS_Destroy 재생
+```
+
+### 검증 워크플로
+1. 에디터에서 VFX 적용 후 `save_level`
+2. PIE Dedicated Server 모드 실행
+3. 클라이언트 창에서 VFX 정상 재생 확인 (서버 창엔 VFX 없어도 정상)

@@ -69,3 +69,34 @@ powershell -Command "& 'C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFil
 | AOSHealthBarWidget.* | character-ui |
 | AOSPlayerController.* | character-ui |
 | Guides/*, CLAUDE.md | docs |
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 빌드 검증 시 확인할 DS 관련 패턴
+빌드 성공 후에도 다음 런타임 위험 패턴을 소스에서 검색하여 리포트:
+
+1. **클라이언트에서 GameMode 접근**
+   - 패턴: `GetAuthGameMode()` 결과를 nullptr 체크 없이 사용
+   - 위험: 클라이언트에서는 항상 null → 크래시
+
+2. **서버사이드 PC에서 위젯 생성**
+   - 패턴: `CreateWidget` / `AddToViewport` 앞에 `IsLocalPlayerController()` 가드 없음
+   - 위험: DS에서 위젯 생성 → 크래시 또는 리소스 누수
+
+3. **DS에서 `AddOnScreenDebugMessage` 호출**
+   - 패턴: `GEngine->AddOnScreenDebugMessage(...)` (NetMode 가드 없음)
+   - 위험: DS는 GEngine 화면 없음 → 의미 없는 호출
+
+4. **리플리케이션 누락**
+   - 패턴: `UPROPERTY(Replicated)` 있지만 `GetLifetimeReplicatedProps`에 `DOREPLIFETIME` 없음
+   - 위험: 값이 클라이언트에 전파되지 않음
+
+5. **Authority 가드 누락**
+   - 패턴: 상태 변경 함수에서 `HasAuthority()` 체크 없음
+   - 위험: 클라이언트에서도 상태 변경 시도 → 리플리케이션 충돌
+
+### 빌드 타겟 확인
+- `TDProject.Target.cs` + `TDProjectServer.Target.cs` 존재 여부 확인
+- DS 빌드: `-Target=TDProjectServer` 옵션으로 별도 빌드 필요

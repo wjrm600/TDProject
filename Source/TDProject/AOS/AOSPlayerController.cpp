@@ -213,6 +213,38 @@ void AAOSPlayerController::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// 준비 단계 타이머 UI 갱신 (GameState 경유 — 클라이언트도 동작)
+	if (CharacterSelectWidget && CharacterSelectWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+		{
+			if (AOSGS->GetCurrentState() == EAOSGameState::RoundPreparation)
+			{
+				const float TimeLeft = AOSGS->PreparationTimeRemaining;
+				CharacterSelectWidget->UpdatePreparationTimer(TimeLeft);
+
+				// 3초 전 자동 배치 전송: 위젯에 캐릭터가 배치된 경우만 전송
+				// (미배치 시 서버 기본값 2,2,1 유지)
+				if (!bAutoSubmittedConfig && TimeLeft < 3.0f)
+				{
+					bAutoSubmittedConfig = true;
+					if (CharacterSelectWidget->GetTotalCount() > 0)
+					{
+						const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+						for (EAOSLane Lane : Lanes)
+						{
+							TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
+							Server_SetLaneDeployClasses(Lane, Classes);
+							Server_SetLaneDeployCount(Lane, Classes.Num());
+						}
+						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 준비 타이머 만료 임박 — 배치 자동 전송 (Total:%d)"),
+							CharacterSelectWidget->GetTotalCount());
+					}
+				}
+			}
+		}
+	}
+
 	// 카메라 이동 (수평 방향 기준)
 	if (RTSCamera && (CameraMoveForward != 0.0f || CameraMoveRight != 0.0f))
 	{
@@ -497,7 +529,18 @@ void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 
 	if (SettlementWidget)
 	{
-		SettlementWidget->SetResult(WinningTeam);
+		AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>();
+		if (AOSGS && AOSGS->bIsDraw)
+		{
+			SettlementWidget->SetDraw();
+			UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 표시 (무승부)"));
+		}
+		else
+		{
+			SettlementWidget->SetResult(WinningTeam);
+			UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 표시 (승리: Team%d)"),
+				WinningTeam == EAOSTeam::Team1 ? 1 : 2);
+		}
 		if (!SettlementWidget->IsInViewport())
 		{
 			SettlementWidget->AddToViewport(10);
@@ -505,8 +548,6 @@ void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 		// UI 전용 입력 모드
 		SetInputMode(FInputModeUIOnly());
 		bShowMouseCursor = true;
-		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 정산 화면 표시 (승리: Team%d)"),
-			WinningTeam == EAOSTeam::Team1 ? 1 : 2);
 	}
 }
 
@@ -523,6 +564,15 @@ void AAOSPlayerController::HideSettlement()
 // 캐릭터 선택 UI 표시
 void AAOSPlayerController::ShowCharacterSelect()
 {
+	// ── 로스터 RPC 전송은 AOSGameMode::TransitionToRoundPreparation()에서 처리 ──
+	// GameMode가 모든 PC(원격 클라이언트 서버사이드 PC 포함)를 순회하여
+	// Client_ReceiveCharacterRoster를 전송하므로 여기서 별도 전송 불필요.
+
+	// 로컬 컨트롤러만 위젯 생성/표시
+	if (!IsLocalPlayerController()) return;
+
+	bAutoSubmittedConfig = false;
+
 	if (!CharacterSelectWidget)
 	{
 		UClass* WidgetClass = CharacterSelectWidgetClass;
@@ -532,7 +582,6 @@ void AAOSPlayerController::ShowCharacterSelect()
 		}
 		if (!WidgetClass)
 		{
-			// 위젯 블루프린트가 없으면 C++ 클래스 직접 사용
 			WidgetClass = UAOSCharacterSelectWidget::StaticClass();
 		}
 		if (WidgetClass)
@@ -547,28 +596,36 @@ void AAOSPlayerController::ShowCharacterSelect()
 
 	if (CharacterSelectWidget)
 	{
-		// 기본 배치 초기화 (총 5명: Top 2, Mid 2, Bottom 1)
-		LocalDeployPlan.Empty();
-		LocalDeployPlan.Add(EAOSLane::Top, 2);
-		LocalDeployPlan.Add(EAOSLane::Mid, 2);
-		LocalDeployPlan.Add(EAOSLane::Bottom, 1);
-
-		CharacterSelectWidget->SetLaneCount(EAOSLane::Top, 2);
-		CharacterSelectWidget->SetLaneCount(EAOSLane::Mid, 2);
-		CharacterSelectWidget->SetLaneCount(EAOSLane::Bottom, 1);
-
-		// 기본 배치를 즉시 서버에 동기화 (30초 자동 시작 시에도 위젯 표시값이 반영되도록)
-		for (auto& Pair : LocalDeployPlan)
-		{
-			Server_SetLaneDeployCount(Pair.Key, Pair.Value);
-		}
-
+		// AddToViewport 먼저 → Slate가 Initialize() → BuildUI() → CardGrid 생성
 		if (!CharacterSelectWidget->IsInViewport())
 		{
 			CharacterSelectWidget->AddToViewport(10);
 		}
 		CharacterSelectWidget->SetVisibility(ESlateVisibility::Visible);
-		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 캐릭터 선택 UI 표시"));
+
+		// 라운드 번호 표시 (준비 중인 라운드 = 완료된 라운드 + 1)
+		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+		{
+			CharacterSelectWidget->SetRoundNumber(AOSGS->GetCurrentRound() + 1);
+		}
+
+		// 이미 캐시된 로스터가 있으면 (서버이거나 RPC가 먼저 도착한 경우) 즉시 표시
+		CharacterSelectWidget->InitializeWithRoster(CachedCharacterRoster);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 캐릭터 선택 UI 표시 (로스터: %d개)"),
+			CachedCharacterRoster.Num());
+	}
+}
+
+void AAOSPlayerController::Client_ReceiveCharacterRoster_Implementation(
+	const TArray<FCharacterRosterEntry>& Roster)
+{
+	CachedCharacterRoster = Roster;
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 클라이언트 로스터 수신: %d개"), Roster.Num());
+
+	// 위젯이 존재하면 즉시 갱신 (가시성 여부 무관 — 타이밍 이슈 방지)
+	if (IsValid(CharacterSelectWidget))
+	{
+		CharacterSelectWidget->InitializeWithRoster(CachedCharacterRoster);
 	}
 }
 
@@ -583,37 +640,30 @@ void AAOSPlayerController::HideCharacterSelect()
 }
 
 // 캐릭터 선택 UI에서 라운드 시작 클릭
-// Phase 3A: 클라이언트는 Server RPC로 요청. 서버 권한 확인은 RPC 구현부에서 처리.
 void AAOSPlayerController::OnStartRoundClicked()
 {
 	if (CharacterSelectWidget)
 	{
-		// 위젯에서 현재 라인별 배치 수 읽기
-		LocalDeployPlan.Add(EAOSLane::Top, CharacterSelectWidget->GetLaneCount(EAOSLane::Top));
-		LocalDeployPlan.Add(EAOSLane::Mid, CharacterSelectWidget->GetLaneCount(EAOSLane::Mid));
-		LocalDeployPlan.Add(EAOSLane::Bottom, CharacterSelectWidget->GetLaneCount(EAOSLane::Bottom));
+		const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+		for (EAOSLane Lane : Lanes)
+		{
+			TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
+			Server_SetLaneDeployClasses(Lane, Classes);
+			Server_SetLaneDeployCount(Lane, Classes.Num()); // 하위 호환
+		}
 
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 라운드 시작 요청 (Top:%d, Mid:%d, Bottom:%d)"),
-			LocalDeployPlan[EAOSLane::Top],
-			LocalDeployPlan[EAOSLane::Mid],
-			LocalDeployPlan[EAOSLane::Bottom]);
+			CharacterSelectWidget->GetLaneCount(EAOSLane::Top),
+			CharacterSelectWidget->GetLaneCount(EAOSLane::Mid),
+			CharacterSelectWidget->GetLaneCount(EAOSLane::Bottom));
 	}
 
-	// Phase 3A: 서버 권한이면 직접 호출, 클라이언트면 RPC 사용
-	// 각 라인별 배치 수를 Server RPC로 전송
-	for (auto& Pair : LocalDeployPlan)
-	{
-		Server_SetLaneDeployCount(Pair.Key, Pair.Value);
-	}
-
-	// 준비 완료 → 서버가 양쪽 준비 확인 후 자동 라운드 시작
 	Server_SetReady(true);
 }
 
-// Phase 3A: Server RPC 구현 - 라인별 배치 수 설정
+// Server RPC 구현 - 라인별 배치 수 설정 (하위 호환)
 bool AAOSPlayerController::Server_SetLaneDeployCount_Validate(EAOSLane Lane, int32 Count)
 {
-	// 라인당 0~2 범위만 허용 (MaxCharactersPerLane)
 	return Count >= 0 && Count <= 2;
 }
 
@@ -629,6 +679,29 @@ void AAOSPlayerController::Server_SetLaneDeployCount_Implementation(EAOSLane Lan
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetLaneDeployCount: GameMode 또는 PlayerState 없음"));
+	}
+}
+
+// Server RPC 구현 - 라인별 배치 클래스 목록 설정
+bool AAOSPlayerController::Server_SetLaneDeployClasses_Validate(EAOSLane Lane,
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+{
+	return Classes.Num() <= 2;
+}
+
+void AAOSPlayerController::Server_SetLaneDeployClasses_Implementation(EAOSLane Lane,
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+{
+	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
+	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
+
+	if (GM && PS)
+	{
+		GM->ServerSetLaneDeployClassesForPlayer(PS, Lane, Classes);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_SetLaneDeployClasses: GameMode 또는 PlayerState 없음"));
 	}
 }
 

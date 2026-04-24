@@ -80,3 +80,37 @@ C++ 로직과 비주얼 스타일 변경이 동시에 필요한 경우 도메인
 2. **Screen Space**: HP 바는 Screen Space 위젯 컴포넌트 사용
 3. **UPROPERTY()**: UObject* 포인터에 반드시 마킹
 4. **커밋 메시지**: 한국어 제목 + 상세 설명, Co-Authored-By 포함
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+**UI 도메인에서 가장 중요한 가드는 `IsLocalPlayerController()`** — DS의 서버사이드 PC에서 위젯을 생성하면 절대 안 됩니다.
+
+### 실행 위치
+| 코드 | 실행 위치 |
+|------|-----------|
+| GameMode, AIController, GameState | DS (서버) 전용 |
+| **PlayerController** | **DS(서버사이드 PC) + 각 클라이언트에 모두 존재** |
+| **위젯/카메라/UI 로직** | **각 클라이언트만** (서버사이드 PC에서 생성 금지) |
+
+### UI 도메인 필수 가드 (위반 시 서버 크래시 가능)
+```cpp
+void AAOSPlayerController::ShowSomeWidget()
+{
+    if (!IsLocalPlayerController()) return;  // 이 가드 없으면 DS에서 CreateWidget 호출됨
+    // ... 위젯 생성 ...
+}
+```
+
+### 핵심 규칙
+- **모든 `CreateWidget` / `AddToViewport` 호출 앞에 `IsLocalPlayerController()` 체크 필수**
+- 카메라(ACameraActor) 생성: 로컬 PC에서만 (`BeginPlay`의 `IsLocalPlayerController()` 블록 안)
+- `GetAuthGameMode()`는 클라이언트에서 null → 클라이언트 UI는 **GameState**에서 데이터 읽기
+- 서버 상태를 UI에 반영하려면: GameMode → GameState(Replicated/OnRep) → PlayerController → Widget
+- 상태 변경 요청(Ready, 배치 등): Client → Server RPC (`Server_*_Implementation`)
+- `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음, 로컬 PC 조건부 호출)
+
+### 올바른 흐름 예시
+1. 서버: `GameMode`가 상태 변경 → `GameState::Server*()` 호출 → Replicated 프로퍼티 갱신
+2. 클라이언트: `GameState::OnRep_*` 콜백 → Dynamic Multicast Delegate 브로드캐스트
+3. `PlayerController`가 델리게이트 수신 → `Widget->UpdateXxx()` 호출

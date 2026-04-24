@@ -95,3 +95,20 @@ LanesInfo[2] = Bottom Lane (동일 구조)
 - MapManager의 `LanesInfo`는 **에디터 설정** → 런타임에 `AllTowers`로 스폰됨
 - 타워 위치 변경 시 `LanesInfo`의 TowerPositions를 수정 (AllTowers는 런타임 자동 생성)
 - 레벨 저장을 잊지 말 것 (`level_ops` 또는 에디터 저장)
+
+## ⚠️ Dedicated Server (DS) 환경
+
+이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+
+### 레벨 액터와 DS
+- **레벨에 배치된 액터**는 DS에서 인스턴스화됨 → `bReplicates = true`면 클라이언트로 전파
+- **MapManager**: DS에서 `BeginPlay` → `SpawnStructures()`로 타워/커맨드센터 스폰 → 모든 클라이언트에 리플리케이션
+- **SpawnPoint**: DS 전용 — 캐릭터 스폰은 서버에서만 발생
+- **카메라/데코레이션용 액터**: 클라이언트 전용이면 `bReplicates = false` 권장
+- **PIE 테스트**: Listen Server 또는 Dedicated Server 모드로 실행하여 리플리케이션 정상 동작 확인
+
+### 레벨 배치 체크리스트
+1. MapManager 액터: `bReplicates = true` 확인
+2. SpawnPoint Team/Lane/Index 설정 정확성
+3. `save_level`로 저장 (필수)
+4. Dedicated Server PIE 모드에서 양팀 스폰/이동 확인
