@@ -22,8 +22,9 @@ AAOSGameMode::AAOSGameMode()
 	DefaultPawnClass = nullptr;
 	PlayerControllerClass = AAOSPlayerController::StaticClass();
 
-	// 기본 캐릭터 클래스 설정 (블루프린트 없이도 동작)
-	CharacterClass = AAOSCharacter::StaticClass();
+	// CharacterClass(폴백)는 의도적으로 nullptr로 둠 — 실제 스폰은 CharacterRoster에서 결정
+	// BP_AOSGameMode에서 CharacterRoster를 비워두면 Roster 미설정 경고 후 스폰 스킵
+	CharacterClass = nullptr;
 
 	// Phase 3A: 리플리케이션용 GameState / PlayerState 클래스 지정
 	GameStateClass = AAOSGameState::StaticClass();
@@ -349,8 +350,14 @@ void AAOSGameMode::SetDeployCount(EAOSTeam Team, EAOSLane Lane, int32 Count)
 	int32 L = static_cast<int32>(Lane);
 	if (L < 0 || L >= 3) return;
 
-	TSubclassOf<AAOSCharacter> FB =
-		(CharacterRoster.Num() > 0) ? CharacterRoster[0].CharacterClass : CharacterClass;
+	// Roster의 첫 번째 유효 클래스 → CharacterClass 순으로 폴백
+	// (Roster가 단일 진실 공급원, CharacterClass는 Roster 미설정 시의 최후 안전망)
+	TSubclassOf<AAOSCharacter> FB = nullptr;
+	for (const FCharacterRosterEntry& Entry : CharacterRoster)
+	{
+		if (Entry.CharacterClass) { FB = Entry.CharacterClass; break; }
+	}
+	if (!FB) FB = CharacterClass;
 
 	DeployPlan[T][L].Classes.SetNum(Count);
 	for (auto& Cls : DeployPlan[T][L].Classes)
@@ -364,21 +371,41 @@ int32 AAOSGameMode::GetDeployCount(EAOSTeam Team, EAOSLane Lane) const
 	return (L >= 0 && L < 3) ? DeployPlan[T][L].Classes.Num() : 0;
 }
 
-// 기본 배치 계획 초기화 (로스터 첫 번째 캐릭터 또는 폴백으로 Top2/Mid2/Bottom1)
+// 기본 배치 계획 초기화 (Roster 첫 번째 유효 캐릭터 → CharacterClass 폴백, Top2/Mid2/Bottom1)
 void AAOSGameMode::InitializeDefaultDeployPlan()
 {
-	TSubclassOf<AAOSCharacter> DefaultClass =
-		(CharacterRoster.Num() > 0) ? CharacterRoster[0].CharacterClass : CharacterClass;
+	// Roster의 첫 번째 유효 클래스를 기본 클래스로 사용
+	// (Roster가 단일 진실 공급원, CharacterClass는 최후 안전망)
+	TSubclassOf<AAOSCharacter> DefaultClass = nullptr;
+	for (const FCharacterRosterEntry& Entry : CharacterRoster)
+	{
+		if (Entry.CharacterClass) { DefaultClass = Entry.CharacterClass; break; }
+	}
+	if (!DefaultClass) DefaultClass = CharacterClass;
+
+	if (!DefaultClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] InitializeDefaultDeployPlan: CharacterRoster와 CharacterClass 모두 미설정 — 기본 배치 계획 비워둠. BP_AOSGameMode의 Roster를 설정하세요."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] InitializeDefaultDeployPlan: 기본 클래스=%s (%s)"),
+			*DefaultClass->GetName(),
+			(CharacterRoster.Num() > 0 && CharacterRoster[0].CharacterClass == DefaultClass) ? TEXT("Roster") : TEXT("CharacterClass 폴백"));
+	}
 
 	for (int32 T = 0; T < 2; ++T)
 	{
 		for (int32 L = 0; L < 3; ++L)
 			DeployPlan[T][L].Classes.Empty();
 
-		// 기본: Top 2, Mid 2, Bottom 1
-		DeployPlan[T][0].Classes = { DefaultClass, DefaultClass };
-		DeployPlan[T][1].Classes = { DefaultClass, DefaultClass };
-		DeployPlan[T][2].Classes = { DefaultClass };
+		if (DefaultClass)
+		{
+			// 기본: Top 2, Mid 2, Bottom 1
+			DeployPlan[T][0].Classes = { DefaultClass, DefaultClass };
+			DeployPlan[T][1].Classes = { DefaultClass, DefaultClass };
+			DeployPlan[T][2].Classes = { DefaultClass };
+		}
 	}
 }
 
@@ -521,8 +548,23 @@ void AAOSGameMode::SpawnCharactersForRound()
 			for (int32 i = 0; i < SpawnCount; ++i)
 			{
 				TSubclassOf<AAOSCharacter> ClassToSpawn = PlannedClasses[i];
-				if (!ClassToSpawn) ClassToSpawn = CharacterClass; // 폴백
-				if (!ClassToSpawn) continue;
+				if (!ClassToSpawn)
+				{
+					// Roster → CharacterClass 폴백 (BP 데이터 보존을 위해 C++ base 클래스는 사용하지 않음)
+					for (const FCharacterRosterEntry& Entry : CharacterRoster)
+					{
+						if (Entry.CharacterClass) { ClassToSpawn = Entry.CharacterClass; break; }
+					}
+					if (!ClassToSpawn) ClassToSpawn = CharacterClass;
+				}
+				if (!ClassToSpawn)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameMode] %s %s 라인 [%d]: 스폰할 클래스 없음 (Roster/CharacterClass 모두 미설정). 스킵."),
+						CurrentTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+						CurrentLane == EAOSLane::Top ? TEXT("Top") : CurrentLane == EAOSLane::Mid ? TEXT("Mid") : TEXT("Bottom"),
+						i);
+					continue;
+				}
 
 				AAOSCharacter* NewCharacter = LaneSpawnPoints[i]->SpawnCharacterAtPoint(ClassToSpawn);
 				if (NewCharacter)

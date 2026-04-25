@@ -120,11 +120,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Spawn")
 	AAOSSpawnPoint* GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane);
 
-	// RTS용 캐릭터 클래스 (DefaultPawnClass와 분리, 로스터 미설정 시 폴백)
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Spawn")
+	// [Deprecated 폴백] CharacterRoster가 비어있을 때만 사용되는 최후 안전망.
+	// 정상 사용 시에는 CharacterRoster에 BP_Character류 Blueprint를 등록할 것.
+	// 비워두면 Roster가 단일 진실 공급원이 되어 BP CDO 데이터가 보존됨.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Spawn", meta = (DisplayName = "Character Class (Fallback Only)"))
 	TSubclassOf<AAOSCharacter> CharacterClass;
 
-	// 다수 캐릭터 Blueprint 등록 (에디터에서 설정)
+	// 실제 스폰에 사용되는 캐릭터 Blueprint 목록 (단일 진실 공급원)
+	// BP_AOSGameMode에서 BP_Character류 Blueprint를 등록할 것
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Roster")
 	TArray<FCharacterRosterEntry> CharacterRoster;
 

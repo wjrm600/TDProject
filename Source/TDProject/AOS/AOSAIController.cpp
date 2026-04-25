@@ -53,21 +53,9 @@ void AAOSAIController::BeginPlay()
 	// GameMode 캐시 (라운드 상태 확인용)
 	CachedGameMode = Cast<AAOSGameMode>(GetWorld()->GetAuthGameMode());
 
-	// Blueprint CDO 구버전 값 자동 보정
-	// BP_AOSAIController에 이전 값(EnemyDetectionRange=150, AttackRange=100)이 저장된 경우
-	// C++ 의도값으로 복구하여 캐릭터 전투가 정상 동작하도록 보장
-	if (EnemyDetectionRange < 1000.0f)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[AIController] 구버전 CDO 감지 - EnemyDetectionRange=%.0f → 1500으로 보정 (BP_AOSAIController에서 Reset to Default 권장)"), EnemyDetectionRange);
-		EnemyDetectionRange = 1500.0f;
-	}
-	if (AttackRange < 300.0f)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[AIController] 구버전 CDO 감지 - AttackRange=%.0f → 500으로 보정 (BP_AOSAIController에서 Reset to Default 권장)"), AttackRange);
-		AttackRange = 500.0f;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[AIController] 초기화 완료 - EnemyDetectionRange=%.0f, AttackRange=%.0f"),
+	// CDO 자동 보정 제거됨 — BP에서 설정한 값을 그대로 존중
+	// (BP_AOSAIController CDO를 1500/500으로 수정 완료)
+	UE_LOG(LogTemp, Log, TEXT("[AIController] 초기화 완료 - EnemyDetectionRange=%.0f, AttackRange=%.0f (BP CDO 값 사용)"),
 		EnemyDetectionRange, AttackRange);
 }
 
