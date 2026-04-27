@@ -8,10 +8,32 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 # ============================================================
-# 설정 — 새 컴퓨터에서 클론 후 이 두 경로를 본인 환경에 맞게 수정하세요
+# 경로 설정 — 우선순위:
+#   1) 환경변수 TDPROJECT_SOURCE / TDPROJECT_RAG_DB
+#   2) 스크립트 위치 기준 자동 추론 (Mcp_Tools/ue_rag_mcp.py → ../Source, ./chroma_db)
+#   3) 위 두 경로가 모두 실패하면 아래 PROJECT_ROOT_FALLBACK 사용
+# 다른 컴퓨터로 이전 시: 위치만 맞춰두면 자동 추론됨. 이전 머신과 동일하게
+# 사용하려면 환경변수만 지정하면 됨.
 # ============================================================
-UNREAL_PROJECT_SOURCE_PATH = r"E:\Unreal Project\TDProject\Source"
-DB_DIR = r"E:\Unreal Project\TDProject\Mcp_Tools\chroma_db"
+PROJECT_ROOT_FALLBACK = r"E:\Unreal Project\TDProject"
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_AUTO_PROJECT_ROOT = os.path.dirname(_THIS_DIR)  # Mcp_Tools/ → 프로젝트 루트
+
+UNREAL_PROJECT_SOURCE_PATH = (
+    os.environ.get("TDPROJECT_SOURCE")
+    or os.path.join(_AUTO_PROJECT_ROOT, "Source")
+)
+if not os.path.isdir(UNREAL_PROJECT_SOURCE_PATH):
+    UNREAL_PROJECT_SOURCE_PATH = os.path.join(PROJECT_ROOT_FALLBACK, "Source")
+
+DB_DIR = (
+    os.environ.get("TDPROJECT_RAG_DB")
+    or os.path.join(_THIS_DIR, "chroma_db")
+)
+
+print(f"[ue_rag_mcp] Source: {UNREAL_PROJECT_SOURCE_PATH}", file=sys.stderr)
+print(f"[ue_rag_mcp] DB    : {DB_DIR}", file=sys.stderr)
 # ============================================================
 
 mcp = FastMCP("Unreal_RAG_Server")

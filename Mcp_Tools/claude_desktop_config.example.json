@@ -1,0 +1,26 @@
+{
+  "_comment": "Claude Desktop / Claude Code MCP 서버 설정 템플릿. 사용 시 아래 ${PROJECT_ROOT}를 본인 환경의 절대 경로로 치환할 것.",
+  "_install_path_windows": "%APPDATA%\\Claude\\claude_desktop_config.json (Claude Desktop) 또는 Claude Code MCP config 위치",
+  "_example_project_root_windows": "E:\\\\Unreal Project\\\\TDProject",
+  "_example_project_root_macos": "/Users/<USER>/UnrealProjects/TDProject",
+
+  "preferences": {
+    "coworkScheduledTasksEnabled": false,
+    "ccdScheduledTasksEnabled": true,
+    "sidebarMode": "epitaxy",
+    "coworkWebSearchEnabled": true,
+    "bypassPermissionsModeEnabled": true
+  },
+  "mcpServers": {
+    "unreal-engine": {
+      "_comment": "McpAutomationBridge 플러그인이 에디터 안에서 띄우는 HTTP MCP 서버에 mcp-remote로 연결. 에디터를 켠 상태여야 동작함.",
+      "command": "npx",
+      "args": [ "-y", "mcp-remote", "http://localhost:3000/mcp" ]
+    },
+    "unreal-rag": {
+      "_comment": "프로젝트 C++ 코드베이스 RAG 검색 서버. python 인터프리터 + langchain/chromadb 의존성 필요 (Mcp_Tools/requirements.txt 참고).",
+      "command": "python",
+      "args": [ "${PROJECT_ROOT}\\Mcp_Tools\\ue_rag_mcp.py" ]
+    }
+  }
+}
