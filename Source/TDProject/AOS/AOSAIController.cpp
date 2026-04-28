@@ -92,21 +92,29 @@ void AAOSAIController::Tick(float DeltaTime)
 	}
 
 	// ─── 디버그: 공격 범위 / 감지 범위 (AOS.Debug.ShowAttackRange — AOSMapManager.cpp 정의) ───
+	// DS 모드에서는 렌더 파이프라인이 없으므로 스킵
+	if (GetNetMode() != NM_DedicatedServer)
 	{
 		IConsoleVariable* ShowAttackRangeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
 		if (ControlledCharacter && GetWorld() && ShowAttackRangeCVar && ShowAttackRangeCVar->GetInt())
 		{
-	    FVector CharPos = ControlledCharacter->GetActorLocation();
+			FVector CharPos = ControlledCharacter->GetActorLocation();
 
-	    // 공격 범위 (AttackRange): 노란색 수평 원
-	    DrawDebugCircle(GetWorld(), CharPos, AttackRange, 32,
-	        FColor::Yellow, false, 0.0f, 0, 3.0f,
-	        FVector(1, 0, 0), FVector(0, 1, 0), false);
+			// 공격 범위 (AttackRange): 노란색 수평 원 + 라벨
+			DrawDebugCircle(GetWorld(), CharPos, AttackRange, 32,
+				FColor::Yellow, false, 0.0f, 0, 3.0f,
+				FVector(1, 0, 0), FVector(0, 1, 0), false);
+			DrawDebugString(GetWorld(), CharPos + FVector(AttackRange, 0, 50.0f),
+				FString::Printf(TEXT("[캐릭터] 공격 %.0f"), AttackRange),
+				nullptr, FColor::Yellow, 0.0f, true, 1.2f);
 
-	    // 감지 범위 (EnemyDetectionRange): 흰색 수평 원 (더 큰 원)
-	    DrawDebugCircle(GetWorld(), CharPos, EnemyDetectionRange, 32,
-	        FColor::White, false, 0.0f, 0, 3.0f,
-	        FVector(1, 0, 0), FVector(0, 1, 0), false);
+			// 감지 범위 (EnemyDetectionRange): 흰색 수평 원 + 라벨 (더 큰 원)
+			DrawDebugCircle(GetWorld(), CharPos, EnemyDetectionRange, 32,
+				FColor::White, false, 0.0f, 0, 3.0f,
+				FVector(1, 0, 0), FVector(0, 1, 0), false);
+			DrawDebugString(GetWorld(), CharPos + FVector(EnemyDetectionRange, 0, 50.0f),
+				FString::Printf(TEXT("[캐릭터] 감지 %.0f"), EnemyDetectionRange),
+				nullptr, FColor::White, 0.0f, true, 1.2f);
 		}
 	}
 }

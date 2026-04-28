@@ -603,10 +603,15 @@ void AAOSPlayerController::ShowCharacterSelect()
 		}
 		CharacterSelectWidget->SetVisibility(ESlateVisibility::Visible);
 
+		// 새 라운드 진입 → 로컬 준비 상태 리셋 (버튼 재활성화 + 텍스트 복원)
+		CharacterSelectWidget->ResetReadyState();
+
 		// 라운드 번호 표시 (준비 중인 라운드 = 완료된 라운드 + 1)
 		if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
 		{
 			CharacterSelectWidget->SetRoundNumber(AOSGS->GetCurrentRound() + 1);
+			// 현재 양 팀 준비 상태도 즉시 반영 (이전 라운드 잔존 상태)
+			CharacterSelectWidget->UpdateTeamReadyStatus(AOSGS->bTeam1Ready, AOSGS->bTeam2Ready);
 		}
 
 		// 이미 캐시된 로스터가 있으면 (서버이거나 RPC가 먼저 도착한 경우) 즉시 표시
@@ -854,19 +859,28 @@ void AAOSPlayerController::OnLobbyPlayerCountChanged(int32 Count)
 // GameState 팀 준비 상태 변경 → 로비 위젯 갱신
 void AAOSPlayerController::OnTeamReadyChanged()
 {
-	if (!LobbyWidget)
+	AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>();
+	if (!AOSGS)
 	{
 		return;
 	}
 
-	if (AAOSGameState* AOSGS = GetWorld()->GetGameState<AAOSGameState>())
+	// 로비 위젯 갱신
+	if (LobbyWidget)
 	{
 		LobbyWidget->UpdateReadyState(
 			GetPlayerNameByTeam(EAOSTeam::Team1), AOSGS->bTeam1Ready,
 			GetPlayerNameByTeam(EAOSTeam::Team2), AOSGS->bTeam2Ready);
-		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 팀 준비 상태 갱신 — Team1:%d Team2:%d"),
-			AOSGS->bTeam1Ready, AOSGS->bTeam2Ready);
 	}
+
+	// 캐릭터 선택(라운드 준비) 위젯 갱신 — 보여지는 동안에만 의미 있음
+	if (CharacterSelectWidget)
+	{
+		CharacterSelectWidget->UpdateTeamReadyStatus(AOSGS->bTeam1Ready, AOSGS->bTeam2Ready);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 팀 준비 상태 갱신 — Team1:%d Team2:%d"),
+		AOSGS->bTeam1Ready, AOSGS->bTeam2Ready);
 }
 
 // 메인 메뉴 시작 버튼 클릭 → 즉시 로컬 UI 갱신 + 서버에 Ready 전달

@@ -116,6 +116,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	void UpdatePreparationTimer(float RemainingSeconds);
 
+	// 양 팀 준비 상태 표시 갱신 (PlayerController가 GameState OnRep_TeamReady 콜백에서 호출)
+	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
+	void UpdateTeamReadyStatus(bool bTeam1Ready, bool bTeam2Ready);
+
+	// 새 라운드 진입 시 로컬 준비 상태 리셋 (버튼 재활성화 + 텍스트 복원)
+	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
+	void ResetReadyState();
+
 	// 로스터 주입 (PlayerController::ShowCharacterSelect에서 호출)
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	void InitializeWithRoster(const TArray<FCharacterRosterEntry>& Roster);
@@ -170,6 +178,17 @@ protected:
 
 	UPROPERTY()
 	UButton* StartRoundButton;
+
+	// "라운드 준비" 버튼 내부의 텍스트 — 클릭 시 "준비 완료 ✓"로 변경
+	UPROPERTY()
+	UTextBlock* StartRoundButtonText;
+
+	// 양 팀 준비 상태 표시 텍스트 ("팀1: 준비완료 / 팀2: 대기중")
+	UPROPERTY()
+	UTextBlock* TeamReadyStatusText;
+
+	// 로컬 플레이어가 라운드 준비 버튼을 눌렀는지 여부 (재클릭 방지)
+	bool bLocalPressedReady = false;
 
 	int32 MaxTotalCount = 5;
 	int32 MaxPerLane = 2;

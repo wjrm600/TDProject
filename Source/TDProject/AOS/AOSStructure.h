@@ -67,15 +67,15 @@ public:
 	AAOSCharacter* FindNearestEnemy();
 
 protected:
-	// 기본 설정
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structure")
-	EStructureType StructureType;
+	// 기본 설정 — 서버에서 Initialize()로 설정, 클라이언트로 리플리케이션 필요
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "AOS|Structure")
+	EStructureType StructureType = EStructureType::Tower; // 기본값을 Tower로 명시 (enum 첫 값이 CommandCenter여서 미리플리케이션 시 오표시 방지)
 
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structure")
-	EAOSTeam OwnerTeam;
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_OwnerTeam, Category = "AOS|Structure")
+	EAOSTeam OwnerTeam = EAOSTeam::Team1;
 
-	UPROPERTY(BlueprintReadOnly, Category = "AOS|Structure")
-	EAOSLane Lane;
+	UPROPERTY(BlueprintReadOnly, Replicated, Category = "AOS|Structure")
+	EAOSLane Lane = EAOSLane::Mid;
 
 	// 체력 시스템
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
@@ -88,8 +88,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
 	float AttackDamage = 20.0f;
 
+	// 캐릭터 AttackRange(500)보다 크게 → 타워가 캐릭터를 안정적으로 공격 가능
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
-	float AttackRange = 200.0f;
+	float AttackRange = 600.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
 	float AttackCooldown = 2.0f;
@@ -117,6 +118,10 @@ protected:
 	// Phase 3B: 체력 리플리케이션 콜백
 	UFUNCTION()
 	void OnRep_CurrentHealth();
+
+	// OwnerTeam 리플리케이션 콜백 — 클라이언트에서 HP 바 색상 갱신
+	UFUNCTION()
+	void OnRep_OwnerTeam();
 
 	// HP 바 위젯 클래스 (에디터에서 설정 또는 코드에서 자동 로드)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|UI")

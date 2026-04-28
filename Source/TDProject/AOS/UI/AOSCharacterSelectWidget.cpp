@@ -339,21 +339,33 @@ void UAOSCharacterSelectWidget::BuildUI()
 	GridVSlot->SetPadding(FMargin(0, 8, 0, 12));
 	GridVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Fill);
 
-	// 라운드 시작 버튼
+	// 라운드 준비 버튼 (이전: "라운드 시작") — 누르면 서버에 준비 신호 전송 + 시각 피드백
 	StartRoundButton = WidgetTree->ConstructWidget<UButton>(
 		UButton::StaticClass(), TEXT("StartRoundButton"));
 	UVerticalBoxSlot* BtnVSlot = VBox->AddChildToVerticalBox(StartRoundButton);
 	BtnVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 	BtnVSlot->SetPadding(FMargin(0, 0, 0, 8));
 
-	UTextBlock* BtnText = WidgetTree->ConstructWidget<UTextBlock>(
+	StartRoundButtonText = WidgetTree->ConstructWidget<UTextBlock>(
 		UTextBlock::StaticClass(), TEXT("StartRoundText"));
-	BtnText->SetText(FText::FromString(TEXT("라운드 시작")));
-	FSlateFontInfo BtnFont = BtnText->GetFont();
+	StartRoundButtonText->SetText(FText::FromString(TEXT("라운드 준비")));
+	FSlateFontInfo BtnFont = StartRoundButtonText->GetFont();
 	BtnFont.Size = 22;
-	BtnText->SetFont(BtnFont);
-	StartRoundButton->AddChild(BtnText);
+	StartRoundButtonText->SetFont(BtnFont);
+	StartRoundButton->AddChild(StartRoundButtonText);
 	StartRoundButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnStartRoundButtonClicked);
+
+	// 양 팀 준비 상태 표시 (버튼 아래) — GameState OnRep_TeamReady 콜백에서 갱신
+	TeamReadyStatusText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("TeamReadyStatusText"));
+	TeamReadyStatusText->SetText(FText::FromString(TEXT("팀1: 대기중 / 팀2: 대기중")));
+	FSlateFontInfo StatusFont = TeamReadyStatusText->GetFont();
+	StatusFont.Size = 16;
+	TeamReadyStatusText->SetFont(StatusFont);
+	TeamReadyStatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f, 1.0f)));
+	UVerticalBoxSlot* StatusVSlot = VBox->AddChildToVerticalBox(TeamReadyStatusText);
+	StatusVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	StatusVSlot->SetPadding(FMargin(0, 0, 0, 4));
 
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] UI 동적 생성 완료"));
 }
@@ -525,9 +537,79 @@ void UAOSCharacterSelectWidget::UpdatePreparationTimer(float RemainingSeconds)
 
 void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 라운드 시작 클릭 (Top:%d, Mid:%d, Bottom:%d, Total:%d)"),
+	if (bLocalPressedReady)
+	{
+		// 이미 준비 완료 — 재클릭 무시
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 라운드 준비 클릭 (Top:%d, Mid:%d, Bottom:%d, Total:%d)"),
 		TopLaneCount, MidLaneCount, BottomLaneCount, GetTotalCount());
+
+	bLocalPressedReady = true;
+
+	// 시각 피드백: 버튼 비활성화 + 텍스트 "준비 완료 ✓" + 그레이아웃
+	if (StartRoundButton)
+	{
+		StartRoundButton->SetIsEnabled(false);
+	}
+	if (StartRoundButtonText)
+	{
+		StartRoundButtonText->SetText(FText::FromString(TEXT("준비 완료 ✓")));
+		StartRoundButtonText->SetColorAndOpacity(FSlateColor(FLinearColor(0.5f, 1.0f, 0.5f, 1.0f)));
+	}
+
 	OnStartRoundClicked.Broadcast();
+}
+
+void UAOSCharacterSelectWidget::UpdateTeamReadyStatus(bool bTeam1Ready, bool bTeam2Ready)
+{
+	if (!TeamReadyStatusText) return;
+
+	auto TeamLabel = [](bool bReady)
+	{
+		return bReady ? TEXT("준비완료") : TEXT("대기중");
+	};
+
+	const FString StatusStr = FString::Printf(TEXT("팀1: %s  /  팀2: %s"),
+		TeamLabel(bTeam1Ready), TeamLabel(bTeam2Ready));
+	TeamReadyStatusText->SetText(FText::FromString(StatusStr));
+
+	// 양 팀 모두 준비 → 녹색, 한쪽만 → 노랑, 둘 다 미준비 → 회색
+	FLinearColor StatusColor;
+	if (bTeam1Ready && bTeam2Ready)
+	{
+		StatusColor = FLinearColor(0.4f, 1.0f, 0.4f, 1.0f);  // 녹색
+	}
+	else if (bTeam1Ready || bTeam2Ready)
+	{
+		StatusColor = FLinearColor(1.0f, 0.85f, 0.2f, 1.0f);  // 노랑
+	}
+	else
+	{
+		StatusColor = FLinearColor(0.85f, 0.85f, 0.85f, 1.0f);  // 회색
+	}
+	TeamReadyStatusText->SetColorAndOpacity(FSlateColor(StatusColor));
+}
+
+void UAOSCharacterSelectWidget::ResetReadyState()
+{
+	bLocalPressedReady = false;
+
+	if (StartRoundButton)
+	{
+		StartRoundButton->SetIsEnabled(true);
+	}
+	if (StartRoundButtonText)
+	{
+		StartRoundButtonText->SetText(FText::FromString(TEXT("라운드 준비")));
+		StartRoundButtonText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+	}
+	if (TeamReadyStatusText)
+	{
+		TeamReadyStatusText->SetText(FText::FromString(TEXT("팀1: 대기중 / 팀2: 대기중")));
+		TeamReadyStatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f, 1.0f)));
+	}
 }
 
 void UAOSCharacterSelectWidget::UpdateCountsFromSlots()

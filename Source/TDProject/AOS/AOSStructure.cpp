@@ -27,13 +27,14 @@ AAOSStructure::AAOSStructure()
 	MeshComponent->SetupAttachment(RootComponent);
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);  // 메시 콜리전 비활성화
 
-	// 감지 범위 설정
+	// 감지 범위 설정 — 캐릭터 도달 정지 거리(500) + AttackRange(600)보다 크게 잡아야
+	// 타워가 캐릭터를 감지/추적/공격 가능 (이전: 400 → 캐릭터가 사거리 밖에서 일방적으로 타워 공격)
 	DetectionRange = CreateDefaultSubobject<USphereComponent>(TEXT("DetectionRange"));
 	DetectionRange->SetupAttachment(RootComponent);
-	DetectionRange->SetSphereRadius(400.0f);
+	DetectionRange->SetSphereRadius(800.0f);
 	DetectionRange->SetCollisionEnabled(ECollisionEnabled::QueryOnly);  // 오버랩 감지만 가능
 
-	// HP 바 위젯 컴포넌트
+	// HP 바 위젯 컴포넌트 (World Space)
 	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
 	HealthBarComponent->SetupAttachment(RootComponent);
 	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 250.0f));
@@ -48,11 +49,33 @@ void AAOSStructure::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AAOSStructure, CurrentHealth);
+	DOREPLIFETIME(AAOSStructure, StructureType);
+	DOREPLIFETIME(AAOSStructure, OwnerTeam); // ReplicatedUsing=OnRep_OwnerTeam — 클라이언트 HP 바 색상 갱신
+	DOREPLIFETIME(AAOSStructure, Lane);
 }
 
 void AAOSStructure::OnRep_CurrentHealth()
 {
+	// HealthBarWidget이 아직 초기화되지 않은 경우 먼저 초기화
+	if (!HealthBarWidget && HealthBarComponent)
+	{
+		InitializeHealthBar();
+	}
 	UpdateHealthBar();
+}
+
+void AAOSStructure::OnRep_OwnerTeam()
+{
+	// 클라이언트에서 OwnerTeam 수신 시 HP 바 색상 갱신
+	if (!HealthBarWidget && HealthBarComponent)
+	{
+		InitializeHealthBar();
+	}
+	else if (HealthBarWidget)
+	{
+		FLinearColor BarColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+		HealthBarWidget->SetBarColor(BarColor);
+	}
 }
 
 void AAOSStructure::Multicast_OnDestroyed_Implementation()
@@ -79,6 +102,11 @@ void AAOSStructure::BeginPlay()
 	Super::BeginPlay();
 
 	CurrentHealth = MaxHealth;
+
+	// 클라이언트에서도 HP 바 위젯을 초기화
+	// (서버는 Initialize() 내에서 InitializeHealthBar()를 호출하지만, 클라이언트는 이를 수신하지 않음)
+	// OwnerTeam은 아직 리플리케이션 전일 수 있어 기본 색상으로 설정 — OnRep_OwnerTeam에서 갱신됨
+	InitializeHealthBar();
 }
 
 void AAOSStructure::Tick(float DeltaTime)
@@ -100,44 +128,55 @@ void AAOSStructure::Tick(float DeltaTime)
 			CurrentAttackCooldown = AttackCooldown;
 		}
 
-		// HP 바 빌보드: 항상 카메라 정면을 바라봄
-		if (HealthBarComponent && HealthBarComponent->IsVisible())
+		// HP 바 빌보드: World Space에서 카메라 정면을 향하도록 (DS에서는 스킵)
+		if (GetNetMode() != NM_DedicatedServer && HealthBarComponent && HealthBarComponent->IsVisible())
 		{
 			if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 			{
 				FVector CamLoc;
 				FRotator CamRot;
 				PC->GetPlayerViewPoint(CamLoc, CamRot);
-				FVector CamForward = CamRot.Vector();
-				HealthBarComponent->SetWorldRotation((-CamForward).Rotation());
+				FRotator TargetRot = (-CamRot.Vector()).Rotation();
+				if (!TargetRot.Equals(HealthBarComponent->GetComponentRotation(), 0.5f))
+				{
+					HealthBarComponent->SetWorldRotation(TargetRot);
+				}
 			}
 		}
 	}
 
-	// 🟢 NEW - 공격 범위 디버그 시각화 (AOS.Debug.ShowAttackRange CVar)
-	if (GetWorld())
+	// 🟢 공격 범위 디버그 시각화 (AOS.Debug.ShowAttackRange CVar) — DS는 렌더 없으므로 스킵
+	if (GetWorld() && GetNetMode() != NM_DedicatedServer)
 	{
 		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
 		if (CVar && CVar->GetInt())
 		{
 			FColor TeamColor = (OwnerTeam == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
 			FVector Pos = GetActorLocation();
+			const FString TypeStr = (StructureType == EStructureType::Tower) ? TEXT("타워") : TEXT("본진");
 
-			// 공격 범위 (AttackRange) — 수평 원 (XY 평면, 탑뷰에서 정확히 원형으로 보임)
+			// 공격 범위 (AttackRange) — 수평 원 + 라벨
 			DrawDebugCircle(GetWorld(), Pos, AttackRange, 32,
 				TeamColor, false, 0.0f, 0, 3.0f,
 				FVector(1, 0, 0), FVector(0, 1, 0), false);
+			DrawDebugString(GetWorld(), Pos + FVector(AttackRange, 0, 50.0f),
+				FString::Printf(TEXT("[%s] 공격 %.0f"), *TypeStr, AttackRange),
+				nullptr, TeamColor, 0.0f, true, 1.2f);
 
-			// 감지 범위 (DetectionRange) — 밝은 혼합 색, 수평 원
+			// 감지 범위 (DetectionRange) — 밝은 혼합 색, 수평 원 + 라벨
 			if (DetectionRange)
 			{
 				FColor DetectionColor = FColor(
 					TeamColor.R / 2 + 128,
 					TeamColor.G / 2 + 128,
 					TeamColor.B / 2 + 128);
-				DrawDebugCircle(GetWorld(), Pos, DetectionRange->GetUnscaledSphereRadius(), 32,
+				const float DetRadius = DetectionRange->GetUnscaledSphereRadius();
+				DrawDebugCircle(GetWorld(), Pos, DetRadius, 32,
 					DetectionColor, false, 0.0f, 0, 3.0f,
 					FVector(1, 0, 0), FVector(0, 1, 0), false);
+				DrawDebugString(GetWorld(), Pos + FVector(DetRadius, 0, 50.0f),
+					FString::Printf(TEXT("[%s] 감지 %.0f"), *TypeStr, DetRadius),
+					nullptr, DetectionColor, 0.0f, true, 1.2f);
 			}
 		}
 	}
@@ -348,6 +387,8 @@ void AAOSStructure::FireAtTarget(AAOSCharacter* Target)
 	if (Distance <= AttackRange)
 	{
 		Target->ReceiveDamage(AttackDamage);
+		UE_LOG(LogTemp, Warning, TEXT("[Tower] %s → 캐릭터 공격! Distance=%.0f, Damage=%.0f, TargetHP=%.0f"),
+			*GetName(), Distance, AttackDamage, Target->GetCurrentHealth());
 	}
 }
 
@@ -355,7 +396,10 @@ AAOSCharacter* AAOSStructure::FindNearestEnemy()
 {
 	float NearestDistance = FLT_MAX;
 	AAOSCharacter* NearestEnemy = nullptr;
-	float DetectionRadius = 400.0f;
+	// 하드코딩 제거 → 실제 감지 sphere component 반지름 사용 (디버그 원과 일치)
+	const float DetectionRadius = DetectionRange
+		? DetectionRange->GetUnscaledSphereRadius()
+		: 800.0f;
 
 	// 월드의 모든 AAOSCharacter를 순회
 	for (TActorIterator<AAOSCharacter> ActorItr(GetWorld()); ActorItr; ++ActorItr)

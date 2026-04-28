@@ -26,7 +26,7 @@ AAOSCharacter::AAOSCharacter()
 	AIControllerClass = AAOSAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	// HP 바 위젯 컴포넌트
+	// HP 바 위젯 컴포넌트 (World Space — AI 캐릭터에 Screen Space는 로컬 PC 없이 렌더 불가)
 	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBar"));
 	HealthBarComponent->SetupAttachment(RootComponent);
 	HealthBarComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 120.0f));
@@ -91,16 +91,20 @@ void AAOSCharacter::Tick(float DeltaTime)
 		CurrentAttackCooldown -= DeltaTime;
 	}
 
-	// HP 바 빌보드: 항상 카메라 정면을 바라봄
-	if (HealthBarComponent && HealthBarComponent->IsVisible())
+	// HP 바 빌보드: World Space에서 카메라 정면을 향하도록 (DS에서는 스킵)
+	if (GetNetMode() != NM_DedicatedServer && HealthBarComponent && HealthBarComponent->IsVisible())
 	{
 		if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 		{
 			FVector CamLoc;
 			FRotator CamRot;
 			PC->GetPlayerViewPoint(CamLoc, CamRot);
-			FVector CamForward = CamRot.Vector();
-			HealthBarComponent->SetWorldRotation((-CamForward).Rotation());
+			FRotator TargetRot = (-CamRot.Vector()).Rotation();
+			// 변화량이 0.5도 이상일 때만 업데이트 → 불필요한 RenderTarget Dirty 방지
+			if (!TargetRot.Equals(HealthBarComponent->GetComponentRotation(), 0.5f))
+			{
+				HealthBarComponent->SetWorldRotation(TargetRot);
+			}
 		}
 	}
 }

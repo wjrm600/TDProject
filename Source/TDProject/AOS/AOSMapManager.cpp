@@ -5,8 +5,8 @@
 #include "EngineUtils.h"
 
 static TAutoConsoleVariable<int32> CVarShowStructureBoxes(
-    TEXT("AOS.Debug.ShowStructureBoxes"), 1,
-    TEXT("1=타워/커맨드센터 디버그 박스 표시, 0=숨김"));
+    TEXT("AOS.Debug.ShowStructureBoxes"), 0,
+    TEXT("1=타워/커맨드센터 디버그 박스 표시, 0=숨김 (기본). 콘솔 명령으로 활성화: AOS.Debug.ShowStructureBoxes 1"));
 
 static TAutoConsoleVariable<int32> CVarShowAttackRange(
     TEXT("AOS.Debug.ShowAttackRange"), 0,
@@ -32,6 +32,10 @@ void AAOSMapManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (!GetWorld()) return;
+
+	// Dedicated Server에는 렌더 파이프라인이 없으므로 디버그 그리기 스킵
+	// (CVar가 켜져 있어도 클라이언트만 시각화 — DS의 불필요한 액터 순회 방지)
+	if (GetNetMode() == NM_DedicatedServer) return;
 
 	// StructureBoxes 토글
 	if (CVarShowStructureBoxes.GetValueOnGameThread())
@@ -444,9 +448,11 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 
 	LanesInfo.Empty();
 
+	// 지형 4배 스케일 적용 — 캐릭터 공격 범위(500) 대비 라인 길이가 약 12배가 되어
+	// MOBA 스타일 라인 푸시 동선이 적정한 비율을 가짐 (이전: ±2200 → ±8800)
 	// Command Center 위치 설정 (팀당 1개)
-	Team1CommandCenterPosition = FVector(-2200, 0, 0);  // Team1 본진 (왼쪽)
-	Team2CommandCenterPosition = FVector(2200, 0, 0);   // Team2 본진 (오른쪽)
+	Team1CommandCenterPosition = FVector(-8800, 0, 0);  // Team1 본진 (왼쪽)
+	Team2CommandCenterPosition = FVector(8800, 0, 0);   // Team2 본진 (오른쪽)
 
 	// Top Lane
 	{
@@ -454,19 +460,19 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		TopLane.LaneType = EAOSLane::Top;
 
 		// Team1 (왼쪽/아래) - 스폰 위치
-		TopLane.Team1StartPosition = FVector(2000, 2000, 0);
+		TopLane.Team1StartPosition = FVector(8000, 8000, 0);
 		TopLane.Team1TowerPositions = {
-			FVector(1400, 1400, 0),
-			FVector(700, 700, 0),
-			FVector(-350, -350, 0)
+			FVector(5600, 5600, 0),
+			FVector(2800, 2800, 0),
+			FVector(-1400, -1400, 0)
 		};
 
 		// Team2 (오른쪽/위) - 스폰 위치
-		TopLane.Team2StartPosition = FVector(-2000, -2000, 0);
+		TopLane.Team2StartPosition = FVector(-8000, -8000, 0);
 		TopLane.Team2TowerPositions = {
-			FVector(-1400, -1400, 0),
-			FVector(-700, -700, 0),
-			FVector(350, 350, 0)
+			FVector(-5600, -5600, 0),
+			FVector(-2800, -2800, 0),
+			FVector(1400, 1400, 0)
 		};
 
 		LanesInfo.Add(TopLane);
@@ -478,19 +484,19 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		MidLane.LaneType = EAOSLane::Mid;
 
 		// Team1 - 스폰 위치
-		MidLane.Team1StartPosition = FVector(2000, 0, 0);
+		MidLane.Team1StartPosition = FVector(8000, 0, 0);
 		MidLane.Team1TowerPositions = {
-			FVector(1400, 0, 0),
-			FVector(700, 0, 0),
-			FVector(-350, 0, 0)
+			FVector(5600, 0, 0),
+			FVector(2800, 0, 0),
+			FVector(-1400, 0, 0)
 		};
 
 		// Team2 - 스폰 위치
-		MidLane.Team2StartPosition = FVector(-2000, 0, 0);
+		MidLane.Team2StartPosition = FVector(-8000, 0, 0);
 		MidLane.Team2TowerPositions = {
-			FVector(-1400, 0, 0),
-			FVector(-700, 0, 0),
-			FVector(350, 0, 0)
+			FVector(-5600, 0, 0),
+			FVector(-2800, 0, 0),
+			FVector(1400, 0, 0)
 		};
 
 		LanesInfo.Add(MidLane);
@@ -502,19 +508,19 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		BottomLane.LaneType = EAOSLane::Bottom;
 
 		// Team1 - 스폰 위치
-		BottomLane.Team1StartPosition = FVector(2000, -2000, 0);
+		BottomLane.Team1StartPosition = FVector(8000, -8000, 0);
 		BottomLane.Team1TowerPositions = {
-			FVector(1400, -1400, 0),
-			FVector(700, -700, 0),
-			FVector(-350, 350, 0)
+			FVector(5600, -5600, 0),
+			FVector(2800, -2800, 0),
+			FVector(-1400, 1400, 0)
 		};
 
 		// Team2 - 스폰 위치
-		BottomLane.Team2StartPosition = FVector(-2000, 2000, 0);
+		BottomLane.Team2StartPosition = FVector(-8000, 8000, 0);
 		BottomLane.Team2TowerPositions = {
-			FVector(-1400, 1400, 0),
-			FVector(-700, 700, 0),
-			FVector(350, -350, 0)
+			FVector(-5600, 5600, 0),
+			FVector(-2800, 2800, 0),
+			FVector(1400, -1400, 0)
 		};
 
 		LanesInfo.Add(BottomLane);
