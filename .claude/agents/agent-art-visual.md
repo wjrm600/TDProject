@@ -1,5 +1,7 @@
 ---
-model: claude-haiku-4-5-20251001
+name: agent-art-visual
+description: 비주얼 아티스트 - 머티리얼, 텍스처, 메시, 팀 색상 담당
+model: haiku
 ---
 
 # 비주얼 담당 에이전트 (아트 도메인)

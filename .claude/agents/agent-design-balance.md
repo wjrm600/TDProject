@@ -1,5 +1,7 @@
 ---
-model: claude-opus-4-7
+name: agent-design-balance
+description: 밸런스 디자이너 - Blueprint EditAnywhere 파라미터 (수치) 조정
+model: opus
 ---
 
 # 밸런스 담당 에이전트 (기획자 도메인)

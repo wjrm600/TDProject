@@ -1,5 +1,7 @@
 ---
-model: claude-haiku-4-5-20251001
+name: agent-art-vfx
+description: VFX 아티스트 - Niagara VFX, UI 스타일링 담당
+model: haiku
 ---
 
 # VFX 담당 에이전트 (아트 도메인)

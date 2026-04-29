@@ -341,68 +341,70 @@ git push
 
 ## Multi-Agent Development Workflow (3도메인)
 
-이 프로젝트는 **3개 도메인** 멀티 에이전트 방식으로 개발됩니다. `.claude/commands/`에 에이전트별 슬래시 커맨드가 정의되어 있습니다.
+이 프로젝트는 **3개 도메인** 멀티 에이전트 방식으로 개발됩니다. 각 에이전트는 `.claude/agents/<name>.md` 의 **서브에이전트**로 정의되어 있고, `Task` 도구로 `subagent_type` 을 지정해 호출합니다. 오케스트레이션용 슬래시 커맨드 `/multi-agent`, `/merge-agents` 만 `.claude/commands/` 에 남아 있습니다.
 
-### 도메인 1: 프로그래머 (C++ 코드)
+> 서브에이전트는 별도 컨텍스트와 모델로 동작합니다. 슬래시 커맨드는 부모 세션의 모델을 그대로 쓰며 모델 분리가 안 되므로 사용하지 않습니다.
+
+### 도메인 1: 프로그래머 (C++ 코드, model: sonnet)
 
 작업 방식: git worktree + C++ 파일 편집
 
-| 에이전트 | 커맨드 | 소유 파일 | 충돌 위험 |
-|----------|--------|-----------|-----------|
-| prog-ai | `/agent-prog-ai` | AOSAIController.h/cpp | HIGH |
-| prog-character | `/agent-prog-character` | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
-| prog-object | `/agent-prog-object` | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
-| prog-ui | `/agent-prog-ui` | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
-| prog-anim | `/agent-prog-anim` | AOSAnimInstance.h/cpp, Anim/AOSAnimNotify_*.h/cpp | MEDIUM |
-| build-verify | `/agent-build-verify` | 없음 (읽기 전용) | NONE |
+| 서브에이전트 | 모델 | 소유 파일 | 충돌 위험 |
+|----------|------|-----------|-----------|
+| `agent-prog-ai` | sonnet | AOSAIController.h/cpp | HIGH |
+| `agent-prog-character` | sonnet | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
+| `agent-prog-object` | sonnet | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
+| `agent-prog-ui` | sonnet | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
+| `agent-prog-anim` | sonnet | AOSAnimInstance.h/cpp, Anim/AOSAnimNotify_*.h/cpp | MEDIUM |
+| `agent-build-verify` | sonnet | 없음 (읽기 전용) | NONE |
 
-### 도메인 2: 기획자 (밸런스, 레벨, 문서)
-
-작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
-
-| 에이전트 | 커맨드 | 소유 영역 |
-|----------|--------|-----------|
-| design-balance | `/agent-design-balance` | Blueprint EditAnywhere 파라미터 전체 |
-| design-level | `/agent-design-level` | 레벨 액터 배치, MapManager 설정 |
-| design-docs | `/agent-design-docs` | CLAUDE.md, Guides/ 전체 |
-
-### 도메인 3: 아트 (비주얼, VFX)
+### 도메인 2: 기획자 (밸런스, 레벨, 문서, model: opus)
 
 작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
 
-| 에이전트 | 커맨드 | 소유 에셋 |
-|----------|--------|-----------|
-| art-visual | `/agent-art-visual` | 머티리얼, 텍스처, 메시, 팀 색상 |
-| art-vfx | `/agent-art-vfx` | Niagara VFX, UI 스타일링 |
-| art-anim | `/agent-art-anim` | 애니메이션 BP, 몽타주, 블렌드 스페이스 |
+| 서브에이전트 | 모델 | 소유 영역 |
+|----------|------|-----------|
+| `agent-design-balance` | opus | Blueprint EditAnywhere 파라미터 전체 |
+| `agent-design-level` | opus | 레벨 액터 배치, MapManager 설정 |
+| `agent-design-docs` | opus | CLAUDE.md, Guides/ 전체 |
+
+### 도메인 3: 아트 (비주얼, VFX, model: haiku)
+
+작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
+
+| 서브에이전트 | 모델 | 소유 에셋 |
+|----------|------|-----------|
+| `agent-art-visual` | haiku | 머티리얼, 텍스처, 메시, 팀 색상 |
+| `agent-art-vfx` | haiku | Niagara VFX, UI 스타일링 |
+| `agent-art-anim` | haiku | 애니메이션 BP, 몽타주, 블렌드 스페이스 |
 
 ### Workflow
 
 1. `/multi-agent [기능 설명]` — 오케스트레이터가 도메인 분류 + 에이전트 할당
-2. **프로그래머**: worktree 생성 (브랜치: `agent/prog-<role>/<feature>`), 병렬 작업
-3. **기획자/아트**: MCP 도구로 에디터에서 직접 작업 (worktree 불필요)
+2. **프로그래머**: worktree 생성 (브랜치: `agent/prog-<role>/<feature>`), 별도 터미널/세션에서 `agent-prog-*` 서브에이전트 호출 (병렬)
+3. **기획자/아트**: 오케스트레이터가 같은 세션에서 `Task(subagent_type: "agent-design-*" / "agent-art-*", ...)` 로 직접 spawn
 4. `/merge-agents` — 프로그래머 머지 → 기획 검증 → 아트 검증
 
 ### 머지/검증 순서 (3단계)
 
 **Phase 1: 프로그래머 머지** (순차)
-1. **design-docs** (코드 충돌 없음)
-2. **prog-ui** (최소 외부 의존성)
-3. **prog-anim** (AnimInstance, Character 의존)
-4. **prog-object** (중간 결합도)
-5. **prog-character** (enum 소유, API 제공)
-6. **prog-ai** (최고 결합도, 마지막)
-→ 각 단계 후 **build-verify** 실행
+1. `agent-design-docs` (코드 충돌 없음)
+2. `agent-prog-ui` (최소 외부 의존성)
+3. `agent-prog-anim` (AnimInstance, Character 의존)
+4. `agent-prog-object` (중간 결합도)
+5. `agent-prog-character` (enum 소유, API 제공)
+6. `agent-prog-ai` (최고 결합도, 마지막)
+→ 각 단계 후 `agent-build-verify` 실행
 
 **Phase 2: 기획자 검증** (MCP, 머지 불필요)
-6. **design-balance**: `get_property`로 값 확인
-7. **design-level**: `get_level_actors`로 배치 확인
+- `agent-design-balance`: `get_property` 로 값 확인
+- `agent-design-level`: `get_level_actors` 로 배치 확인
 
 **Phase 3: 아트 검증** (MCP, 머지 불필요)
-8. **art-visual**: 머티리얼 적용 확인
-9. **art-vfx**: VFX 확인
-10. **art-anim**: 애니메이션 확인
-→ `capture_viewport`로 시각 검증
+- `agent-art-visual`: 머티리얼 적용 확인
+- `agent-art-vfx`: VFX 확인
+- `agent-art-anim`: 애니메이션 확인
+→ `capture_viewport` 로 시각 검증
 
 ### AOSGameMode.h Enum 변경 게이트
 

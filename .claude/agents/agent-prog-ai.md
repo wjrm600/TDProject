@@ -1,5 +1,7 @@
 ---
-model: claude-sonnet-4-6
+name: agent-prog-ai
+description: AI 프로그래머 - AOSAIController.h/cpp 의 AI 행동 루프, 웨이포인트 큐, 전투 로직 담당
+model: sonnet
 ---
 
 # AI 담당 에이전트 (프로그래머 도메인)

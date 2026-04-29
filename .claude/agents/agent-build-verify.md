@@ -1,5 +1,7 @@
 ---
-model: claude-sonnet-4-6
+name: agent-build-verify
+description: 빌드 검증 (읽기 전용) - 빌드 로그/컴파일 오류 확인 및 보고
+model: sonnet
 ---
 
 # Build Verify 에이전트

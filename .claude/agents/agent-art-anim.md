@@ -1,5 +1,7 @@
 ---
-model: claude-haiku-4-5-20251001
+name: agent-art-anim
+description: 애니메이션 아티스트 - 애니메이션 BP, 몽타주, 블렌드 스페이스 담당
+model: haiku
 ---
 
 # 애니메이션 담당 에이전트 (아트 도메인)

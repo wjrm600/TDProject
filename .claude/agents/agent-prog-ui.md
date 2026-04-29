@@ -1,5 +1,7 @@
 ---
-model: claude-sonnet-4-6
+name: agent-prog-ui
+description: UI 프로그래머 - AOSHealthBarWidget, AOSPlayerController (UI/입력) 담당
+model: sonnet
 ---
 
 # UI 담당 에이전트 (프로그래머 도메인)

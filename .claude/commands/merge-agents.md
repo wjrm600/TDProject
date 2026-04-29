@@ -1,7 +1,3 @@
----
-model: claude-sonnet-4-6
----
-
 # 머지 코디네이터
 
 당신은 TDProject의 **머지 코디네이터**입니다.
@@ -20,12 +16,12 @@ $ARGUMENTS
 의존성 그래프에 기반한 안전한 머지 순서:
 
 ```
-1. design-docs  (코드 충돌 없음 → 가장 먼저)
-2. prog-ui      (최소 외부 의존성)
-3. prog-anim    (AnimInstance, Character/AI 의존)
-4. prog-object  (중간 결합도, AI가 참조하는 API 제공)
-5. prog-character (enum 소유, object/ai가 참조하는 API 제공)
-6. prog-ai      (최고 결합도 → 가장 마지막)
+1. agent-design-docs    (코드 충돌 없음 → 가장 먼저)
+2. agent-prog-ui        (최소 외부 의존성)
+3. agent-prog-anim      (AnimInstance, Character/AI 의존)
+4. agent-prog-object    (중간 결합도, AI가 참조하는 API 제공)
+5. agent-prog-character (enum 소유, object/ai가 참조하는 API 제공)
+6. agent-prog-ai        (최고 결합도 → 가장 마지막)
 ```
 
 **이유**: AI가 Character와 Object의 API를 사용하므로, 먼저 머지된 코드 위에 AI를 올려야 충돌이 없음.
@@ -36,11 +32,11 @@ $ARGUMENTS
 Phase 1 완료 후 값이 올바른지 검증만 수행:
 
 ```
-6. design-balance: get_property로 Blueprint 값 확인
-7. design-level: get_level_actors로 액터 배치 확인
+6. agent-design-balance: get_property로 Blueprint 값 확인
+7. agent-design-level: get_level_actors로 액터 배치 확인
 ```
 
-**주의**: 프로그래머가 UPROPERTY를 추가/삭제한 경우, design-balance가 재조정 필요할 수 있음.
+**주의**: 프로그래머가 UPROPERTY를 추가/삭제한 경우, agent-design-balance가 재조정 필요할 수 있음.
 
 ### Phase 3: 아트 검증 (머지 불필요)
 
@@ -48,10 +44,13 @@ Phase 1 완료 후 값이 올바른지 검증만 수행:
 에셋이 올바르게 적용되었는지 검증:
 
 ```
-8. art-visual: 머티리얼/텍스처 적용 확인
-9. art-vfx: VFX 재생 확인
-10. art-anim: 애니메이션 재생 확인
+8. agent-art-visual: 머티리얼/텍스처 적용 확인
+9. agent-art-vfx:   VFX 재생 확인
+10. agent-art-anim: 애니메이션 재생 확인
 ```
+
+> **호출 방식**: 머지 코디네이터(현재 세션)는 검증용 서브에이전트를 직접 spawn 합니다.
+> 예: `Task(subagent_type: "agent-art-visual", prompt: "BP_Team1Tower / BP_Team2Tower 머티리얼 적용 확인")`
 
 → `capture_viewport`로 최종 시각 검증
 
@@ -118,7 +117,7 @@ git branch -d agent/prog-object/<feature>
 ### MCP 전제조건
 
 ```
-mcp__mcp-unreal__status → 에디터 연결 확인
+mcp__unreal-engine__system_control → 에디터 연결 확인
 ```
 
 에디터가 연결되지 않으면 기획/아트 검증을 스킵하고 사용자에게 알림.
@@ -126,8 +125,8 @@ mcp__mcp-unreal__status → 에디터 연결 확인
 ### C++ 변경이 기획/아트에 미치는 영향 점검
 
 프로그래머 머지 후 확인할 사항:
-1. **UPROPERTY 추가/삭제**: design-balance에 통보, 값 재설정 필요 여부 확인
-2. **컴포넌트 구조 변경**: art-visual/art-vfx에 통보, 에셋 재연결 필요 여부 확인
+1. **UPROPERTY 추가/삭제**: agent-design-balance에 통보, 값 재설정 필요 여부 확인
+2. **컴포넌트 구조 변경**: agent-art-visual/agent-art-vfx에 통보, 에셋 재연결 필요 여부 확인
 3. **Blueprint 부모 클래스 변경**: 모든 기획/아트 에이전트에 영향
 
 ### 최종 통합 검증

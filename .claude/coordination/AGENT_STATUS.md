@@ -15,4 +15,6 @@
 
 | 도메인 | 에이전트 | 세션 타입 | 브랜치/에셋 | 기능 | 완료일 |
 |--------|---------|----------|-----------|------|--------|
-| — | — | — | — | — | — |
+| 프로그래머 | agent-prog-ui | worktree | agent/prog-ui/hp-bar-percent | HP 바 퍼센트 텍스트 추가 | 2026-04-29 |
+| 기획자 | agent-design-balance | mcp | Guides/06_BalanceLog/ | BP_Character 스탯 진단 리포트 | 2026-04-29 |
+| 기획자 | agent-design-docs | mcp | — | 멀티 에이전트 시스템 동작 확인 테스트 | 2026-04-29 |

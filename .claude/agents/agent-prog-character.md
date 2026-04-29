@@ -1,5 +1,7 @@
 ---
-model: claude-sonnet-4-6
+name: agent-prog-character
+description: 캐릭터 프로그래머 - AOSCharacter, AOSSpawnPoint, AOSGameMode (enum 소유) 담당
+model: sonnet
 ---
 
 # Character 담당 에이전트 (프로그래머 도메인)
