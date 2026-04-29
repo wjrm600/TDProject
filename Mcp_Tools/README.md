@@ -61,6 +61,41 @@ setx UE_ROOT "G:\UnrealEngine_Release\UE_5.7"
   올바르게 만들 수 있습니다. `settings.local.json` 은 git 추적이
   되지 않으므로(`.gitignore`) 안전하게 머신별 경로를 박아도 됩니다.
 
+#### 자동 셋업 프롬프트 (복붙용)
+
+새 컴퓨터에서 프로젝트를 클론한 직후, **그 컴퓨터의 Claude Code 세션**에
+아래 프롬프트를 그대로 붙여넣으면 경로 검증 → 환경변수 등록 명령 출력 →
+auto-memory 갱신 → `.claude/settings.local.json` 패치까지 한 번에
+처리합니다.
+
+````
+이 프로젝트는 머신별로 Unreal Engine 5.7 엔진 루트가 다릅니다.
+이 컴퓨터의 엔진 경로를 등록하고 기억해 줘.
+
+1. 내 컴퓨터의 엔진 루트는 다음과 같아:
+   <여기에 본인 경로 적기, 예: D:\Epic\UE_5.7  또는  C:\Program Files\Epic Games\UE_5.7>
+
+2. 해줄 일:
+   (a) 위 경로 안에 `Engine\Build\BatchFiles\Build.bat` 가 실제로 있는지 확인.
+       없으면 잘못된 경로라고 알려주고 멈출 것.
+   (b) 환경변수 UE_ROOT 등록 명령(`setx UE_ROOT "<경로>"`)을 출력해서
+       내가 직접 새 PowerShell 창에서 실행하도록 안내해 줘.
+       (setx 는 새 터미널부터 적용되므로 직접 실행하지는 말 것.)
+   (c) auto-memory 의 `reference_ue_engine_path.md` 를 이 컴퓨터의 경로로
+       갱신하고 (없으면 새로 만들고), `MEMORY.md` 인덱스 한 줄도 맞춰 줘.
+   (d) `.claude/settings.local.json` 의 permissions.allow 에 들어 있는
+       Build.bat 항목이 옛 경로면, 새 경로로 교체해 줘.
+       (이 파일은 git 추적 안 됨 → 머신별로 안전하게 갱신 가능)
+
+3. 빌드 실행은 절대 직접 하지 마. 명령만 보여주고 내가 직접 실행함.
+
+자세한 절차는 `Mcp_Tools/README.md` §1-1 참고.
+````
+
+> **메모**: 위 프롬프트의 `<여기에 본인 경로 적기>` 자리만 자기 머신
+> 경로로 바꿔서 붙여넣으면 됩니다. Claude 가 잘못된 경로를 알아서
+> 거르고, 환경변수 등록 명령은 사용자가 직접 실행하도록만 안내합니다.
+
 ---
 
 ## 2. unreal-engine MCP — 셋업
