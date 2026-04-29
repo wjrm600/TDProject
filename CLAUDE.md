@@ -10,9 +10,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building the Project
 
-```bash
-# Build with Unreal Engine 5.7 (using PowerShell)
-powershell -Command "& 'C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat' TDProject Win64 Development -Project='C:\UnrealProject\TDProject\TDProject.uproject'"
+엔진 경로는 머신마다 다르므로 환경변수 `UE_ROOT` 와 `<PROJECT_ROOT>` 플레이스홀더를 사용합니다. 등록 절차는 [`Mcp_Tools/README.md` §1-1](Mcp_Tools/README.md) 참고.
+
+```powershell
+# Build with Unreal Engine 5.7 (PowerShell)
+& "$env:UE_ROOT\Engine\Build\BatchFiles\Build.bat" `
+    TDProject Win64 Development `
+    -Project="<PROJECT_ROOT>\TDProject.uproject"
 ```
 
 **Note**: This project uses Visual Studio 2026 and Unreal Build Accelerator (UBA).

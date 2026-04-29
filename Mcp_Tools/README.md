@@ -20,6 +20,49 @@
 
 ---
 
+## 1-1. Unreal Engine 엔진 경로 등록
+
+엔진 설치 위치는 컴퓨터마다 다릅니다(설치본 vs 소스 빌드, 드라이브 다름).
+빌드 명령·툴 호출이 일관되도록 **환경변수 `UE_ROOT`** 에 엔진 루트를
+등록하는 것을 권장합니다.
+
+### 등록 방법 (Windows, PowerShell — 관리자 권한 불필요)
+
+```powershell
+# 자기 머신의 엔진 루트로 치환
+setx UE_ROOT "G:\UnrealEngine_Release\UE_5.7"
+```
+
+`setx` 는 **새 터미널부터** 적용됩니다. 등록 후 PowerShell/cmd 를 새로 열고
+`echo $env:UE_ROOT` 또는 `echo %UE_ROOT%` 로 확인하세요.
+
+### 흔한 설치 위치
+
+| 설치 형태 | 일반적 경로 예시 |
+|----------|----------------|
+| Epic Games Launcher (설치본) | `C:\Program Files\Epic Games\UE_5.7` |
+| GitHub 소스 빌드 | 사용자가 클론한 임의 폴더 (예: `G:\UnrealEngine_Release\UE_5.7`) |
+
+`UE_ROOT\Engine\Build\BatchFiles\Build.bat` 가 존재하면 올바른 경로입니다.
+
+### 빌드 명령 (UE_ROOT 사용)
+
+```powershell
+& "$env:UE_ROOT\Engine\Build\BatchFiles\Build.bat" `
+    TDProject Win64 Development `
+    -Project="<PROJECT_ROOT>\TDProject.uproject"
+```
+
+### Claude Code 사용자에게
+
+- 머신별 정보이므로 `.claude/settings.local.json` 의 permission 에 본인의
+  실제 Build.bat 경로를 명시하거나, 사용자 auto-memory(`MEMORY.md`)에
+  `UE_ROOT` 값을 메모해 두면 다음 세션에서 Claude 가 빌드 명령을
+  올바르게 만들 수 있습니다. `settings.local.json` 은 git 추적이
+  되지 않으므로(`.gitignore`) 안전하게 머신별 경로를 박아도 됩니다.
+
+---
+
 ## 2. unreal-engine MCP — 셋업
 
 이 서버는 별도 설치가 필요 없습니다. 프로젝트의 `Plugins/McpAutomationBridge/`
