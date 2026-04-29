@@ -17,8 +17,7 @@
 2. 저장소 클론
 
 3. RAG MCP 준비
-   ├── ue_rag_mcp.py 경로 2곳 수정
-   └── pip install -r requirements.txt
+   └── pip install -r requirements.txt   (경로는 자동 추론)
 
 4. Unreal Editor 실행 → 플러그인 컴파일
 
@@ -37,6 +36,24 @@
 1. [Epic Games Launcher](https://www.epicgames.com/store/ko/download) 설치
 2. Library → Engine Versions → `5.7` 설치
 3. (선택) 설치 옵션에서 **"Editor symbols for debugging"** 체크
+
+#### UE_ROOT 환경변수 등록 (권장)
+
+엔진 설치 위치는 머신마다 다르므로(`C:\Program Files\Epic Games\UE_5.7`,
+`G:\UnrealEngine_Release\UE_5.7` 등), 빌드 명령을 일관되게 쓰려면
+환경변수 `UE_ROOT` 에 엔진 루트를 등록하세요.
+
+```powershell
+# 본인 머신의 엔진 루트로 치환 (관리자 권한 불필요)
+setx UE_ROOT "C:\Program Files\Epic Games\UE_5.7"
+```
+
+`setx` 는 새 터미널부터 적용됩니다. 등록 후 새 PowerShell 에서
+`echo $env:UE_ROOT` 로 확인하세요. `UE_ROOT\Engine\Build\BatchFiles\Build.bat`
+가 존재하면 정상입니다.
+
+자세한 내용 및 Claude Code 자동 셋업 프롬프트는
+[`Mcp_Tools/README.md` §1-1](../../Mcp_Tools/README.md) 참고.
 
 ### Visual Studio 2022 이상
 
@@ -89,23 +106,23 @@ cd TDProject
 ## 3단계 — RAG MCP 준비
 
 RAG MCP는 C++ 코드를 벡터 DB로 인덱싱해서 Claude가 코드를 의미론적으로 검색할 수 있게 해줍니다.
-스크립트는 이미 저장소 안에 있으므로 **복사 불필요**, 경로 수정과 패키지 설치만 합니다.
+스크립트는 이미 저장소 안에 있고, **경로는 자동 추론**되므로 패키지 설치만 하면 됩니다.
 
-### 3-1. 경로 수정
+### 3-1. 경로 자동 추론 (수정 불필요)
 
-`Mcp_Tools/ue_rag_mcp.py` 상단의 두 경로를 **실제 클론한 경로**에 맞게 수정:
+`Mcp_Tools/ue_rag_mcp.py` 는 다음 우선순위로 경로를 결정합니다.
 
-```python
-# ============================================================
-# 설정 — 새 컴퓨터에서 클론 후 이 두 경로를 본인 환경에 맞게 수정하세요
-# ============================================================
-UNREAL_PROJECT_SOURCE_PATH = r"D:\Projects\TDProject\Source"   # ← 실제 경로로 수정
-DB_DIR = r"D:\Projects\TDProject\Mcp_Tools\chroma_db"          # ← 실제 경로로 수정
-# ============================================================
+1. 환경변수 `TDPROJECT_SOURCE` / `TDPROJECT_RAG_DB` 가 있으면 사용
+2. 없으면 스크립트 위치 기준 `../Source` 와 `./chroma_db` 로 자동 추론
+3. 둘 다 실패하면 `PROJECT_ROOT_FALLBACK` 사용
+
+따라서 `Mcp_Tools/` 폴더 위치만 그대로면 **별도 수정 없이 동작**합니다.
+다른 위치에서 실행하고 싶다면 환경변수만 지정하세요:
+
+```powershell
+$env:TDPROJECT_SOURCE = "D:\path\to\TDProject\Source"
+$env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 ```
-
-> **주의**: 반드시 `r"..."` raw string으로 작성하세요.  
-> `"C:\Users\..."` 처럼 쓰면 `\U`가 유니코드 이스케이프로 해석되어 SyntaxError가 납니다.
 
 > **chroma_db 폴더**는 최초 실행 시 자동 생성되며 `.gitignore`에 등록되어 있습니다.
 
@@ -115,7 +132,7 @@ DB_DIR = r"D:\Projects\TDProject\Mcp_Tools\chroma_db"          # ← 실제 경�
 pip install -r Mcp_Tools/requirements.txt
 ```
 
-설치 패키지: `mcp`, `langchain-community`, `langchain-text-splitters`, `chromadb`, `sentence-transformers`
+설치 패키지: `mcp`, `langchain-community`, `langchain-huggingface`, `langchain-text-splitters`, `chromadb`, `sentence-transformers`, `chardet`
 
 > 처음 설치는 모델 다운로드 포함 5~10분 소요될 수 있습니다.
 
@@ -186,17 +203,19 @@ unreal-rag      connected
 - `McpAutomationBridge` 플러그인 활성화 여부 확인
 - 방화벽에서 포트 3000 차단 여부 확인
 
-### unreal-rag SyntaxError
+### unreal-rag 가 잘못된 폴더를 인덱싱
 
-경로에 `r"..."` raw string이 누락된 경우:
+스크립트는 자동 추론으로 `Mcp_Tools/../Source` 를 사용합니다. 폴더 구조가
+표준과 다르거나, fallback 경로(`PROJECT_ROOT_FALLBACK`)가 잘못 잡힌 경우
+환경변수로 명시적으로 지정하세요:
 
-```python
-# 잘못됨
-UNREAL_PROJECT_SOURCE_PATH = "C:\UnrealProject\TDProject\Source"
-
-# 올바름
-UNREAL_PROJECT_SOURCE_PATH = r"C:\UnrealProject\TDProject\Source"
+```powershell
+$env:TDPROJECT_SOURCE = "C:\UnrealProject\TDProject\Source"
+$env:TDPROJECT_RAG_DB = "C:\UnrealProject\TDProject\Mcp_Tools\chroma_db"
 ```
+
+서버 시작 시 stderr 에 `[ue_rag_mcp] Source: <경로>` / `[ue_rag_mcp] DB: <경로>`
+가 출력되므로 실제 사용 중인 경로를 확인할 수 있습니다.
 
 ### .claude/settings.local.json 경로 오류
 
@@ -218,12 +237,12 @@ Remove-Item -Recurse -Force Binaries, Intermediate, Plugins\McpAutomationBridge\
 
 ```
 [ ] Unreal Engine 5.7 설치
+[ ] UE_ROOT 환경변수 등록 (setx UE_ROOT "<엔진 루트>")
 [ ] Visual Studio 2022+ (C++ 게임 개발 워크로드 포함)
 [ ] Python 3.11+ 설치 (PATH 추가 확인)
 [ ] Node.js 18+ 설치
 [ ] Claude Code CLI 설치 + 로그인
 [ ] git clone
-[ ] Mcp_Tools/ue_rag_mcp.py 경로 2곳 수정
 [ ] pip install -r Mcp_Tools/requirements.txt
 [ ] TDProject.uproject 열기 → Yes (플러그인 컴파일)
 [ ] McpAutomationBridge 플러그인 Enabled 확인

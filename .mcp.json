@@ -7,7 +7,7 @@
     "unreal-rag": {
       "type": "stdio",
       "command": "python",
-      "args": ["E:\\Unreal Project\\TDProject\\Mcp_Tools\\ue_rag_mcp.py"]
+      "args": ["Mcp_Tools/ue_rag_mcp.py"]
     }
   }
 }

@@ -15,7 +15,7 @@
 - **OS**: Windows 10/11 (macOS도 가능, 경로만 조정)
 - **Python**: 3.10+ (권장: 시스템 PATH에서 `python` 호출 가능해야 함)
 - **Node.js**: 18+ (`npx` 사용)
-- **Unreal Engine**: 5.6 또는 5.7 (커스텀 빌드 또는 Epic 공식)
+- **Unreal Engine**: 5.7 (Epic 공식 또는 GitHub 소스 빌드)
 - **Claude Desktop** 또는 **Claude Code**
 
 ---
