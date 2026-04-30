@@ -163,6 +163,11 @@ public:
 	void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
 
 	// Getter
+
+	/** Returns the MapManager instance owned/discovered by this GameMode (server-side only). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "AOS|Map")
+	AAOSMapManager* GetMapManager() const { return MapManager; }
+
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	float GetRemainingTime() const { return RemainingGameTime; }
 

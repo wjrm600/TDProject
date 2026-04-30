@@ -100,6 +100,12 @@ private:
 	UPROPERTY()
 	class AAOSGameMode* CachedGameMode = nullptr;
 
+	// StartDeployment 가 호출되었는지 — retry 게이트에서 사용
+	bool bDeploymentStarted = false;
+
+	/** GameMode 캐시 우선, TActorIterator fallback 으로 MapManager 반환 (서버 전용). */
+	AAOSMapManager* ResolveMapManager() const;
+
 	void CacheLaneInfo();
 	void BuildWaypointQueue();
 	void UpdateAIBehavior(float DeltaTime);

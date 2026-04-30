@@ -11,6 +11,28 @@ static TAutoConsoleVariable<int32> CVarShowCharacterPaths(
     TEXT("AOS.Debug.ShowCharacterPaths"), 0,
     TEXT("1=AI 캐릭터 웨이포인트 경로 표시, 0=숨김"));
 
+AAOSMapManager* AAOSAIController::ResolveMapManager() const
+{
+	UWorld* World = GetWorld();
+	if (!World) return nullptr;
+
+	// 1) GameMode 가 캐시한 인스턴스 우선 (서버 권한, O(1))
+	if (AAOSGameMode* GM = World->GetAuthGameMode<AAOSGameMode>())
+	{
+		if (AAOSMapManager* MM = GM->GetMapManager())
+		{
+			return MM;
+		}
+	}
+
+	// 2) Fallback: TActorIterator 탐색 (GameMode 가 아직 캐시 못 했거나 에디터 환경)
+	for (TActorIterator<AAOSMapManager> It(World); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
+}
+
 // AOS.Debug.ShowAttackRange 는 AOSMapManager.cpp 에서 정의됨 — 여기서 재정의 금지
 
 AAOSAIController::AAOSAIController()
@@ -122,6 +144,7 @@ void AAOSAIController::Tick(float DeltaTime)
 void AAOSAIController::StartDeployment(EAOSLane Lane)
 {
 	DeployedLane = Lane;
+	bDeploymentStarted = true;
 	CacheLaneInfo();
 
 	// 웨이포인트 큐 구축 (아군 타워 → 적 타워 → 적 커맨드 센터)
@@ -214,14 +237,7 @@ AAOSStructure* AAOSAIController::FindNearestEnemyTower()
 		return nullptr;
 	}
 
-	// MapManager 찾기
-	AAOSMapManager* MapManager = nullptr;
-	for (TActorIterator<AAOSMapManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-	{
-		MapManager = *ActorItr;
-		break;
-	}
-
+	AAOSMapManager* MapManager = ResolveMapManager();
 	if (!MapManager)
 	{
 		return nullptr;
@@ -256,17 +272,10 @@ void AAOSAIController::CacheLaneInfo()
 		return;
 	}
 
-	// MapManager 찾기
-	AAOSMapManager* MapManager = nullptr;
-	for (TActorIterator<AAOSMapManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-	{
-		MapManager = *ActorItr;
-		break;
-	}
-
+	AAOSMapManager* MapManager = ResolveMapManager();
 	if (!MapManager)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[AI Controller] MapManager not found!"));
+		UE_LOG(LogTemp, Warning, TEXT("[AI Controller] MapManager not yet ready in CacheLaneInfo — will retry on next tick"));
 		return;
 	}
 
@@ -294,17 +303,10 @@ void AAOSAIController::BuildWaypointQueue()
 		return;
 	}
 
-	// MapManager 찾기
-	AAOSMapManager* MapManager = nullptr;
-	for (TActorIterator<AAOSMapManager> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-	{
-		MapManager = *ActorItr;
-		break;
-	}
-
+	AAOSMapManager* MapManager = ResolveMapManager();
 	if (!MapManager)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[AI Controller] MapManager not found while building waypoint queue!"));
+		UE_LOG(LogTemp, Warning, TEXT("[AI Controller] MapManager not yet ready in BuildWaypointQueue — will retry on next tick"));
 		return;
 	}
 
@@ -376,6 +378,21 @@ void AAOSAIController::BuildWaypointQueue()
 
 void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 {
+	// ServerTravel 직후 MapManager 가 늦게 등록되는 race condition 대응:
+	// Deployment 는 시작됐지만 WaypointQueue 가 아직 비어있으면 매 tick 재시도.
+	if (bDeploymentStarted && WaypointQueue.Num() == 0)
+	{
+		CacheLaneInfo();
+		BuildWaypointQueue();
+		if (WaypointQueue.Num() == 0)
+		{
+			// MapManager 가 아직 준비 안 됨 — 이번 tick 스킵
+			return;
+		}
+		// 큐가 새로 만들어졌으면 첫 목표 위치도 설정
+		CurrentMoveTarget = GetNextTargetLocation();
+	}
+
 	// 쿨타임 업데이트
 	if (CurrentAttackCooldown > 0.0f)
 	{
