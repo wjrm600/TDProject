@@ -1,8 +1,11 @@
 #include "AOSMapManager.h"
 #include "AOSStructure.h"
+#include "AOSSpawnPoint.h"
+#include "AOSGameMode.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 
 static TAutoConsoleVariable<int32> CVarShowStructureBoxes(
     TEXT("AOS.Debug.ShowStructureBoxes"), 0,
@@ -110,9 +113,13 @@ void AAOSMapManager::UpdateEditorVisualization()
 		// 라인 경로 그리기 - 스폰→타워1→타워2→타워3→적 커맨드 센터
 		if (bShowLanePaths)
 		{
+			// 시작점: SpawnPoint 액터 매칭 → 없으면 첫 타워 위치 fallback
+			FVector Team1Start = ResolveLaneStartForVisualization(LaneInfo, EAOSTeam::Team1);
+			FVector Team2Start = ResolveLaneStartForVisualization(LaneInfo, EAOSTeam::Team2);
+
 			// Team1 경로: Team1Start → 각 타워 → Team2 CC
 			TArray<FVector> Team1Path;
-			Team1Path.Add(LaneInfo.Team1StartPosition);
+			Team1Path.Add(Team1Start);
 			for (const FVector& TowerPos : LaneInfo.Team1TowerPositions)
 				Team1Path.Add(TowerPos);
 			Team1Path.Add(Team2CommandCenterPosition);
@@ -125,7 +132,7 @@ void AAOSMapManager::UpdateEditorVisualization()
 
 			// Team2 경로: Team2Start → 각 타워 → Team1 CC
 			TArray<FVector> Team2Path;
-			Team2Path.Add(LaneInfo.Team2StartPosition);
+			Team2Path.Add(Team2Start);
 			for (const FVector& TowerPos : LaneInfo.Team2TowerPositions)
 				Team2Path.Add(TowerPos);
 			Team2Path.Add(Team1CommandCenterPosition);
@@ -257,6 +264,39 @@ void AAOSMapManager::UpdateEditorVisualization()
 		DrawDebugLine(GetWorld(), CC2 + FVector(-Size, Size, -Size), CC2 + FVector(-Size, Size, Size), Team2Color, true, -1.0f, 0, EditorVisualizationThickness * 2.0f);
 	}
 }
+
+// 에디터 시각화용 라인 시작점 결정 헬퍼
+// SpawnPoint 액터 매칭 → 없으면 첫 타워 위치 → 없으면 ZeroVector
+FVector AAOSMapManager::ResolveLaneStartForVisualization(const FLaneInfo& LaneInfo, EAOSTeam Team) const
+{
+	if (UWorld* World = GetWorld())
+	{
+		TArray<AActor*> SpawnPoints;
+		UGameplayStatics::GetAllActorsOfClass(World, AAOSSpawnPoint::StaticClass(), SpawnPoints);
+
+		AAOSSpawnPoint* Best = nullptr;
+		for (AActor* A : SpawnPoints)
+		{
+			AAOSSpawnPoint* SP = Cast<AAOSSpawnPoint>(A);
+			if (!SP) continue;
+			if (SP->GetTeam() == Team && SP->GetLane() == LaneInfo.LaneType)
+			{
+				if (!Best || SP->GetSpawnIndex() < Best->GetSpawnIndex())
+				{
+					Best = SP;
+				}
+			}
+		}
+		if (Best) return Best->GetActorLocation();
+	}
+
+	// Fallback: 첫 타워 위치
+	const TArray<FVector>& Towers = (Team == EAOSTeam::Team1)
+		? LaneInfo.Team1TowerPositions : LaneInfo.Team2TowerPositions;
+	if (Towers.Num() > 0) return Towers[0];
+
+	return FVector::ZeroVector;
+}
 #endif
 
 void AAOSMapManager::InitializeMap()
@@ -282,16 +322,19 @@ FLaneInfo AAOSMapManager::GetLaneInfo(EAOSLane Lane) const
 
 FVector AAOSMapManager::GetLaneStartPosition(EAOSLane Lane, EAOSTeam Team) const
 {
-	FLaneInfo Info = GetLaneInfo(Lane);
-
-	if (Team == EAOSTeam::Team1)
+	// 라인 시작 위치의 단일 진실 공급원은 SpawnPoint 액터.
+	// DS 가드: GetAuthGameMode 는 클라이언트에서 nullptr 반환.
+	if (UWorld* World = GetWorld())
 	{
-		return Info.Team1StartPosition;
+		if (AAOSGameMode* GM = World->GetAuthGameMode<AAOSGameMode>())
+		{
+			if (AAOSSpawnPoint* SP = GM->GetNearestSpawnPoint(Team, Lane))
+			{
+				return SP->GetActorLocation();
+			}
+		}
 	}
-	else
-	{
-		return Info.Team2StartPosition;
-	}
+	return FVector::ZeroVector;
 }
 
 FVector AAOSMapManager::GetLaneEndPosition(EAOSLane Lane, EAOSTeam Team) const
@@ -459,16 +502,14 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo TopLane;
 		TopLane.LaneType = EAOSLane::Top;
 
-		// Team1 (왼쪽/아래) - 스폰 위치
-		TopLane.Team1StartPosition = FVector(8000, 8000, 0);
+		// Team1 타워 위치 (스폰 시작 위치는 SpawnPoint 액터가 단일 진실 공급원)
 		TopLane.Team1TowerPositions = {
 			FVector(5600, 5600, 0),
 			FVector(2800, 2800, 0),
 			FVector(-1400, -1400, 0)
 		};
 
-		// Team2 (오른쪽/위) - 스폰 위치
-		TopLane.Team2StartPosition = FVector(-8000, -8000, 0);
+		// Team2 타워 위치
 		TopLane.Team2TowerPositions = {
 			FVector(-5600, -5600, 0),
 			FVector(-2800, -2800, 0),
@@ -483,16 +524,14 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo MidLane;
 		MidLane.LaneType = EAOSLane::Mid;
 
-		// Team1 - 스폰 위치
-		MidLane.Team1StartPosition = FVector(8000, 0, 0);
+		// Team1 타워 위치
 		MidLane.Team1TowerPositions = {
 			FVector(5600, 0, 0),
 			FVector(2800, 0, 0),
 			FVector(-1400, 0, 0)
 		};
 
-		// Team2 - 스폰 위치
-		MidLane.Team2StartPosition = FVector(-8000, 0, 0);
+		// Team2 타워 위치
 		MidLane.Team2TowerPositions = {
 			FVector(-5600, 0, 0),
 			FVector(-2800, 0, 0),
@@ -507,16 +546,14 @@ void AAOSMapManager::SetupDefaultLaneInfo()
 		FLaneInfo BottomLane;
 		BottomLane.LaneType = EAOSLane::Bottom;
 
-		// Team1 - 스폰 위치
-		BottomLane.Team1StartPosition = FVector(8000, -8000, 0);
+		// Team1 타워 위치
 		BottomLane.Team1TowerPositions = {
 			FVector(5600, -5600, 0),
 			FVector(2800, -2800, 0),
 			FVector(-1400, 1400, 0)
 		};
 
-		// Team2 - 스폰 위치
-		BottomLane.Team2StartPosition = FVector(-8000, 8000, 0);
+		// Team2 타워 위치
 		BottomLane.Team2TowerPositions = {
 			FVector(-5600, 5600, 0),
 			FVector(-2800, 2800, 0),

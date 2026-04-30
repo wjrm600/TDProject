@@ -271,7 +271,10 @@ void AAOSAIController::CacheLaneInfo()
 	}
 
 	EAOSTeam CharacterTeam = ControlledCharacter->GetTeam();
-	LaneStartPosition = MapManager->GetLaneStartPosition(DeployedLane, CharacterTeam);
+
+	// 캐릭터가 SpawnPoint 에서 막 스폰된 직후 캐싱되므로
+	// 캐릭터 현재 위치 = 라인 시작점. MapManager 우회로 단순화 (O(1), 결합도 감소).
+	LaneStartPosition = ControlledCharacter->GetActorLocation();
 	LaneEndPosition = MapManager->GetLaneEndPosition(DeployedLane, CharacterTeam);
 
 	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Cached lane info - Team: %d, Lane: %d"),

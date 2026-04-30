@@ -55,8 +55,8 @@ MapManager 액터의 `LanesInfo` 배열을 통해 레인을 구성합니다:
 
 ```
 LanesInfo[0] = Top Lane
-  - Team1StartPosition, Team2StartPosition
   - Team1TowerPositions[3], Team2TowerPositions[3]
+  ※ Team*StartPosition 은 제거됨 — 라인 시작 위치는 AAOSSpawnPoint 액터로 통일
 
 LanesInfo[1] = Mid Lane (동일 구조)
 LanesInfo[2] = Bottom Lane (동일 구조)

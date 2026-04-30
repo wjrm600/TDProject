@@ -100,22 +100,21 @@ AOSGameMode::BeginPlay()
 struct FLaneInfo {
     EAOSLane LaneType;
 
-    // Team1 라인
-    FVector Team1StartPosition;
-    FVector Team1EndPosition;
+    // Team1 라인 — 타워 좌표만
     TArray<FVector> Team1TowerPositions;  // 3개
-    FVector Team1CommandCenterPosition;
 
-    // Team2 라인
-    FVector Team2StartPosition;
-    FVector Team2EndPosition;
+    // Team2 라인 — 타워 좌표만
     TArray<FVector> Team2TowerPositions;  // 3개
-    FVector Team2CommandCenterPosition;
 };
 ```
 
+> **NOTE**: 라인 시작 위치(`Team*StartPosition`) 와 종료 위치(`Team*EndPosition`),
+> Command Center 위치는 `FLaneInfo` 에서 제거되었음. 라인 시작 위치는 `(Team, Lane)`
+> 매칭되는 `AAOSSpawnPoint` 액터의 `GetActorLocation()` 으로 일원화. CC 위치는
+> `AAOSMapManager::Team1CommandCenterPosition` / `Team2CommandCenterPosition` 멤버에 보유.
+
 **특징**:
-- 3개 라인 각각에 대한 정보 저장
+- 3개 라인 각각에 대한 타워 좌표 저장
 - 팀별로 대칭된 위치 정의
 - 기본값 (SetupDefaultLaneInfo)으로 자동 설정
 

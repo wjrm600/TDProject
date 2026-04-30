@@ -16,14 +16,8 @@ struct FLaneInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EAOSLane LaneType = EAOSLane::Mid;
 
-	// 각 팀의 스폰 위치
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team1StartPosition = FVector::ZeroVector;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FVector Team2StartPosition = FVector::ZeroVector;
-
 	// 라인의 타워 위치들
+	// (스폰 시작 위치는 SpawnPoint 액터가 단일 진실 공급원 — FLaneInfo 에 중복 보관하지 않음)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FVector> Team1TowerPositions;
 
@@ -144,5 +138,6 @@ private:
 
 #if WITH_EDITOR
 	void UpdateEditorVisualization();
+	FVector ResolveLaneStartForVisualization(const FLaneInfo& LaneInfo, EAOSTeam Team) const;
 #endif
 };

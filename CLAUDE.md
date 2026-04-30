@@ -79,9 +79,17 @@ The AI movement system uses a **waypoint queue** pattern, not simple pathfinding
 - Tower positions are defined in `LanesInfo` array but actual spawned instances are tracked in `AllTowers` array
 
 **Critical distinction**:
-- `LanesInfo` = Editor configuration (what you set in the Blueprint)
+- `LanesInfo` = Editor configuration (what you set in the Blueprint) — 타워 좌표만 보유
 - `AllTowers` = Runtime spawned instances (actual actors in the world)
 - Always use `AllTowers` for runtime logic, `LanesInfo` for spawning
+
+**라인 시작 위치 — SpawnPoint 가 단일 진실 공급원**:
+- `FLaneInfo` 는 더 이상 `Team1StartPosition` / `Team2StartPosition` 을 가지지 않음 (제거됨)
+- 라인 시작 = `(Team, Lane)` 매칭되는 `AAOSSpawnPoint` 의 `GetActorLocation()`
+- `AAOSMapManager::GetLaneStartPosition(Lane, Team)` 시그니처는 유지되지만 내부가
+  `GameMode->GetNearestSpawnPoint(Team, Lane)->GetActorLocation()` 으로 동작 (DS 가드: 클라이언트는 ZeroVector)
+- AIController 는 `LaneStartPosition` 을 캐싱할 때 MapManager 우회로
+  `ControlledCharacter->GetActorLocation()` 사용 (캐릭터가 막 SpawnPoint 에서 스폰된 직후)
 
 ### Team and Lane Enums
 
@@ -342,6 +350,18 @@ git push
 
 **Cause**: Characters couldn't attack structures — they only moved toward them while towers attacked back
 **Fixed**: Added `AttackStructure()` to `AOSAIController`. Characters now attack structures when the waypoint is an enemy structure.
+
+### 라인 시작 위치 이중화 — SpawnPoint 가 단일 진실 공급원
+
+**Cause**: 과거에는 `FLaneInfo::Team1StartPosition` / `Team2StartPosition` 와 `AAOSSpawnPoint`
+액터가 별도로 라인 시작 위치를 표현했음. 둘이 동기화 깨질 위험(MCP 자동화로 한쪽만 변경되거나
+저장 누락 등) 이 실제로 발생.
+
+**Fixed**: `FLaneInfo` 에서 두 필드 제거. 이후 라인 시작은 `(Team, Lane)` 매칭되는
+`AAOSSpawnPoint::GetActorLocation()`이 유일한 진실 공급원.
+- `AAOSMapManager::GetLaneStartPosition()` — 내부에서 `GameMode->GetNearestSpawnPoint()` 사용
+- `AAOSAIController::CacheLaneInfo()` — 캐릭터 위치를 직접 캐시 (스폰 직후라 SpawnPoint 위치와 동일)
+- 에디터 시각화는 `ResolveLaneStartForVisualization()` 헬퍼가 SpawnPoint 매칭 → 첫 타워 fallback
 
 ## Multi-Agent Development Workflow (3도메인)
 
