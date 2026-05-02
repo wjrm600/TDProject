@@ -363,6 +363,34 @@ git push
 - `AAOSAIController::CacheLaneInfo()` — 캐릭터 위치를 직접 캐시 (스폰 직후라 SpawnPoint 위치와 동일)
 - 에디터 시각화는 `ResolveLaneStartForVisualization()` 헬퍼가 SpawnPoint 매칭 → 첫 타워 fallback
 
+### 지형/필드 변경 시 RecastNavMesh 반드시 재빌드
+
+**증상**: 지형 액터(StaticMeshActor, Floor, Tower 등) 의 위치/스케일을 바꾸거나
+`NavMeshBoundsVolume` 영역을 변경한 뒤 PIE 를 돌리면 캐릭터가 정해진 곳에서 벗어나지
+못하거나(이전 nav 영역 밖) 아예 가만히 서 있음.
+
+**Cause**: 프로젝트의 `[/Script/NavigationSystem.RecastNavMesh]` 설정이 `RuntimeGeneration=Static`
+(default). 즉 `RecastNavMesh` 데이터는 **에디터에서 명시적으로 빌드된 시점의 cooked 데이터**
+이고 런타임에 자동 재생성되지 않음. 지형이 바뀌었는데 NavMesh 가 옛 영역으로 cooked
+돼 있으면 AI 의 `MoveTo` / pathfinding 이 실패. `ServerTravel(MainMenu→ThirdPerson)` 같은
+레벨 전환에서도 stale nav 가 그대로 로드됨.
+
+**대응 — 지형/Nav 영역 변경 후 반드시**:
+1. 에디터 메뉴: **Build → Build Paths Only** (또는 `Ctrl+Shift+B`)
+2. 변경된 레벨 + Nav 관련 액터들 (`RecastNavMesh`, `NavMeshBoundsVolume`) **저장**
+3. 커밋에 nav uasset (`Content/__ExternalActors__/.../RecastNavMesh*`, `NavMeshBoundsVolume*`)
+   포함되어 있는지 확인
+
+특히 다음 작업 후엔 잊지 말 것:
+- `StaticMeshActor` 위치/스케일 일괄 변경 (지형 ×N 확장 등)
+- 새 지형 액터 추가 / 삭제
+- `NavMeshBoundsVolume` 의 위치/스케일 조정
+- 타워·CC 위치 재배치
+
+**근본 fix 옵션 (선택)**: `Project Settings → Navigation Mesh → Runtime Generation`
+을 `Dynamic` 으로 바꾸면 런타임에 nav 가 자동 빌드됨. 단 cook 비용·빌드 시간 증가.
+현재는 명시적 rebuild 정책 유지.
+
 ## Multi-Agent Development Workflow (3도메인)
 
 이 프로젝트는 **3개 도메인** 멀티 에이전트 방식으로 개발됩니다. 각 에이전트는 `.claude/agents/<name>.md` 의 **서브에이전트**로 정의되어 있고, `Task` 도구로 `subagent_type` 을 지정해 호출합니다. 오케스트레이션용 슬래시 커맨드 `/multi-agent`, `/merge-agents` 만 `.claude/commands/` 에 남아 있습니다.
