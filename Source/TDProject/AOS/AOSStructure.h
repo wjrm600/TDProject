@@ -2,11 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "AbilitySystemInterface.h"
 #include "AOSGameMode.h"
 #include "AOSStructure.generated.h"
 
 class UWidgetComponent;
 class UAOSHealthBarWidget;
+class UAOSAbilitySystemComponent;
+class UAOSAttributeSet;
+class UGameplayEffect;
+class UDataTable;
+struct FOnAttributeChangeData;
 
 UENUM(BlueprintType)
 enum class EStructureType : uint8
@@ -18,9 +24,11 @@ enum class EStructureType : uint8
 /**
  * AOS 게임의 구조물 (타워, 커맨드 센터)
  * 건물 체력 관리, 대미지 처리, 파괴 상태 등을 담당
+ *
+ * GAS Phase 5: ASC + AttributeSet 부착 (Health/MaxHealth 가 AttributeSet 으로 이전)
  */
 UCLASS()
-class TDPROJECT_API AAOSStructure : public AActor
+class TDPROJECT_API AAOSStructure : public AActor, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -32,6 +40,16 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	// IAbilitySystemInterface
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	// AttributeSet 접근자 (BlueprintReadOnly 도 가능하지만 함수형으로 일관)
+	UFUNCTION(BlueprintCallable, Category = "AOS|GAS")
+	UAOSAttributeSet* GetAttributeSet() const { return AttributeSet; }
+
+	// AttributeSet 사망 콜백에서 호출하므로 public 노출
+	void OnStructureDestroyed();
+
 	// 초기 설정
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
 	void Initialize(EStructureType Type, EAOSTeam OwnerTeam, EAOSLane Lane = EAOSLane::Mid);
@@ -40,15 +58,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
 	void ReceiveDamage(float DamageAmount);
 
+	// Phase 5: AttributeSet wrapper — Health 의 진짜 소스는 AttributeSet
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
-	float GetCurrentHealth() const { return CurrentHealth; }
+	float GetCurrentHealth() const;
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
-	float GetMaxHealth() const { return MaxHealth; }
+	float GetMaxHealth() const;
 
 	// 상태 확인
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
-	bool IsDestroyed() const { return CurrentHealth <= 0.0f; }
+	bool IsDestroyed() const;
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structure")
 	EStructureType GetStructureType() const { return StructureType; }
@@ -77,12 +96,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "AOS|Structure")
 	EAOSLane Lane = EAOSLane::Mid;
 
-	// 체력 시스템
+	// 체력 시스템 (Phase 5: AttributeSet 으로 이전)
+	// MaxHealth 는 AttributeSet 초기값 시드로 유지 (Initialize 에서 StructureType 별로 갱신)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
 	float MaxHealth = 1000.0f;
-
-	UPROPERTY(ReplicatedUsing = OnRep_CurrentHealth, BlueprintReadOnly, Category = "AOS|Structure")
-	float CurrentHealth;
 
 	// 공격 속성
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Structure")
@@ -115,9 +132,40 @@ protected:
 	void UpdateHealthBar();
 	void InitializeHealthBar();
 
-	// Phase 3B: 체력 리플리케이션 콜백
-	UFUNCTION()
-	void OnRep_CurrentHealth();
+	// --- GAS Phase 5 ---
+	// ASC: 구조물 자체 소유 (캐릭터와 동일 패턴)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|GAS")
+	UAOSAbilitySystemComponent* AbilitySystemComponent;
+
+	UPROPERTY()
+	UAOSAttributeSet* AttributeSet;
+
+	// 데미지 GE 클래스 (BP 에서 override 가능, 기본값은 UGE_Damage)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|GAS")
+	TSubclassOf<UGameplayEffect> DamageGameplayEffect;
+
+	// Phase 5+: AttributeSet 초기값 DataTable
+	// 약속 자산:
+	//   /Game/AOS/GAS/Data/DT_TowerAttributes        (StructureType=Tower)
+	//   /Game/AOS/GAS/Data/DT_CommandCenterAttributes (StructureType=CommandCenter)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|GAS|Init")
+	TSoftObjectPtr<UDataTable> TowerAttributeInitTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|GAS|Init")
+	TSoftObjectPtr<UDataTable> CommandCenterAttributeInitTable;
+
+	// 위 DT 들이 사용할 row 이름 (구조물별 다른 값을 원하면 변경 — 양쪽 DT 공통)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|GAS|Init")
+	FName AttributeInitRowName = FName("Default");
+
+	// ASC ActorInfo 초기화 + AttributeSet 시드 + 콜백 등록
+	void InitializeAbilitySystem();
+
+	// AttributeSet 초기값 시드 (DT 우선, 없으면 float 멤버 fallback) — Initialize 후 재호출 가능
+	void ApplyAttributeSeeds();
+
+	// AttributeSet Health 변경 콜백 (HP 바 자동 갱신)
+	void OnHealthAttributeChanged(const FOnAttributeChangeData& Data);
 
 	// OwnerTeam 리플리케이션 콜백 — 클라이언트에서 HP 바 색상 갱신
 	UFUNCTION()
@@ -136,9 +184,6 @@ private:
 	// 메시 설정 함수
 	void SetupTowerMesh();
 	void SetupCommandCenterMesh();
-
-	// 파괴 처리
-	void OnStructureDestroyed();
 
 	// Phase 3B: 파괴 시각 효과 멀티캐스트 (서버 → 모든 클라이언트)
 	UFUNCTION(NetMulticast, Reliable)

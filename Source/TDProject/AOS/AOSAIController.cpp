@@ -2,6 +2,9 @@
 #include "AOSCharacter.h"
 #include "AOSStructure.h"
 #include "AOSMapManager.h"
+#include "GAS/AOSAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "GameplayTagContainer.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
@@ -31,6 +34,24 @@ AAOSMapManager* AAOSAIController::ResolveMapManager() const
 		return *It;
 	}
 	return nullptr;
+}
+
+float AAOSAIController::GetEffectiveAttackRange() const
+{
+	// 우선: 캐릭터의 AttributeSet (DT 적용된 단일 진실 공급원, 디버그 시각화와 일치)
+	if (ControlledCharacter)
+	{
+		if (UAOSAttributeSet* AttrSet = ControlledCharacter->GetAttributeSet())
+		{
+			const float AttrRange = AttrSet->GetAttackRange();
+			if (AttrRange > 0.0f)
+			{
+				return AttrRange;
+			}
+		}
+	}
+	// Fallback: AIController.AttackRange 멤버 (BP override 가능, AttributeSet 미초기화 시)
+	return AttackRange;
 }
 
 // AOS.Debug.ShowAttackRange 는 AOSMapManager.cpp 에서 정의됨 — 여기서 재정의 금지
@@ -393,11 +414,7 @@ void AAOSAIController::UpdateAIBehavior(float DeltaTime)
 		CurrentMoveTarget = GetNextTargetLocation();
 	}
 
-	// 쿨타임 업데이트
-	if (CurrentAttackCooldown > 0.0f)
-	{
-		CurrentAttackCooldown -= DeltaTime;
-	}
+	// Phase 3: CurrentAttackCooldown 멤버 제거 — 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그로 관리
 
 	// 가장 가까운 적군 찾기 (우선순위: 캐릭터 > 타워)
 	AAOSCharacter* NearestEnemy = FindNearestEnemy();
@@ -474,15 +491,16 @@ void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime
 	}
 
 	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), Structure->GetActorLocation());
+	const float EffectiveRange = GetEffectiveAttackRange();
 
-	if (Distance > AttackRange)
+	if (Distance > EffectiveRange)
 	{
 		// NavMesh로 구조물 접근
 		FVector StructurePos = Structure->GetActorLocation();
 		if (FVector::Dist(LastNavMoveTarget, StructurePos) > 50.0f)
 		{
 			LastNavMoveActor = nullptr;
-			MoveToLocation(StructurePos, AttackRange * 0.8f,
+			MoveToLocation(StructurePos, EffectiveRange * 0.8f,
 				/*bStopOnOverlap=*/true,
 				/*bUsePathfinding=*/true,
 				/*bProjectDestinationToNavigation=*/true,
@@ -499,12 +517,21 @@ void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime
 	FVector DirectionToStructure = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
 	ControlledCharacter->SetActorRotation(DirectionToStructure.Rotation());
 
-	if (CurrentAttackCooldown <= 0.0f)
+	// Phase 3: GA_Attack 트리거 (Cooldown.Attack.Basic 태그가 ASC 에 없을 때만)
+	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
+	if (ASC && !ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("Cooldown.Attack.Basic"))))
 	{
-		Structure->ReceiveDamage(ControlledCharacter->GetAttackDamage());
-		CurrentAttackCooldown = AttackCooldownDuration;
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking structure! HP: %.0f/%.0f"),
-			Structure->GetCurrentHealth(), Structure->GetMaxHealth());
+		FGameplayEventData EventData;
+		EventData.Target = Structure;
+		EventData.Instigator = ControlledCharacter;
+		ASC->HandleGameplayEvent(
+			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic")),
+			&EventData);
+
+		const float NowSec = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+		UE_LOG(LogTemp, Warning, TEXT("[AI %.3fs] GA_Attack → Structure! HP: %.0f/%.0f"),
+			NowSec, Structure->GetCurrentHealth(), Structure->GetMaxHealth());
 	}
 }
 
@@ -516,14 +543,15 @@ void AAOSAIController::AttackTarget(float DeltaTime)
 	}
 
 	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), CurrentTarget->GetActorLocation());
+	const float EffectiveRange = GetEffectiveAttackRange();
 
-	if (Distance > AttackRange)
+	if (Distance > EffectiveRange)
 	{
 		// MoveToActor: 목표 캐릭터가 움직여도 경로 자동 갱신
 		if (LastNavMoveActor != CurrentTarget)
 		{
 			LastNavMoveTarget = FVector::ZeroVector;
-			MoveToActor(CurrentTarget, AttackRange * 0.8f,
+			MoveToActor(CurrentTarget, EffectiveRange * 0.8f,
 				/*bStopOnOverlap=*/true,
 				/*bUsePathfinding=*/true,
 				/*bCanStrafe=*/false);
@@ -539,11 +567,21 @@ void AAOSAIController::AttackTarget(float DeltaTime)
 	FVector DirectionToEnemy = (CurrentTarget->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
 	ControlledCharacter->SetActorRotation(DirectionToEnemy.Rotation());
 
-	if (CurrentAttackCooldown <= 0.0f)
+	// Phase 3: GA_Attack 트리거 (Cooldown.Attack.Basic 태그가 ASC 에 없을 때만)
+	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
+	if (ASC && !ASC->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("Cooldown.Attack.Basic"))))
 	{
-		CurrentTarget->ReceiveDamage(ControlledCharacter->GetAttackDamage());
-		CurrentAttackCooldown = AttackCooldownDuration;
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Attacking enemy! Distance: %.1f"), Distance);
+		FGameplayEventData EventData;
+		EventData.Target = CurrentTarget;
+		EventData.Instigator = ControlledCharacter;
+		ASC->HandleGameplayEvent(
+			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic")),
+			&EventData);
+
+		const float NowSec = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+		UE_LOG(LogTemp, Warning, TEXT("[AI %.3fs] GA_Attack → Enemy! Distance: %.1f"),
+			NowSec, Distance);
 	}
 }
 

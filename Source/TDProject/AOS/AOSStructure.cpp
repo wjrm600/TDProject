@@ -1,15 +1,23 @@
 #include "AOSStructure.h"
 #include "AOSCharacter.h"
+#include "GAS/AOSAbilitySystemComponent.h"
+#include "GAS/AOSAttributeSet.h"
+#include "GAS/Data/AOSAttributeInitData.h"
+#include "GAS/Effects/GE_Damage.h"
 #include "UI/AOSHealthBarWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Engine/DataTable.h"
 #include "EngineUtils.h"
 #include "Materials/Material.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectTypes.h"
+#include "AbilitySystemComponent.h"
 
 AAOSStructure::AAOSStructure()
 {
@@ -42,26 +50,118 @@ AAOSStructure::AAOSStructure()
 	HealthBarComponent->SetDrawSize(FVector2D(120.0f, 12.0f));
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
 
-	CurrentHealth = MaxHealth;
+	// --- GAS Phase 5: ASC + AttributeSet 부착 ---
+	AbilitySystemComponent = CreateDefaultSubobject<UAOSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+
+	AttributeSet = CreateDefaultSubobject<UAOSAttributeSet>(TEXT("AttributeSet"));
+
+	// 데미지 GE 기본값 (BP 에서 override 가능)
+	DamageGameplayEffect = UGE_Damage::StaticClass();
+}
+
+UAbilitySystemComponent* AAOSStructure::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void AAOSStructure::InitializeAbilitySystem()
+{
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	// 구조물 패턴: Owner=self, Avatar=self (캐릭터와 동일)
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+	// Health 변경 콜백 등록 — 서버/클라이언트 모두에서 HP 바 자동 갱신
+	if (AttributeSet)
+	{
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			UAOSAttributeSet::GetHealthAttribute()
+		).AddUObject(this, &AAOSStructure::OnHealthAttributeChanged);
+
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			UAOSAttributeSet::GetMaxHealthAttribute()
+		).AddUObject(this, &AAOSStructure::OnHealthAttributeChanged);
+	}
+
+	// Phase 5+: 시드는 여기서 하지 않음 — StructureType 이 default(Tower) 라
+	// CC 가 Tower DT 를 잘못 사용하는 문제. Initialize(Type, ...) 가 호출되며
+	// StructureType 확정 후 ApplyAttributeSeeds() 가 정확한 DT 로 시드.
+	// (AttributeSet 생성자의 default(Health=100) 가 임시값으로 유지되며,
+	//  Initialize 까지의 짧은 시간에는 HP 바가 임시값을 표시 — 같은 프레임 내라 무시 가능)
+}
+
+void AAOSStructure::ApplyAttributeSeeds()
+{
+	if (!AttributeSet) return;
+
+	// StructureType 에 맞는 DT 선택
+	TSoftObjectPtr<UDataTable> SelectedTable =
+		(StructureType == EStructureType::CommandCenter)
+			? CommandCenterAttributeInitTable
+			: TowerAttributeInitTable;
+
+	const FAOSAttributeInitRow* Row = nullptr;
+	FAOSAttributeInitRow LoadedRow;
+	if (UDataTable* Table = SelectedTable.LoadSynchronous())
+	{
+		static const FString CtxStr(TEXT("AAOSStructure::ApplyAttributeSeeds"));
+		if (FAOSAttributeInitRow* Found = Table->FindRow<FAOSAttributeInitRow>(AttributeInitRowName, CtxStr, /*bWarnIfRowMissing=*/true))
+		{
+			LoadedRow = *Found;
+			Row = &LoadedRow;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GAS] %s: AttributeInitTable=%s 에서 row='%s' 미발견 — float 멤버 fallback"),
+				*GetName(), *Table->GetName(), *AttributeInitRowName.ToString());
+		}
+	}
+
+	const float SeedHealth      = Row ? Row->Health      : MaxHealth;
+	const float SeedMaxHealth   = Row ? Row->MaxHealth   : MaxHealth;
+	// 구조물은 공격 속성도 보유 — 기존 float 멤버 fallback
+	const float SeedAttackPower = Row ? Row->AttackPower : AttackDamage;
+	const float SeedAttackRange = Row ? Row->AttackRange : AttackRange;
+	const float SeedAttackSpeed = Row ? Row->AttackSpeed
+		: (1.0f / FMath::Max(AttackCooldown, KINDA_SMALL_NUMBER));
+	const float SeedMoveSpeed   = Row ? Row->MoveSpeed   : 0.0f; // 구조물은 이동 안 함
+
+	AttributeSet->InitHealth(SeedHealth);
+	AttributeSet->InitMaxHealth(SeedMaxHealth);
+	AttributeSet->InitAttackPower(SeedAttackPower);
+	AttributeSet->InitAttackRange(SeedAttackRange);
+	AttributeSet->InitAttackSpeed(SeedAttackSpeed);
+	AttributeSet->InitMoveSpeed(SeedMoveSpeed);
+	AttributeSet->InitDamage(0.0f);
+
+	// MaxHealth 멤버도 동기화 (다른 코드가 시드로 참조하는 경우 일관성 유지)
+	MaxHealth = SeedMaxHealth;
+
+	UE_LOG(LogTemp, Log, TEXT("[GAS] %s: ASC initialized (%s, %s) — Health=%.0f/%.0f"),
+		*GetName(),
+		(StructureType == EStructureType::CommandCenter) ? TEXT("CC") : TEXT("Tower"),
+		Row ? TEXT("DT") : TEXT("fallback"),
+		AttributeSet->GetHealth(), AttributeSet->GetMaxHealth());
+}
+
+void AAOSStructure::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
+{
+	// Phase 5: Health 또는 MaxHealth 변경 → HP 바 자동 갱신 (서버/클라 양쪽)
+	UpdateHealthBar();
 }
 
 void AAOSStructure::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AAOSStructure, CurrentHealth);
+	// Phase 5: CurrentHealth 멤버 제거 — Health 는 AttributeSet 가 ReplicatedUsing 처리
 	DOREPLIFETIME(AAOSStructure, StructureType);
 	DOREPLIFETIME(AAOSStructure, OwnerTeam); // ReplicatedUsing=OnRep_OwnerTeam — 클라이언트 HP 바 색상 갱신
 	DOREPLIFETIME(AAOSStructure, Lane);
-}
-
-void AAOSStructure::OnRep_CurrentHealth()
-{
-	// HealthBarWidget이 아직 초기화되지 않은 경우 먼저 초기화
-	if (!HealthBarWidget && HealthBarComponent)
-	{
-		InitializeHealthBar();
-	}
-	UpdateHealthBar();
 }
 
 void AAOSStructure::OnRep_OwnerTeam()
@@ -101,7 +201,8 @@ void AAOSStructure::BeginPlay()
 {
 	Super::BeginPlay();
 
-	CurrentHealth = MaxHealth;
+	// Phase 5: ASC 초기화 (서버/클라 양쪽 — 구조물은 Pawn 이 아니라 PossessedBy 가 없음)
+	InitializeAbilitySystem();
 
 	// 클라이언트에서도 HP 바 위젯을 초기화
 	// (서버는 Initialize() 내에서 InitializeHealthBar()를 호출하지만, 클라이언트는 이를 수신하지 않음)
@@ -155,12 +256,17 @@ void AAOSStructure::Tick(float DeltaTime)
 			FVector Pos = GetActorLocation();
 			const FString TypeStr = (StructureType == EStructureType::Tower) ? TEXT("타워") : TEXT("본진");
 
-			// 공격 범위 (AttackRange) — 수평 원 + 라벨
-			DrawDebugCircle(GetWorld(), Pos, AttackRange, 32,
+			// 공격 범위 — AttributeSet 의 AttackRange 가 단일 진실 공급원
+			// (DT 또는 GE 모디파이로 변경된 값을 그대로 시각화)
+			const float DebugAttackRange = AttributeSet
+				? AttributeSet->GetAttackRange()
+				: AttackRange;
+
+			DrawDebugCircle(GetWorld(), Pos, DebugAttackRange, 32,
 				TeamColor, false, 0.0f, 0, 3.0f,
 				FVector(1, 0, 0), FVector(0, 1, 0), false);
-			DrawDebugString(GetWorld(), Pos + FVector(AttackRange, 0, 50.0f),
-				FString::Printf(TEXT("[%s] 공격 %.0f"), *TypeStr, AttackRange),
+			DrawDebugString(GetWorld(), Pos + FVector(DebugAttackRange, 0, 50.0f),
+				FString::Printf(TEXT("[%s] 공격 %.0f"), *TypeStr, DebugAttackRange),
 				nullptr, TeamColor, 0.0f, true, 1.2f);
 
 			// 감지 범위 (DetectionRange) — 밝은 혼합 색, 수평 원 + 라벨
@@ -188,19 +294,25 @@ void AAOSStructure::Initialize(EStructureType Type, EAOSTeam InOwnerTeam, EAOSLa
 	OwnerTeam = InOwnerTeam;
 	Lane = InLane;
 
-	// 구조물 종류에 따라 최대 체력 및 메시 설정
+	// 메시 설정 (체력 등 수치는 ApplyAttributeSeeds 에서 DT 또는 float 멤버 fallback 으로 결정)
 	if (Type == EStructureType::CommandCenter)
 	{
-		MaxHealth = 5000.0f;
+		// MaxHealth fallback default — DT 가 없을 때만 사용
+		if (MaxHealth <= 1000.0f) MaxHealth = 5000.0f;
 		SetupCommandCenterMesh();
 	}
 	else if (Type == EStructureType::Tower)
 	{
-		MaxHealth = 1000.0f;
+		// MaxHealth 는 default 1000 그대로 fallback
 		SetupTowerMesh();
 	}
 
-	CurrentHealth = MaxHealth;
+	// Phase 5+: StructureType 이 정해진 시점에 AttributeSet 재시드
+	// (BeginPlay 가 먼저 default Tower 로 시드한 뒤 Initialize 가 정확한 타입으로 덮어씀)
+	if (HasAuthority() && AttributeSet)
+	{
+		ApplyAttributeSeeds();
+	}
 
 	InitializeHealthBar();
 }
@@ -325,23 +437,47 @@ void AAOSStructure::SetupCommandCenterMesh()
 
 void AAOSStructure::ReceiveDamage(float DamageAmount)
 {
-	if (!HasAuthority())
+	// Phase 5: GE_Damage 적용 (캐릭터 ReceiveDamage 와 동일 패턴)
+	if (!HasAuthority() || !AbilitySystemComponent || !DamageGameplayEffect)
 	{
 		return;
 	}
 
-	if (IsDestroyed())
+	if (IsDestroyed() || DamageAmount <= 0.0f)
 	{
 		return;
 	}
 
-	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
-	UpdateHealthBar();
+	FGameplayEffectContextHandle Ctx = AbilitySystemComponent->MakeEffectContext();
+	Ctx.AddSourceObject(this);
 
-	if (IsDestroyed())
+	FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(
+		DamageGameplayEffect, 1.0f, Ctx);
+	if (Spec.IsValid())
 	{
-		OnStructureDestroyed();
+		Spec.Data->SetSetByCallerMagnitude(
+			FGameplayTag::RequestGameplayTag(FName("Data.Damage")), DamageAmount);
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
 	}
+	// Health 차감 + 파괴 처리는 AttributeSet::PostGameplayEffectExecute 가 담당
+}
+
+float AAOSStructure::GetCurrentHealth() const
+{
+	// Phase 5: AttributeSet wrapper
+	return AttributeSet ? AttributeSet->GetHealth() : 0.0f;
+}
+
+float AAOSStructure::GetMaxHealth() const
+{
+	// Phase 5: AttributeSet wrapper (MaxHealth 멤버는 시드로만 유지)
+	return AttributeSet ? AttributeSet->GetMaxHealth() : MaxHealth;
+}
+
+bool AAOSStructure::IsDestroyed() const
+{
+	// Phase 5: AttributeSet wrapper
+	return AttributeSet ? AttributeSet->GetHealth() <= 0.0f : false;
 }
 
 void AAOSStructure::OnStructureDestroyed()
@@ -421,9 +557,14 @@ AAOSCharacter* AAOSStructure::FindNearestEnemy()
 
 void AAOSStructure::UpdateHealthBar()
 {
-	if (HealthBarWidget)
+	// Phase 5: AttributeSet 기반 갱신
+	if (HealthBarWidget && AttributeSet)
 	{
-		HealthBarWidget->UpdateHealthPercent(CurrentHealth / MaxHealth);
+		const float Max = AttributeSet->GetMaxHealth();
+		if (Max > 0.0f)
+		{
+			HealthBarWidget->UpdateHealthPercent(AttributeSet->GetHealth() / Max);
+		}
 	}
 }
 

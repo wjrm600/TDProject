@@ -151,6 +151,289 @@ These enums are used throughout the codebase for team/lane identification.
 - Team color: Team1=Red, Team2=Blue
 - Requires Widget Blueprint `WBP_HealthBar` created in editor
 
+## GAS (Gameplay Ability System) Architecture
+
+GAS 도입은 **5 Phase 마이그레이션** 으로 진행됩니다.
+계획서: `C:\Users\wjrm7\.claude\plans\nested-herding-dragon.md` (참고용, 외부)
+
+### Phase 진행 상태
+
+| Phase | 내용 | 상태 |
+|-------|------|------|
+| 0 | 플러그인/모듈/태그/AbilitySystemGlobals 셋업 | ✅ 완료 |
+| 1 | ASC + AttributeSet 부착 (병행 운영) | ✅ 완료 |
+| 2 | Damage 흐름 GE_Damage 컷오버 | ✅ 완료 |
+| 3 | 기본 공격 → GA_Attack 전환 | ✅ 완료 |
+| 4 | 신규 스킬 추가 (GA_Charge / GA_Heal 등) | 🔜 |
+| 5 | AOSStructure 도 ASC 통합 | ✅ 완료 |
+
+### 모듈/플러그인 (Phase 0)
+
+- `TDProject.uproject` — `GameplayAbilities` 플러그인 (GameplayTags/GameplayTasks 자동 활성)
+- `Source/TDProject/TDProject.Build.cs` — `GameplayAbilities`, `GameplayTags`, `GameplayTasks` 의존성
+- `Config/DefaultGame.ini` — `[/Script/GameplayAbilities.AbilitySystemGlobals]` 섹션
+  (`bUseDebugTargetFromHud`, `+GameplayCueNotifyPaths=/Game/AOS/GAS/GameplayCues` 등)
+- `Config/DefaultGameplayTags.ini` — Ability/Cooldown/State/Damage/Data 태그 계층
+
+### 핵심 클래스 (Phase 1)
+
+**`UAOSAbilitySystemComponent`** (`Source/TDProject/AOS/GAS/`)
+- `UAbilitySystemComponent` 의 wrapper. 후속 Phase 의 확장 지점
+- 캐릭터/구조물이 자체 소유 (PlayerState 미사용 — AI 캐릭터 패턴)
+
+**`UAOSAttributeSet`** (`Source/TDProject/AOS/GAS/`)
+- 속성: Health, MaxHealth, AttackPower, AttackRange, AttackSpeed, MoveSpeed, Damage(메타)
+- Health/MaxHealth 등 6개는 `DOREPLIFETIME_CONDITION_NOTIFY` (REPNOTIFY_Always)
+- Damage 는 메타 속성 — 리플리케이션 안 함, GE 입력 전용 (Phase 2 에서 PostGEExecute 처리)
+- `PreAttributeChange`: Health 클램프 [0, MaxHealth]
+- 기본값: Health=100, MaxHealth=100, AttackPower=10, AttackRange=500, AttackSpeed=1.0, MoveSpeed=600
+
+### AOSCharacter 통합 (Phase 1+2)
+
+- `IAbilitySystemInterface` 구현 → `GetAbilitySystemComponent()`
+- 생성자: `AbilitySystemComponent` + `AttributeSet` 을 CreateDefaultSubobject
+- ASC 설정: `SetIsReplicated(true)` + `SetReplicationMode(Mixed)`
+- `PossessedBy` (서버) / `BeginPlay` (클라이언트) → `InitializeAbilitySystem()` →
+  `ASC->InitAbilityActorInfo(this, this)` (Owner=self, Avatar=self)
+- **Phase 2 컷오버**: `CurrentHealth` 멤버 + `OnRep_CurrentHealth` **제거**. Health 의 진짜 소스는 AttributeSet.
+  - `GetCurrentHealth() / GetMaxHealth() / IsAlive()` → AttributeSet wrapper (BP 호환성 보존)
+  - `MaxHealth` 멤버는 AttributeSet 초기값 시드로만 유지 (Phase 3 에서 제거 예정)
+  - `AttackDamage / AttackRange / AttackCooldown / MovementSpeed` 도 시드로 유지 (Phase 3 에서 제거)
+
+### Damage Flow (Phase 2)
+
+```
+[공격자 AIController] AttackTarget()
+   ↓
+[공격자 AOSCharacter] (Phase 3 에서 GA_Attack 으로 일원화 예정)
+   ↓
+[피격자 AOSCharacter::ReceiveDamage(float)] — deprecated wrapper
+   ↓
+ASC->MakeOutgoingSpec(UGE_Damage)
+SetSetByCallerMagnitude("Data.Damage", DamageAmount)
+ASC->ApplyGameplayEffectSpecToSelf(*Spec)
+   ↓
+[GE_Damage 인스턴트 적용] Damage += SetByCaller(Data.Damage)
+   ↓
+[UAOSAttributeSet::PostGameplayEffectExecute]
+   - LocalDamage = GetDamage(); SetDamage(0) // 메타 리셋
+   - NewHealth = clamp(OldHealth - LocalDamage, 0, MaxHealth); SetHealth(NewHealth)
+   - if (NewHealth <= 0 && OldHealth > 0) → OnCharacterDeath()
+   ↓
+[AttributeChange Delegate] (서버/클라 양쪽)
+   ↓
+[AOSCharacter::OnHealthAttributeChanged] → UpdateHealthBar()
+```
+
+**HP 바 갱신**: 더 이상 `OnRep_CurrentHealth` 가 아닌 ASC 의
+`GetGameplayAttributeValueChangeDelegate(GetHealthAttribute())` 콜백 사용.
+
+**GE 클래스**: `Source/TDProject/AOS/GAS/Effects/GE_Damage.h/cpp` — C++ Default GE
+(BP 자산 없이도 즉시 동작). 디자이너가 BP 로 derive 하고 싶으면 가능.
+
+**AOSStructure**: 현재 Phase 2 미적용 (Phase 5 예정). 기존 float 기반
+`ReceiveDamage` 그대로 동작.
+
+### Phase 3: 기본 공격 GameplayAbility
+
+**핵심 클래스 (Phase 3 신규)**
+
+- `UGA_Attack` (`Source/TDProject/AOS/GAS/Abilities/GA_Attack.h/cpp`)
+  - `InstancingPolicy = InstancedPerActor`, `NetExecutionPolicy = ServerInitiated`
+  - AbilityTag: `Ability.Attack.Basic` (활성화 트리거)
+  - `CooldownGameplayEffectClass = UGE_Cooldown_Attack::StaticClass()`
+  - `ActivateAbility`: CommitAbility → AttackPower 속성값 → 타겟에 GE_Damage 적용 → EndAbility
+  - **Structure fallback**: 타겟이 ASC 미보유면 `Cast<AAOSStructure>` → `ReceiveDamage(float)` 직접 호출 (Phase 5 에서 fallback 제거)
+
+- `UGE_Cooldown_Attack` (`Source/TDProject/AOS/GAS/Effects/GE_Cooldown_Attack.h/cpp`)
+  - Duration 1.0초 고정 (Phase 4+ 에서 SetByCaller / AttackSpeed 기반 동적화 검토)
+  - GrantedTag: `Cooldown.Attack.Basic` (다음 활성화 차단)
+
+**AOSCharacter 통합 (Phase 3)**
+
+- 멤버 추가: `TArray<TSubclassOf<UGameplayAbility>> StartupAbilities` (BP 에서 추가 능력 부여 가능)
+- 생성자: `StartupAbilities.Add(UGA_Attack::StaticClass())`
+- `PossessedBy` 에서 `GiveStartupAbilities()` 호출 → 서버가 능력 부여
+- `GetAttackDamage()` → `AttributeSet->GetAttackPower()` wrapper
+- `OnMoveSpeedAttributeChanged` 델리게이트 → `CharacterMovement->MaxWalkSpeed` 동기화
+  (Phase 4 의 GA_Charge 가 MoveSpeed 모디파이 시 자동 반영)
+
+**AOSAIController 변경**
+
+- `AttackTarget` / `AttackStructure` 의 데미지 적용 부분이 `ASC->HandleGameplayEvent(...)` 로 전환:
+  ```cpp
+  if (ASC && !ASC->HasMatchingGameplayTag(Cooldown.Attack.Basic)) {
+      FGameplayEventData EventData;
+      EventData.Target = TargetActor;
+      EventData.Instigator = ControlledCharacter;
+      ASC->HandleGameplayEvent("Ability.Attack.Basic", &EventData);
+  }
+  ```
+- `CurrentAttackCooldown` / `AttackCooldownDuration` 멤버 **제거** — ASC 태그가 단일 진실 공급원
+- `AttackRange` 는 유지 (AI 행동 판단 — 어디까지 접근하면 공격할지)
+
+**Damage Flow (Phase 3+5 갱신)**
+
+```
+[AIController::Tick] UpdateAIBehavior
+   ↓ FindNearestEnemy / Tower
+[AttackTarget / AttackStructure]
+   ↓ if (!ASC->HasMatchingGameplayTag("Cooldown.Attack.Basic"))
+ASC->HandleGameplayEvent("Ability.Attack.Basic", {Target, Instigator})
+   ↓ 트리거
+[GA_Attack::ActivateAbility]
+   - 명시 Cooldown GE 적용 (1초간 "Cooldown.Attack.Basic" 태그 부여)
+   - DamageAmount = AttributeSet::AttackPower
+   - Target IAbilitySystemInterface (Character/Structure 모두) → ApplyGameplayEffectSpecToTarget(GE_Damage, TargetASC)
+   - EndAbility
+   ↓
+[GE_Damage 적용] → AttributeSet::PostGameplayEffectExecute → Health 차감
+   - if NewHealth<=0 && OldHealth>0:
+       - AAOSCharacter  → OnCharacterDeath()
+       - AAOSStructure  → OnStructureDestroyed()
+   ↓ (양쪽 모두)
+OnHealthAttributeChanged → UpdateHealthBar
+```
+
+### Phase 5: AOSStructure 통합
+
+**핵심 변경**
+
+- `AAOSStructure : public AActor, public IAbilitySystemInterface`
+- 캐릭터와 동일한 `UAOSAbilitySystemComponent` + `UAOSAttributeSet` 재사용 (Health/MaxHealth 만 사용)
+- `CurrentHealth(Replicated)` / `OnRep_CurrentHealth` 멤버 **제거**, `MaxHealth` 는 시드로 유지
+- `GetCurrentHealth() / GetMaxHealth() / IsDestroyed()` → AttributeSet wrapper (BP 호환)
+- `ReceiveDamage(float)` → GE_Damage 적용 (캐릭터와 동일 패턴)
+- BeginPlay 에서 `InitializeAbilitySystem()` 호출 (Pawn 이 아니라 PossessedBy 없음 — 양쪽에서 BeginPlay)
+- `Initialize()` 에서 StructureType 별 MaxHealth 갱신 후 AttributeSet 재시드 (Tower=1000, CC=5000)
+- `OnStructureDestroyed` → public 노출 (AttributeSet PostGEExecute 가 호출)
+
+**AOSAttributeSet PostGameplayEffectExecute 분기 추가**
+```cpp
+if (NewHealth <= 0 && OldHealth > 0) {
+    AActor* Owner = GetOwningActor();
+    if (AAOSCharacter* Char = Cast<AAOSCharacter>(Owner))      Char->OnCharacterDeath();
+    else if (AAOSStructure* Struct = Cast<AAOSStructure>(Owner)) Struct->OnStructureDestroyed();
+}
+```
+
+**GA_Attack fallback 제거**: 이제 Structure 도 IAbilitySystemInterface 구현 → 모던 경로 (`ApplyGameplayEffectSpecToTarget`) 가 자동 처리. `Cast<AAOSStructure>` 분기 제거.
+
+**구조물의 자체 공격은 그대로**: `Tower::FireAtTarget` 의 `Target->ReceiveDamage(...)` 호출은 변경 없음 (Character::ReceiveDamage 가 이미 GE_Damage wrapper). GA_Tower_Attack 미적용 — 단순 공격이라 GE 만으로 충분.
+
+### Attribute 초기값 세팅 패턴 (DataTable 기반)
+
+**권장 패턴: 3개의 DataTable + float 멤버 fallback**
+
+#### Row 타입 (`FAOSAttributeInitRow`, `Source/TDProject/AOS/GAS/Data/AOSAttributeInitData.h`)
+모든 AttributeSet 속성을 담는 공통 row 구조체:
+```cpp
+struct FAOSAttributeInitRow : public FTableRowBase {
+    float Health = 100.f;
+    float MaxHealth = 100.f;
+    float AttackPower = 10.f;
+    float AttackRange = 500.f;
+    float AttackSpeed = 1.f;     // 1/sec, 쿨다운 = 1/AttackSpeed
+    float MoveSpeed = 600.f;
+};
+```
+
+#### DataTable 자산 (디자이너가 에디터에서 생성)
+| 자산 경로 | 사용처 |
+|-----------|--------|
+| `/Game/AOS/GAS/Data/DT_CharacterAttributes` | `AAOSCharacter` |
+| `/Game/AOS/GAS/Data/DT_TowerAttributes` | `AAOSStructure` (Tower) |
+| `/Game/AOS/GAS/Data/DT_CommandCenterAttributes` | `AAOSStructure` (CommandCenter) |
+
+각 DT 의 row name 은 기본 `"Default"`. 캐릭터/구조물별 다른 값을 원하면 row 추가 후 BP 에서 `AttributeInitRowName` 변경.
+
+**DT 자산 만드는 법** (에디터):
+1. Content Browser → `AOS/GAS/Data` 폴더로 이동
+2. 우클릭 → Miscellaneous → Data Table
+3. Row Structure 선택: `AOSAttributeInitRow`
+4. 이름: `DT_CharacterAttributes` (또는 `DT_TowerAttributes`, `DT_CommandCenterAttributes`)
+5. 자산 열기 → row 추가, name=`Default`, 값 입력
+
+#### 캐릭터/구조물 BP 설정
+- **BP_Character** → `AOS|GAS|Init` 카테고리 → `Attribute Init Table` 에 `DT_CharacterAttributes` 지정
+- **BP_Tower** → `Tower Attribute Init Table` 에 `DT_TowerAttributes`
+- **BP_CommandCenter** → `Command Center Attribute Init Table` 에 `DT_CommandCenterAttributes`
+  (또는 단일 BP_Structure 가 두 DT 모두 보유 — Initialize 의 `StructureType` 이 자동 분기)
+
+#### 시드 우선순위 (`InitializeAbilitySystem` / `ApplyAttributeSeeds`)
+1. **DataTable** 의 row → 디자이너 친화적 중앙 데이터 (권장)
+2. **float 멤버 fallback** — `MaxHealth`, `AttackDamage`, `AttackRange`, `AttackCooldown`, `MovementSpeed`
+   (DT 미설정/row 미발견 시 사용)
+3. **MoveSpeed 만 예외**: BP CharacterMovement→MaxWalkSpeed override 가 우선 (BP 의 자연스러운 조정 존중)
+
+#### 호출 시점
+- **AOSCharacter**: `PossessedBy`(서버) / `BeginPlay`(클라) → `InitializeAbilitySystem()` 한 번
+- **AOSStructure**: `BeginPlay` → `InitializeAbilitySystem()` (default Tower 시드) →
+  `Initialize(Type, ...)` 가 호출되면 StructureType 확정 후 `ApplyAttributeSeeds()` 재호출
+  (default Tower → 정확한 Tower/CC 시드로 덮어씀)
+
+**주의**: 생성자에서 `GetCharacterMovement()->MaxWalkSpeed = MovementSpeed` 같은 강제 할당 금지.
+BP override 가 적용 후에 코드가 다시 덮어쓸 위험.
+
+### (참고) 다른 Attribute 초기화 옵션
+- (구식) **GE_InitCharacter** — Instant GE 로 모든 속성 일괄 부여. Magnitude 가 정적이라 캐릭터별 다른 값 어려움. DT 패턴이 더 유연.
+- (구식) **`UAbilitySystemGlobals::GlobalAttributeMetaDataTable`** — 엔진 내장 DataTable 시스템. 우리 DT 패턴과 비슷하지만 사용처가 분산됨.
+
+### UE 5.4+ GameplayEffect Component 시스템 (필수)
+
+UE 5.4 부터 `UGameplayEffect` 가 **`UGameplayEffectComponent` 기반**으로 리팩토링됨.
+이전 방식 (`InheritableOwnedTagsContainer.Added`, `InheritableBlockedAbilityTagsContainer` 등) 은
+런타임 태그는 적용되지만 **cooldown / 일부 검증 시스템에서 인식 안 됨**.
+
+**증상**: cooldown GE 적용 시 로그에 다음 경고 + 매 frame ability 활성화:
+```
+LogAbilitySystem: Warning: CooldownGameplayEffectClass 'GE_*' grants no tags.
+A GameplayEffect class must grant tags (Component: Grant Tags to Target Actor) to be used as cooldown.
+```
+
+**올바른 패턴 — `CreateDefaultSubobject` + `GEComponents.Add`** (생성자 안전):
+```cpp
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+
+UGE_Cooldown_Attack::UGE_Cooldown_Attack()
+{
+    DurationPolicy = EGameplayEffectDurationType::HasDuration;
+    DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(1.0f));
+
+    // ⚠️ FindOrAddComponent / AddComponent 는 NewObject 를 호출하므로
+    //    CDO 생성자 안에서 호출 시 fatal error (AssertIfInConstructor).
+    //    대신 CreateDefaultSubobject + GEComponents 직접 추가 패턴 사용.
+    UTargetTagsGameplayEffectComponent* TagsComp =
+        CreateDefaultSubobject<UTargetTagsGameplayEffectComponent>(TEXT("TargetTagsGEComp"));
+    if (TagsComp)
+    {
+        FInheritedTagContainer TagsContainer;
+        TagsContainer.Added.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Attack.Basic"));
+        TagsComp->SetAndApplyTargetTagChanges(TagsContainer);
+        GEComponents.Add(TagsComp);  // GEComponents 는 protected — 자식 클래스 접근 가능
+    }
+}
+```
+
+**Instant GE 에서는 TargetTagsComponent 사용 금지** — `IsDataValid` 가 에러.
+Instant 는 태그를 ASC 에 grant 할 수 없음 (즉시 만료). 데미지 타입 분류 등은
+`FGameplayEffectContextHandle` 또는 `GameplayCue` 로 처리.
+
+다른 컴포넌트 (cooldown 외 일반 태그/blocked tags 등) 도 같은 패턴:
+- `UTargetTagsGameplayEffectComponent` — Target ASC 에 태그 부여 (Duration GE 에서)
+- `UAssetTagsGameplayEffectComponent` — GE 자체의 asset tags (Instant 도 OK)
+- `UBlockAbilityTagsGameplayEffectComponent` — 차단할 ability tags
+
+### 디버깅
+
+- 콘솔: `showdebug abilitysystem` — ASC 상태/태그/속성 실시간 확인
+- 로그 카테고리: `LogAbilitySystem`, `LogGameplayCue` (Verbose 권장)
+
+### Hot Reload 비호환
+
+ASC/AttributeSet 신규 추가, 모듈 의존성 변경 등은 **풀 리빌드 필요**.
+매 Phase 시작 시 에디터 종료 후 Build.bat 실행.
+
 ## Memory Management Patterns
 
 ### UPROPERTY Requirements

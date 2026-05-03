@@ -51,6 +51,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|AI")
 	AAOSStructure* FindNearestEnemyTower();
 
+	/**
+	 * 거리 판정용 effective AttackRange.
+	 * 우선순위: 캐릭터의 AttributeSet->GetAttackRange() (DT 적용된 단일 진실 공급원)
+	 *           → 없으면 AIController.AttackRange 멤버 (fallback)
+	 * 디버그 시각화와 실제 공격 거리를 일관되게 유지하기 위해 도입.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|Attack")
+	float GetEffectiveAttackRange() const;
+
 protected:
 	// 배포된 라인
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI")
@@ -116,9 +125,8 @@ private:
 	// 이동 완료 판정 거리 (캐릭터 충돌 범위 고려)
 	const float ArrivalDistance = 100.0f;
 
-	// 공격 쿨타임
-	float CurrentAttackCooldown = 0.0f;
-	const float AttackCooldownDuration = 1.0f;
+	// Phase 3: 공격 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그가 단일 진실 공급원
+	// (CurrentAttackCooldown / AttackCooldownDuration 멤버 제거)
 
 	// NavMesh 이동 캐시 — 동일 목표로 중복 요청 방지
 	FVector LastNavMoveTarget = FVector::ZeroVector;

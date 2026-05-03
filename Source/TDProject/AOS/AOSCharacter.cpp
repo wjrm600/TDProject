@@ -1,11 +1,22 @@
 #include "AOSCharacter.h"
 #include "AOSAIController.h"
 #include "AOSMapManager.h"
+#include "GAS/AOSAbilitySystemComponent.h"
+#include "GAS/AOSAttributeSet.h"
+#include "GAS/Abilities/GA_Attack.h"
+#include "GAS/Data/AOSAttributeInitData.h"
+#include "GAS/Effects/GE_Damage.h"
 #include "UI/AOSHealthBarWidget.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectTypes.h"
+#include "Abilities/GameplayAbility.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
 
 AAOSCharacter::AAOSCharacter()
 {
@@ -17,10 +28,9 @@ AAOSCharacter::AAOSCharacter()
 	bUseControllerRotationRoll = false;
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->MaxWalkSpeed = MovementSpeed;
+	// MaxWalkSpeed 는 BP CharacterMovement override 를 존중 (생성자 강제 할당 금지)
+	// AttributeSet 의 MoveSpeed 가 진짜 소스 (InitializeAbilitySystem 에서 동기화)
 	GetCharacterMovement()->MaxAcceleration = 2048.0f;
-
-	CurrentHealth = MaxHealth;
 
 	// AI 컨트롤러 자동 할당
 	AIControllerClass = AAOSAIController::StaticClass();
@@ -33,17 +43,158 @@ AAOSCharacter::AAOSCharacter()
 	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
 	HealthBarComponent->SetDrawSize(FVector2D(150.0f, 15.0f));
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
+
+	// --- GAS Phase 1: ASC + AttributeSet 부착 ---
+	AbilitySystemComponent = CreateDefaultSubobject<UAOSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+
+	AttributeSet = CreateDefaultSubobject<UAOSAttributeSet>(TEXT("AttributeSet"));
+
+	// Phase 2: 데미지 GE 기본값 (BP 에서 override 가능)
+	DamageGameplayEffect = UGE_Damage::StaticClass();
+
+	// Phase 3: 기본 공격 능력 (BP 에서 추가 능력 부여 가능)
+	StartupAbilities.Add(UGA_Attack::StaticClass());
+}
+
+UAbilitySystemComponent* AAOSCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void AAOSCharacter::InitializeAbilitySystem()
+{
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	// AI 캐릭터 패턴: Owner=self, Avatar=self
+	AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+	// Phase 5+: AttributeSet 시드 — 우선순위:
+	//   1) AttributeInitTable (DT) 의 row → 디자이너 친화적 중앙 데이터
+	//   2) float 멤버 (MaxHealth/AttackDamage/AttackRange/AttackCooldown/MovementSpeed) → 기존 BP fallback
+	//   3) MoveSpeed 는 BP CharacterMovement->MaxWalkSpeed override 우선 (BP CharacterMovement 의 값 존중)
+	if (HasAuthority() && AttributeSet)
+	{
+		const FAOSAttributeInitRow* Row = nullptr;
+		FAOSAttributeInitRow LoadedRow;
+
+		if (UDataTable* Table = AttributeInitTable.LoadSynchronous())
+		{
+			static const FString CtxStr(TEXT("AAOSCharacter::InitializeAbilitySystem"));
+			if (FAOSAttributeInitRow* Found = Table->FindRow<FAOSAttributeInitRow>(AttributeInitRowName, CtxStr, /*bWarnIfRowMissing=*/true))
+			{
+				LoadedRow = *Found;
+				Row = &LoadedRow;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GAS] %s: AttributeInitTable=%s 에서 row='%s' 미발견 — float 멤버 fallback 사용"),
+					*GetName(), *Table->GetName(), *AttributeInitRowName.ToString());
+			}
+		}
+
+		// MoveSpeed 시드: BP CharacterMovement->MaxWalkSpeed override > DT > MovementSpeed 멤버
+		const float CMOverride = (GetCharacterMovement() && GetCharacterMovement()->MaxWalkSpeed > 0.0f)
+			? GetCharacterMovement()->MaxWalkSpeed : 0.0f;
+
+		const float SeedHealth      = Row ? Row->Health      : MaxHealth;
+		const float SeedMaxHealth   = Row ? Row->MaxHealth   : MaxHealth;
+		const float SeedAttackPower = Row ? Row->AttackPower : AttackDamage;
+		const float SeedAttackRange = Row ? Row->AttackRange : AttackRange;
+		const float SeedAttackSpeed = Row ? Row->AttackSpeed
+			: (1.0f / FMath::Max(AttackCooldown, KINDA_SMALL_NUMBER));
+		const float SeedMoveSpeed   = (CMOverride > 0.0f)
+			? CMOverride
+			: (Row ? Row->MoveSpeed : MovementSpeed);
+
+		AttributeSet->InitHealth(SeedHealth);
+		AttributeSet->InitMaxHealth(SeedMaxHealth);
+		AttributeSet->InitAttackPower(SeedAttackPower);
+		AttributeSet->InitAttackRange(SeedAttackRange);
+		AttributeSet->InitAttackSpeed(SeedAttackSpeed);
+		AttributeSet->InitMoveSpeed(SeedMoveSpeed);
+		AttributeSet->InitDamage(0.0f);
+
+		UE_LOG(LogTemp, Log, TEXT("[GAS] %s: ASC initialized (%s) — Health=%.0f/%.0f AP=%.0f MS=%.0f"),
+			*GetName(),
+			Row ? TEXT("DT") : TEXT("fallback"),
+			AttributeSet->GetHealth(), AttributeSet->GetMaxHealth(),
+			AttributeSet->GetAttackPower(), AttributeSet->GetMoveSpeed());
+	}
+
+	// Phase 2: Health 변경 콜백 등록 — 서버/클라이언트 모두에서 HP 바 자동 갱신
+	if (AttributeSet)
+	{
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			UAOSAttributeSet::GetHealthAttribute()
+		).AddUObject(this, &AAOSCharacter::OnHealthAttributeChanged);
+
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			UAOSAttributeSet::GetMaxHealthAttribute()
+		).AddUObject(this, &AAOSCharacter::OnHealthAttributeChanged);
+
+		// Phase 3: MoveSpeed 변경 콜백 등록 → CharacterMovement->MaxWalkSpeed 동기화
+		AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+			UAOSAttributeSet::GetMoveSpeedAttribute()
+		).AddUObject(this, &AAOSCharacter::OnMoveSpeedAttributeChanged);
+
+		// 초기값 즉시 반영
+		if (UCharacterMovementComponent* CM = GetCharacterMovement())
+		{
+			CM->MaxWalkSpeed = AttributeSet->GetMoveSpeed();
+		}
+	}
+}
+
+void AAOSCharacter::GiveStartupAbilities()
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	for (const TSubclassOf<UGameplayAbility>& AbilityClass : StartupAbilities)
+	{
+		if (!AbilityClass) continue;
+		// Level=1, InputID=INDEX_NONE (AI 캐릭터는 입력 매핑 없음), SourceObject=this
+		AbilitySystemComponent->GiveAbility(
+			FGameplayAbilitySpec(AbilityClass, 1, INDEX_NONE, this));
+	}
+}
+
+void AAOSCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	// 서버: 컨트롤러 빙의 후 ASC ActorInfo 초기화 + 능력 부여
+	InitializeAbilitySystem();
+	GiveStartupAbilities();
 }
 
 void AAOSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(AAOSCharacter, CurrentHealth);
+	// Phase 2: CurrentHealth 멤버 제거 — Health 는 AttributeSet 가 ReplicatedUsing 처리
 }
 
-void AAOSCharacter::OnRep_CurrentHealth()
+void AAOSCharacter::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
 {
+	// Phase 2: Health 또는 MaxHealth 변경 → HP 바 자동 갱신 (서버/클라 양쪽)
 	UpdateHealthBar();
+}
+
+void AAOSCharacter::OnMoveSpeedAttributeChanged(const FOnAttributeChangeData& Data)
+{
+	// Phase 3: MoveSpeed 속성 변경 → CharacterMovement->MaxWalkSpeed 동기화
+	// (Phase 4 의 GA_Charge 등이 MoveSpeed 모디파이 시 즉시 반영)
+	if (UCharacterMovementComponent* CM = GetCharacterMovement())
+	{
+		CM->MaxWalkSpeed = Data.NewValue;
+	}
 }
 
 void AAOSCharacter::Multicast_OnDeath_Implementation()
@@ -66,7 +217,13 @@ void AAOSCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	SetupCharacterDefaults();
-	CurrentHealth = MaxHealth;
+
+	// GAS Phase 1: 클라이언트 사이드 ASC 초기화
+	// (서버는 PossessedBy 에서 호출, 클라이언트는 ASC 가 리플리케이션된 직후 BeginPlay 에서 호출)
+	if (!HasAuthority())
+	{
+		InitializeAbilitySystem();
+	}
 
 	// HP 바 초기화
 	if (HealthBarComponent)
@@ -85,11 +242,7 @@ void AAOSCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 공격 쿨타임 업데이트
-	if (CurrentAttackCooldown > 0.0f)
-	{
-		CurrentAttackCooldown -= DeltaTime;
-	}
+	// Phase 3: 쿨타임 카운터 제거 — 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그로 관리
 
 	// HP 바 빌보드: World Space에서 카메라 정면을 향하도록 (DS에서는 스킵)
 	if (GetNetMode() != NM_DedicatedServer && HealthBarComponent && HealthBarComponent->IsVisible())
@@ -105,6 +258,30 @@ void AAOSCharacter::Tick(float DeltaTime)
 			{
 				HealthBarComponent->SetWorldRotation(TargetRot);
 			}
+		}
+	}
+
+	// 🟢 공격 범위 디버그 시각화 (AOS.Debug.ShowAttackRange CVar) — Structure 와 동일 CVar 공유
+	if (GetWorld() && GetNetMode() != NM_DedicatedServer && IsAlive())
+	{
+		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
+		if (CVar && CVar->GetInt())
+		{
+			FColor TeamColor = (Team == EAOSTeam::Team1) ? FColor::Red : FColor::Blue;
+			FVector Pos = GetActorLocation();
+			Pos.Z -= 80.0f; // 캐릭터 발 근처에 그리기
+
+			// AttributeSet 의 AttackRange 가 단일 진실 공급원
+			const float DebugAttackRange = AttributeSet
+				? AttributeSet->GetAttackRange()
+				: AttackRange;
+
+			DrawDebugCircle(GetWorld(), Pos, DebugAttackRange, 32,
+				TeamColor, false, 0.0f, 0, 2.0f,
+				FVector(1, 0, 0), FVector(0, 1, 0), false);
+			DrawDebugString(GetWorld(), Pos + FVector(DebugAttackRange, 0, 30.0f),
+				FString::Printf(TEXT("[캐릭터] 공격 %.0f"), DebugAttackRange),
+				nullptr, TeamColor, 0.0f, true, 1.0f);
 		}
 	}
 }
@@ -141,28 +318,35 @@ void AAOSCharacter::DeployToLane()
 
 bool AAOSCharacter::IsAlive() const
 {
-	return CurrentHealth > 0.0f;
+	// Phase 2: AttributeSet wrapper
+	return AttributeSet ? AttributeSet->GetHealth() > 0.0f : false;
 }
 
 void AAOSCharacter::ReceiveDamage(float DamageAmount)
 {
-	if (!HasAuthority())
+	// Phase 2: GE_Damage 적용 (deprecated wrapper — Phase 3 에서 GA_Attack 으로 일원화 예정)
+	if (!HasAuthority() || !AbilitySystemComponent || !DamageGameplayEffect)
 	{
 		return;
 	}
 
-	if (!IsAlive())
+	if (!IsAlive() || DamageAmount <= 0.0f)
 	{
 		return;
 	}
 
-	CurrentHealth = FMath::Max(0.0f, CurrentHealth - DamageAmount);
-	UpdateHealthBar();
+	FGameplayEffectContextHandle Ctx = AbilitySystemComponent->MakeEffectContext();
+	Ctx.AddSourceObject(this);
 
-	if (!IsAlive())
+	FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(
+		DamageGameplayEffect, 1.0f, Ctx);
+	if (Spec.IsValid())
 	{
-		OnCharacterDeath();
+		Spec.Data->SetSetByCallerMagnitude(
+			FGameplayTag::RequestGameplayTag(FName("Data.Damage")), DamageAmount);
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
 	}
+	// Health 차감 + 사망 처리는 AttributeSet::PostGameplayEffectExecute 가 담당
 }
 
 void AAOSCharacter::OnCharacterDeath()
@@ -201,7 +385,20 @@ void AAOSCharacter::OnCharacterDeath()
 
 float AAOSCharacter::GetCurrentHealth() const
 {
-	return CurrentHealth;
+	// Phase 2: AttributeSet wrapper
+	return AttributeSet ? AttributeSet->GetHealth() : 0.0f;
+}
+
+float AAOSCharacter::GetMaxHealth() const
+{
+	// Phase 2: AttributeSet wrapper (MaxHealth 멤버는 초기값 시드로만 유지)
+	return AttributeSet ? AttributeSet->GetMaxHealth() : MaxHealth;
+}
+
+float AAOSCharacter::GetAttackDamage() const
+{
+	// Phase 3: AttributeSet wrapper (AttackDamage 멤버는 초기값 시드로만 유지)
+	return AttributeSet ? AttributeSet->GetAttackPower() : AttackDamage;
 }
 
 FVector AAOSCharacter::GetLaneStartPosition() const
@@ -235,9 +432,14 @@ void AAOSCharacter::SetHighlighted(bool bHighlight)
 
 void AAOSCharacter::UpdateHealthBar()
 {
-	if (HealthBarWidget)
+	// Phase 2: AttributeSet 기반 갱신
+	if (HealthBarWidget && AttributeSet)
 	{
-		HealthBarWidget->UpdateHealthPercent(CurrentHealth / MaxHealth);
+		const float Max = AttributeSet->GetMaxHealth();
+		if (Max > 0.0f)
+		{
+			HealthBarWidget->UpdateHealthPercent(AttributeSet->GetHealth() / Max);
+		}
 	}
 }
 
