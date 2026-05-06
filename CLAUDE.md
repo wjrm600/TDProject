@@ -160,7 +160,11 @@ AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
 
 - **`UStateTreeAIComponent`** (`Components/StateTreeAIComponent.h`)
   - `AAOSAIController` 가 `CreateDefaultSubobject` 로 부착
-  - `bStartLogicAutomatically = true` (default) → BeginPlay 에서 자동 시작
+  - **`bStartLogicAutomatically = false`** (생성자에서 `SetStartLogicAutomatically(false)`) →
+    BeginPlay 자동 시작 끔. AIController 의 `OnPossess` 가 ControlledCharacter 캐시 직후
+    수동으로 `StartLogic()` 호출. (BeginPlay 시점엔 GetPawn()=null 이라 schema 의
+    context actor binding 이 실패 — 자동 시작 시 `Could not find context actor of type
+    AOSCharacter. StateTree will not update.` 에러)
   - StateTreeAIComponentSchema 사용 — AAIController 접근 보장
   - BP_AOSAIController 의 컴포넌트 디테일 → `StateTreeRef` 슬롯에 ST 자산 지정
 
@@ -180,13 +184,17 @@ AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
 
 ### Custom Tasks (`Source/TDProject/AOS/AI/AOSStateTreeTasks.h/cpp`)
 
-모두 `FStateTreeTaskCommonBase` 상속. InstanceData 의 `Context` 카테고리로 `AAOSAIController*` 자동 주입 (StateTreeAIComponentSchema).
+모두 `FStateTreeTaskCommonBase` 상속. InstanceData 의 `Context` 카테고리로
+**`TObjectPtr<AAIController>`** (base 클래스) 자동 주입 — StateTreeAIComponentSchema 가
+NAME 기반("AIController") 으로 binding. **derived `AAOSAIController` 타입으로 선언하면
+schema 등록 클래스와 mismatch 되어 자동 binding 실패** (engine 의 `FStateTreeMoveToTaskInstanceData`
+와 동일 패턴). cpp 에서는 `Cast<AAOSAIController>` 로 derived 메서드 접근.
 
 | Task | EnterState/Tick 동작 |
 |------|----------------------|
 | `FStateTreeTask_FindNearestEnemy` | 적 캐릭터 검색 → CurrentTarget 설정. 못 찾으면 FAILED |
-| `FStateTreeTask_MoveToCurrentTarget` | CurrentTarget 으로 이동, 사거리 도달 시 SUCCESS |
-| `FStateTreeTask_MoveToCurrentWaypoint` | CurrentMoveTarget 으로 이동, 도착 시 SUCCESS (구조물 웨이포인트면 사거리에서 정지) |
+| `FStateTreeTask_MoveToCurrentTarget` | CurrentTarget 으로 이동. 사거리 도달 시 정지하고 **RUNNING 유지** (Succeeded 반환 시 state 종료 → root 재선택 → oscillation 위험. SendAttackEvent task 가 같은 state 안에서 공격 처리) |
+| `FStateTreeTask_MoveToCurrentWaypoint` | CurrentMoveTarget 으로 이동. 도착 시 **자동으로 `AdvanceToNextWaypoint()` 호출 + RUNNING 유지** (state transition 없이 task 안에서 큐 진행) |
 | `FStateTreeTask_AdvanceWaypoint` | CurrentWaypointIndex++ 후 SUCCESS |
 | `FStateTreeTask_SendAttackEvent` | ASC->HandleGameplayEvent(`Ability.Attack.Basic`, {Target}) — 타겟은 캐릭터/구조물 선택 |
 | `FStateTreeTask_ActivateAbilityByTag` | Phase 4 스킬용. ASC->TryActivateAbilitiesByTag(Tag) |
@@ -207,13 +215,26 @@ AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
 
 ### ST 자산 작성 (사용자 작업, 시각 편집기)
 
-**파일**: `/Game/AOS/AI/ST_AOSCharacterAI` (StateTreeAIComponentSchema)
+**파일**: `/Game/AOS/AI/ST_AOSCharacterAI`
+
+**에셋 디테일 설정 (필수)**:
+- **스키마**: `스테이트 트리 AI 컴포넌트` (StateTreeAIComponentSchema)
+- **AI 컨트롤러 클래스**: `AOSAIController`
+- **컨텍스트 액터 클래스**: **`AOSCharacter`** ⚠️ (Pawn 클래스 — AIController 가 아님!)
+  Schema 의 `SetContextData` 가 AIController->GetPawn() 의 IsA(ContextActorClass) 로
+  Actor context 를 결정. AOSAIController 로 잘못 설정하면 schema binding 실패.
 
 **트리 구조 (선택자 패턴, 우선순위 순)**:
 ```
-Root (Selector)
+Root (Selector — "Try Select Children In Order")
+│ ⚠ Root 의 트랜지션 (필수, 우선순위 강제 전환):
+│   - On Tick + cond: HasNearbyEnemy                          → Goto AttackEnemy
+│   - On Tick + cond: HasCurrentWaypointStructure
+│                  && TargetInAttackRange(bUseCharacter=false) → Goto AttackStructure
+│ (running task 가 있는 state 는 자동 재선택 안 됨 → root transition 으로 강제)
+│
 ├── [State] AttackEnemy
-│   EnterCondition: FStateTreeCond_HasNearbyEnemy
+│   EnterCondition: HasNearbyEnemy
 │   Tasks: FindNearestEnemy → MoveToCurrentTarget → SendAttackEvent (bTargetCurrentEnemy=true)
 ├── [State] UseHealSkill (Phase 4 — 추후 활성)
 │   EnterCondition: HealthBelowPct(0.3) && !HasCooldownTag(Cooldown.Skill.Heal)
@@ -222,7 +243,8 @@ Root (Selector)
 │   EnterCondition: HasCurrentWaypointStructure && TargetInAttackRange(bUseCurrentTargetCharacter=false)
 │   Tasks: SendAttackEvent (bTargetCurrentEnemy=false)
 └── [State] PushLane (Default — fallback)
-    Tasks: MoveToCurrentWaypoint → AdvanceWaypoint (도착 시)
+    Tasks: MoveToCurrentWaypoint
+    (도착/큐 advance 는 task 내부에서 자동 처리 — AdvanceWaypoint task 별도 추가 불필요)
 ```
 
 ### BP 연결 (사용자 작업)
@@ -234,9 +256,59 @@ Root (Selector)
 
 ### 디버깅
 
-- 콘솔: `gd.AIDebug.StateTree 1` — ST 활성 state 시각화
-- 또는 `showdebug ai` — UStateTreeAIComponent 의 GetActiveStateNames() 출력
-- 로그: `LogStateTree`, `LogAI` (Verbose 권장)
+**State Tree Debugger 윈도우** (UE 5.7) — Rewind Debugger 와 통합:
+- 메인 에디터: **창 → 디버그 → Rewind Debugger** (또는 ST 자산 에디터 상단의 디버그 탭)
+- PIE 시작 → 좌측 액터 리스트에서 인스턴스 선택 → 타임라인에 state 활성/transition 시각화
+- Trace 채널 활성: `trace.start statetree` (또는 Project Settings → Trace 에서 StateTree 체크)
+- `WITH_STATETREE_TRACE_DEBUGGER=1` 빌드 필요 (Editor + Development 기본 활성)
+
+**Gameplay Debugger** (가장 빠른 방법):
+- PIE 중 `'` (apostrophe) 또는 F8 키 → 화면 오버레이
+- 숫자 키로 카테고리 토글 — StateTree 카테고리에서 활성 state 표시
+- `Project Settings → Gameplay Debugger → Categories` 에서 StateTree 활성 필요할 수 있음
+
+**콘솔 명령**:
+- `showdebug ai` — UStateTreeAIComponent 의 GetActiveStateNames() 출력
+- `gd.AIDebug.StateTree 1` — ST 활성 state 시각화
+- `log LogStateTree Verbose` / `log LogAI Verbose` — 상세 로그
+
+### Phase 6 트러블슈팅 (자주 빠지는 함정)
+
+ST 자산 만들고 AI 가 동작 안 할 때 점검 체크리스트 — 이 3가지가 거의 모든 케이스를 커버합니다.
+
+**1. ContextActorClass 가 AIController 로 잘못 설정**
+- 증상: 빌드는 통과, ST IsRunning=true 인데 task 가 전혀 실행 안 됨
+  (또는 우리 task 의 `InstanceData.AIController` 가 null 처럼 동작)
+- 원인: `에셋 디테일 → 컨텍스트 액터 클래스` 가 `AOSAIController` 또는 다른 잘못된 클래스
+- 수정: `AOSCharacter` (Pawn 클래스) 로 설정
+
+**2. bStartLogicAutomatically=true 로 BeginPlay 자동 시작 (타이밍 race)**
+- 증상 (PIE 로그):
+  ```
+  LogStateTree: Error: SetContextData: Could not find context actor of type AOSCharacter. StateTree will not update.
+  LogStateTree: Error: SetContextRequirements: Missing external data requirements. StateTree will not update.
+  LogStateTree: Warning: Context Requirements in UStateTreeComponent::StartTree failed. Component tick is disabled.
+  [AI Controller] Possessed ... — IsRunning=false
+  ```
+- 원인: BeginPlay 시점엔 AIController->GetPawn() = null → schema 가 ContextActorClass(AOSCharacter) 매칭 실패
+- 수정: 생성자에서 `StateTreeComponent->SetStartLogicAutomatically(false)` + OnPossess 에서
+  ControlledCharacter 캐시 직후 `StateTreeComponent->StartLogic()` 수동 호출
+- BP 갱신 권장: `BP_AOSAIController → StateTreeComponent → AI → Start Logic Automatically` 도 false 확인 (BP CDO override 가능)
+
+**3. Running task 가 있는 state 는 자동 재선택 안 됨 (적 만나도 안 싸움)**
+- 증상: 캐릭터가 PushLane 으로 이동 중 적이 감지 범위 안에 들어와도 AttackEnemy 로 전환 안 됨
+- 원인: PushLane state 의 MoveToCurrentWaypoint task 가 RUNNING 유지 중 →
+  Root selector 가 재평가하지 않음 (state tree 기본 동작)
+- 수정: **Root state 에 "On Tick" 트랜지션 추가**
+  - On Tick + condition `HasNearbyEnemy` → Goto AttackEnemy
+  - On Tick + condition `HasCurrentWaypointStructure && TargetInAttackRange(bUseCharacter=false)` → Goto AttackStructure
+- 매 tick 마다 root 가 우선순위 조건 체크해서 강제 전환
+
+**4. InstanceData 의 AIController 타입은 base 클래스로**
+- 증상: Schema 가 binding 못 함 (위 #1 과 동일 증상)
+- 원인: `TObjectPtr<AAOSAIController>` 로 선언 → schema 가 등록한 base `AAIController` 와 mismatch
+- 수정: `TObjectPtr<AAIController>` (base) 로 선언, cpp 에서 `Cast<AAOSAIController>` 사용
+  (engine 의 `FStateTreeMoveToTaskInstanceData` 와 동일 패턴)
 
 ### Hot Reload 비호환
 
