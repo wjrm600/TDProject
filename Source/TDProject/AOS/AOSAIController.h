@@ -7,6 +7,7 @@
 
 class AAOSCharacter;
 class AAOSStructure;
+class UStateTreeAIComponent;
 
 /**
  * AOS 게임의 AI 컨트롤러
@@ -60,6 +61,42 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|AI|Attack")
 	float GetEffectiveAttackRange() const;
 
+	// =========================================================================
+	// Phase 6: State Tree task/condition 이 호출하는 헬퍼들 (public)
+	// =========================================================================
+
+	/** 현재 공격 중인 캐릭터 타겟 반환 (없으면 nullptr) */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	AAOSCharacter* GetCurrentTargetCharacter() const { return CurrentTarget; }
+
+	/** 새 공격 타겟 설정 (StateTree 의 FindNearestEnemy task 가 호출) */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	void SetCurrentTarget(AAOSCharacter* InTarget);
+
+	/** 현재 웨이포인트가 적 구조물이면 반환 (이미 파괴됐거나 없으면 nullptr) */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	AAOSStructure* GetCurrentWaypointStructure() const;
+
+	/** 현재 캐릭터 타겟이 effective attack range 내인지 */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	bool IsCurrentTargetInAttackRange() const;
+
+	/** 현재 웨이포인트(이동 목표 위치) 도달 여부 (Z 무시 2D 거리 ≤ ArrivalDistance) */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	bool HasArrivedAtCurrentWaypoint() const;
+
+	/** 현재 캐릭터 타겟으로 NavMesh 이동 요청 (사거리 0.8 배에서 정지) */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	void RequestMoveToCurrentTarget();
+
+	/** 현재 웨이포인트 위치로 NavMesh 이동 요청 */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	void RequestMoveToCurrentWaypoint();
+
+	/** 다음 웨이포인트로 인덱스 증가 + CurrentMoveTarget 갱신 */
+	UFUNCTION(BlueprintCallable, Category = "AOS|AI|StateTree")
+	void AdvanceToNextWaypoint();
+
 protected:
 	// 배포된 라인
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI")
@@ -104,6 +141,12 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|AI|Debug")
 	int32 CurrentWaypointIndex = 0;
 
+	// Phase 6: StateTree AI 컴포넌트 (행동 결정 트리)
+	// BP_AOSAIController 의 컴포넌트 디테일 → StateTreeRef 슬롯에 ST_AOSCharacterAI 자산 지정
+	// bStartLogicAutomatically = true (default) → BeginPlay 에서 자동 시작
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|AI|StateTree")
+	TObjectPtr<UStateTreeAIComponent> StateTreeComponent;
+
 private:
 	// GameMode 캐시 (라운드 상태 확인용)
 	UPROPERTY()
@@ -117,16 +160,12 @@ private:
 
 	void CacheLaneInfo();
 	void BuildWaypointQueue();
-	void UpdateAIBehavior(float DeltaTime);
-	void MoveTowardsTarget(float DeltaTime);
-	void AttackTarget(float DeltaTime);
-	void AttackStructure(AAOSStructure* Structure, float DeltaTime);
+
+	// Phase 6: UpdateAIBehavior/MoveTowardsTarget/AttackTarget/AttackStructure 제거
+	// (StateTree 의 task 가 대체 — 헬퍼는 public 으로 노출)
 
 	// 이동 완료 판정 거리 (캐릭터 충돌 범위 고려)
 	const float ArrivalDistance = 100.0f;
-
-	// Phase 3: 공격 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그가 단일 진실 공급원
-	// (CurrentAttackCooldown / AttackCooldownDuration 멤버 제거)
 
 	// NavMesh 이동 캐시 — 동일 목표로 중복 요청 방지
 	FVector LastNavMoveTarget = FVector::ZeroVector;

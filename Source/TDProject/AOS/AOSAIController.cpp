@@ -5,6 +5,7 @@
 #include "GAS/AOSAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayTagContainer.h"
+#include "Components/StateTreeAIComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
@@ -59,6 +60,17 @@ float AAOSAIController::GetEffectiveAttackRange() const
 AAOSAIController::AAOSAIController()
 {
 	bAttachToPawn = true;
+
+	// Phase 6: StateTree AI 컴포넌트 부착
+	// (BP_AOSAIController 의 디테일에서 StateTreeRef 슬롯에 ST_AOSCharacterAI 지정)
+	StateTreeComponent = CreateDefaultSubobject<UStateTreeAIComponent>(TEXT("StateTreeComponent"));
+
+	// 자동 시작 비활성화 — BeginPlay 시 GetPawn()=null 이라 schema context actor binding 실패
+	// OnPossess 가 ControlledCharacter 설정한 직후 수동으로 StartLogic() 호출
+	if (StateTreeComponent)
+	{
+		StateTreeComponent->SetStartLogicAutomatically(false);
+	}
 }
 
 AAOSAIController::~AAOSAIController()
@@ -86,7 +98,27 @@ void AAOSAIController::OnPossess(APawn* InPawn)
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed character - waiting for deployment command"));
+	// Phase 6: StateTree 수동 시작 — Pawn 이 possess 된 상태에서 schema 가 context actor 를 찾을 수 있음
+	if (StateTreeComponent)
+	{
+		if (!StateTreeComponent->IsRunning())
+		{
+			StateTreeComponent->StartLogic();
+			UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed %s — StateTreeComponent::StartLogic() 호출, IsRunning=%s"),
+				*InPawn->GetName(),
+				StateTreeComponent->IsRunning() ? TEXT("true") : TEXT("false"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed %s — StateTreeComponent 이미 실행 중"),
+				*InPawn->GetName());
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[AI Controller] Possessed %s — StateTreeComponent is NULL!"),
+			*InPawn->GetName());
+	}
 }
 
 void AAOSAIController::BeginPlay()
@@ -125,7 +157,17 @@ void AAOSAIController::Tick(float DeltaTime)
 		return;
 	}
 
-	UpdateAIBehavior(DeltaTime);
+	// Phase 6: 행동 결정은 StateTree 가 담당 (UpdateAIBehavior 호출 제거)
+	// ServerTravel 직후 race condition 대응 — WaypointQueue 가 비어있으면 재시도
+	if (bDeploymentStarted && WaypointQueue.Num() == 0)
+	{
+		CacheLaneInfo();
+		BuildWaypointQueue();
+		if (WaypointQueue.Num() > 0)
+		{
+			CurrentMoveTarget = GetNextTargetLocation();
+		}
+	}
 
 	// ─── 디버그: 캐릭터 이동 경로 (탑/미드/바텀 라인별) ───
 	if (ControlledCharacter && GetWorld() &&
@@ -397,106 +439,105 @@ void AAOSAIController::BuildWaypointQueue()
 	}
 }
 
-void AAOSAIController::UpdateAIBehavior(float DeltaTime)
+// =============================================================================
+// Phase 6: StateTree task/condition 이 호출하는 헬퍼들
+// (UpdateAIBehavior / MoveTowardsTarget / AttackTarget / AttackStructure 가
+//  StateTree 의 task 로 분리되며 제거됨. 헬퍼는 task 가 사용)
+// =============================================================================
+
+void AAOSAIController::SetCurrentTarget(AAOSCharacter* InTarget)
 {
-	// ServerTravel 직후 MapManager 가 늦게 등록되는 race condition 대응:
-	// Deployment 는 시작됐지만 WaypointQueue 가 아직 비어있으면 매 tick 재시도.
-	if (bDeploymentStarted && WaypointQueue.Num() == 0)
-	{
-		CacheLaneInfo();
-		BuildWaypointQueue();
-		if (WaypointQueue.Num() == 0)
-		{
-			// MapManager 가 아직 준비 안 됨 — 이번 tick 스킵
-			return;
-		}
-		// 큐가 새로 만들어졌으면 첫 목표 위치도 설정
-		CurrentMoveTarget = GetNextTargetLocation();
-	}
-
-	// Phase 3: CurrentAttackCooldown 멤버 제거 — 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그로 관리
-
-	// 가장 가까운 적군 찾기 (우선순위: 캐릭터 > 타워)
-	AAOSCharacter* NearestEnemy = FindNearestEnemy();
-	if (NearestEnemy)
-	{
-		CurrentTarget = NearestEnemy;
-		AttackTarget(DeltaTime);
-		return;
-	}
-
-	AAOSStructure* NearestTower = FindNearestEnemyTower();
-	if (NearestTower)
-	{
-		// 적 구조물 공격
-		AttackStructure(NearestTower, DeltaTime);
-		return;
-	}
-
-	// 다음 웨이포인트로 이동
-	CurrentMoveTarget = GetNextTargetLocation();
-	CurrentTarget = nullptr;
-	MoveTowardsTarget(DeltaTime);
+	CurrentTarget = InTarget;
 }
 
-void AAOSAIController::MoveTowardsTarget(float DeltaTime)
+AAOSStructure* AAOSAIController::GetCurrentWaypointStructure() const
 {
-	if (!ControlledCharacter)
+	if (CurrentWaypointIndex < 0 || CurrentWaypointIndex >= WaypointQueue.Num())
 	{
-		return;
+		return nullptr;
 	}
 
-	// Z(높이)를 무시한 2D 거리로 도착 판정 — 지형 높낮이 차이 허용
-	float Distance2D = FVector::Dist2D(ControlledCharacter->GetActorLocation(), CurrentMoveTarget);
-
-	if (Distance2D <= ArrivalDistance)
+	AAOSStructure* WP = WaypointQueue[CurrentWaypointIndex];
+	if (!WP || WP->IsDestroyed())
 	{
-		StopMovement();
-		LastNavMoveTarget = FVector::ZeroVector;
-
-		if (bAllTowersDestroyed)
-		{
-			return;
-		}
-
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Arrived at waypoint! 2D Distance: %.1f, Index: %d"),
-			Distance2D, CurrentWaypointIndex);
-
-		CurrentWaypointIndex++;
-		UE_LOG(LogTemp, Warning, TEXT("[AI] Moving to next waypoint. New index: %d/%d"),
-			CurrentWaypointIndex, WaypointQueue.Num() - 1);
-
-		CurrentMoveTarget = GetNextTargetLocation();
-		return;
+		return nullptr;
 	}
 
-	// NavMesh 이동 요청 — 목표가 50 유닛 이상 바뀔 때만 재요청(매 틱 방지)
-	if (FVector::Dist(LastNavMoveTarget, CurrentMoveTarget) > 50.0f)
+	// 적 구조물만 반환 (아군 웨이포인트는 통과 대상이지 공격 대상 아님)
+	if (ControlledCharacter && WP->GetOwnerTeam() == ControlledCharacter->GetTeam())
 	{
-		LastNavMoveActor = nullptr;
-		MoveToLocation(CurrentMoveTarget, ArrivalDistance * 0.5f,
-			/*bStopOnOverlap=*/true,
-			/*bUsePathfinding=*/true,
-			/*bProjectDestinationToNavigation=*/true,
-			/*bCanStrafe=*/false);
-		LastNavMoveTarget = CurrentMoveTarget;
+		return nullptr;
 	}
+	return WP;
 }
 
-void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime)
+bool AAOSAIController::IsCurrentTargetInAttackRange() const
 {
-	if (!ControlledCharacter || !Structure || Structure->IsDestroyed())
-	{
-		return;
-	}
+	if (!ControlledCharacter || !CurrentTarget) return false;
+	const float Distance = FVector::Dist(
+		ControlledCharacter->GetActorLocation(),
+		CurrentTarget->GetActorLocation());
+	return Distance <= GetEffectiveAttackRange();
+}
 
-	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), Structure->GetActorLocation());
+bool AAOSAIController::HasArrivedAtCurrentWaypoint() const
+{
+	if (!ControlledCharacter) return false;
+	const float Distance2D = FVector::Dist2D(
+		ControlledCharacter->GetActorLocation(),
+		CurrentMoveTarget);
+	return Distance2D <= ArrivalDistance;
+}
+
+void AAOSAIController::RequestMoveToCurrentTarget()
+{
+	if (!ControlledCharacter || !CurrentTarget) return;
+
 	const float EffectiveRange = GetEffectiveAttackRange();
 
-	if (Distance > EffectiveRange)
+	// MoveToActor: 목표가 움직여도 경로 자동 갱신
+	if (LastNavMoveActor != CurrentTarget)
 	{
-		// NavMesh로 구조물 접근
-		FVector StructurePos = Structure->GetActorLocation();
+		LastNavMoveTarget = FVector::ZeroVector;
+		MoveToActor(CurrentTarget, EffectiveRange * 0.8f,
+			/*bStopOnOverlap=*/true,
+			/*bUsePathfinding=*/true,
+			/*bCanStrafe=*/false);
+		LastNavMoveActor = CurrentTarget;
+	}
+
+	// 사거리 내면 회전 + 정지
+	if (IsCurrentTargetInAttackRange())
+	{
+		StopMovement();
+		LastNavMoveActor = nullptr;
+		FVector Dir = (CurrentTarget->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
+		ControlledCharacter->SetActorRotation(Dir.Rotation());
+	}
+}
+
+void AAOSAIController::RequestMoveToCurrentWaypoint()
+{
+	if (!ControlledCharacter) return;
+
+	// 현재 웨이포인트가 적 구조물이면 사거리 내까지만 접근
+	AAOSStructure* WPStruct = GetCurrentWaypointStructure();
+	if (WPStruct)
+	{
+		const float EffectiveRange = GetEffectiveAttackRange();
+		const float Distance = FVector::Dist(
+			ControlledCharacter->GetActorLocation(), WPStruct->GetActorLocation());
+
+		if (Distance <= EffectiveRange)
+		{
+			StopMovement();
+			LastNavMoveTarget = FVector::ZeroVector;
+			FVector Dir = (WPStruct->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
+			ControlledCharacter->SetActorRotation(Dir.Rotation());
+			return;
+		}
+
+		FVector StructurePos = WPStruct->GetActorLocation();
 		if (FVector::Dist(LastNavMoveTarget, StructurePos) > 50.0f)
 		{
 			LastNavMoveActor = nullptr;
@@ -510,79 +551,31 @@ void AAOSAIController::AttackStructure(AAOSStructure* Structure, float DeltaTime
 		return;
 	}
 
-	// 공격 범위 내 - 멈추고 공격
-	StopMovement();
-	LastNavMoveTarget = FVector::ZeroVector;
-
-	FVector DirectionToStructure = (Structure->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-	ControlledCharacter->SetActorRotation(DirectionToStructure.Rotation());
-
-	// Phase 3: GA_Attack 트리거 (Cooldown.Attack.Basic 태그가 ASC 에 없을 때만)
-	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
-	if (ASC && !ASC->HasMatchingGameplayTag(
-		FGameplayTag::RequestGameplayTag(FName("Cooldown.Attack.Basic"))))
+	// 일반 위치 이동 (CurrentMoveTarget 사용)
+	if (FVector::Dist(LastNavMoveTarget, CurrentMoveTarget) > 50.0f)
 	{
-		FGameplayEventData EventData;
-		EventData.Target = Structure;
-		EventData.Instigator = ControlledCharacter;
-		ASC->HandleGameplayEvent(
-			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic")),
-			&EventData);
-
-		const float NowSec = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("[AI %.3fs] GA_Attack → Structure! HP: %.0f/%.0f"),
-			NowSec, Structure->GetCurrentHealth(), Structure->GetMaxHealth());
+		LastNavMoveActor = nullptr;
+		MoveToLocation(CurrentMoveTarget, ArrivalDistance * 0.5f,
+			/*bStopOnOverlap=*/true,
+			/*bUsePathfinding=*/true,
+			/*bProjectDestinationToNavigation=*/true,
+			/*bCanStrafe=*/false);
+		LastNavMoveTarget = CurrentMoveTarget;
 	}
 }
 
-void AAOSAIController::AttackTarget(float DeltaTime)
+void AAOSAIController::AdvanceToNextWaypoint()
 {
-	if (!ControlledCharacter || !CurrentTarget)
-	{
-		return;
-	}
+	if (bAllTowersDestroyed) return;
 
-	float Distance = FVector::Dist(ControlledCharacter->GetActorLocation(), CurrentTarget->GetActorLocation());
-	const float EffectiveRange = GetEffectiveAttackRange();
-
-	if (Distance > EffectiveRange)
-	{
-		// MoveToActor: 목표 캐릭터가 움직여도 경로 자동 갱신
-		if (LastNavMoveActor != CurrentTarget)
-		{
-			LastNavMoveTarget = FVector::ZeroVector;
-			MoveToActor(CurrentTarget, EffectiveRange * 0.8f,
-				/*bStopOnOverlap=*/true,
-				/*bUsePathfinding=*/true,
-				/*bCanStrafe=*/false);
-			LastNavMoveActor = CurrentTarget;
-		}
-		return;
-	}
-
-	// 공격 범위 내 - 멈추고 공격
 	StopMovement();
-	LastNavMoveActor = nullptr;
+	LastNavMoveTarget = FVector::ZeroVector;
 
-	FVector DirectionToEnemy = (CurrentTarget->GetActorLocation() - ControlledCharacter->GetActorLocation()).GetSafeNormal();
-	ControlledCharacter->SetActorRotation(DirectionToEnemy.Rotation());
+	CurrentWaypointIndex++;
+	UE_LOG(LogTemp, Log, TEXT("[AI] AdvanceToNextWaypoint — index=%d/%d"),
+		CurrentWaypointIndex, WaypointQueue.Num() - 1);
 
-	// Phase 3: GA_Attack 트리거 (Cooldown.Attack.Basic 태그가 ASC 에 없을 때만)
-	UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent();
-	if (ASC && !ASC->HasMatchingGameplayTag(
-		FGameplayTag::RequestGameplayTag(FName("Cooldown.Attack.Basic"))))
-	{
-		FGameplayEventData EventData;
-		EventData.Target = CurrentTarget;
-		EventData.Instigator = ControlledCharacter;
-		ASC->HandleGameplayEvent(
-			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic")),
-			&EventData);
-
-		const float NowSec = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-		UE_LOG(LogTemp, Warning, TEXT("[AI %.3fs] GA_Attack → Enemy! Distance: %.1f"),
-			NowSec, Distance);
-	}
+	CurrentMoveTarget = GetNextTargetLocation();
 }
 
 void AAOSAIController::DrawDebugPath()

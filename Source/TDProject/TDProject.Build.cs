@@ -34,6 +34,7 @@ public class TDProject : ModuleRules
 		PublicIncludePaths.AddRange(new string[] {
 			"TDProject",
 			"TDProject/AOS",
+			"TDProject/AOS/AI",
 			"TDProject/AOS/GAS",
 			"TDProject/AOS/GAS/Abilities",
 			"TDProject/AOS/GAS/Data",

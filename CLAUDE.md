@@ -151,6 +151,97 @@ These enums are used throughout the codebase for team/lane identification.
 - Team color: Team1=Red, Team2=Blue
 - Requires Widget Blueprint `WBP_HealthBar` created in editor
 
+## AI: State Tree Architecture (Phase 6)
+
+AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
+이전의 `AOSAIController::UpdateAIBehavior` (if/else 직접 결정) 제거됨.
+
+### 핵심 클래스 (Phase 6)
+
+- **`UStateTreeAIComponent`** (`Components/StateTreeAIComponent.h`)
+  - `AAOSAIController` 가 `CreateDefaultSubobject` 로 부착
+  - `bStartLogicAutomatically = true` (default) → BeginPlay 에서 자동 시작
+  - StateTreeAIComponentSchema 사용 — AAIController 접근 보장
+  - BP_AOSAIController 의 컴포넌트 디테일 → `StateTreeRef` 슬롯에 ST 자산 지정
+
+- **`AAOSAIController`** (`AOSAIController.h/cpp`)
+  - 기존 `UpdateAIBehavior` / `MoveTowardsTarget` / `AttackTarget` / `AttackStructure` **제거**
+  - 헬퍼 메서드는 ST task 가 호출하기 위해 **public 노출**:
+    - `SetCurrentTarget(AAOSCharacter*)`
+    - `GetCurrentTargetCharacter()`
+    - `GetCurrentWaypointStructure()`
+    - `IsCurrentTargetInAttackRange()`
+    - `HasArrivedAtCurrentWaypoint()`
+    - `RequestMoveToCurrentTarget()` / `RequestMoveToCurrentWaypoint()`
+    - `AdvanceToNextWaypoint()`
+    - `FindNearestEnemy()` / `GetEffectiveAttackRange()` (이전부터 public)
+  - Tick 은 race-condition 재시도 (WaypointQueue 빈 경우 재구축) + 디버그 시각화만 담당.
+    행동 결정은 ST 가 자체 tick.
+
+### Custom Tasks (`Source/TDProject/AOS/AI/AOSStateTreeTasks.h/cpp`)
+
+모두 `FStateTreeTaskCommonBase` 상속. InstanceData 의 `Context` 카테고리로 `AAOSAIController*` 자동 주입 (StateTreeAIComponentSchema).
+
+| Task | EnterState/Tick 동작 |
+|------|----------------------|
+| `FStateTreeTask_FindNearestEnemy` | 적 캐릭터 검색 → CurrentTarget 설정. 못 찾으면 FAILED |
+| `FStateTreeTask_MoveToCurrentTarget` | CurrentTarget 으로 이동, 사거리 도달 시 SUCCESS |
+| `FStateTreeTask_MoveToCurrentWaypoint` | CurrentMoveTarget 으로 이동, 도착 시 SUCCESS (구조물 웨이포인트면 사거리에서 정지) |
+| `FStateTreeTask_AdvanceWaypoint` | CurrentWaypointIndex++ 후 SUCCESS |
+| `FStateTreeTask_SendAttackEvent` | ASC->HandleGameplayEvent(`Ability.Attack.Basic`, {Target}) — 타겟은 캐릭터/구조물 선택 |
+| `FStateTreeTask_ActivateAbilityByTag` | Phase 4 스킬용. ASC->TryActivateAbilitiesByTag(Tag) |
+
+### Custom Conditions (`Source/TDProject/AOS/AI/AOSStateTreeConditions.h/cpp`)
+
+모두 `FStateTreeConditionCommonBase` 상속.
+
+| Condition | TestCondition 로직 |
+|-----------|--------------------|
+| `FStateTreeCond_HasNearbyEnemy` | `AIController->FindNearestEnemy() != nullptr` |
+| `FStateTreeCond_HealthBelowPct` | Health/MaxHealth < Threshold (instance param) |
+| `FStateTreeCond_HasCooldownTag` | ASC->HasMatchingGameplayTag(Tag) — 쿨다운 active 체크 |
+| `FStateTreeCond_TargetInAttackRange` | 타겟까지 거리 ≤ GetEffectiveAttackRange() |
+| `FStateTreeCond_HasCurrentWaypointStructure` | 현재 웨이포인트가 적 구조물 + 미파괴 |
+
+각 condition 의 `bInvert` 플래그로 NOT 연산 가능.
+
+### ST 자산 작성 (사용자 작업, 시각 편집기)
+
+**파일**: `/Game/AOS/AI/ST_AOSCharacterAI` (StateTreeAIComponentSchema)
+
+**트리 구조 (선택자 패턴, 우선순위 순)**:
+```
+Root (Selector)
+├── [State] AttackEnemy
+│   EnterCondition: FStateTreeCond_HasNearbyEnemy
+│   Tasks: FindNearestEnemy → MoveToCurrentTarget → SendAttackEvent (bTargetCurrentEnemy=true)
+├── [State] UseHealSkill (Phase 4 — 추후 활성)
+│   EnterCondition: HealthBelowPct(0.3) && !HasCooldownTag(Cooldown.Skill.Heal)
+│   Tasks: ActivateAbilityByTag(Ability.Skill.Heal)
+├── [State] AttackStructure
+│   EnterCondition: HasCurrentWaypointStructure && TargetInAttackRange(bUseCurrentTargetCharacter=false)
+│   Tasks: SendAttackEvent (bTargetCurrentEnemy=false)
+└── [State] PushLane (Default — fallback)
+    Tasks: MoveToCurrentWaypoint → AdvanceWaypoint (도착 시)
+```
+
+### BP 연결 (사용자 작업)
+
+1. `BP_AOSAIController` (없으면 생성: AAOSAIController 상속)
+2. 디테일 패널 → StateTreeComponent → StateTreeRef → ST_AOSCharacterAI 지정
+3. BP 컴파일 + 저장
+4. `BP_Character` 의 AIControllerClass 가 BP_AOSAIController 가리키는지 확인
+
+### 디버깅
+
+- 콘솔: `gd.AIDebug.StateTree 1` — ST 활성 state 시각화
+- 또는 `showdebug ai` — UStateTreeAIComponent 의 GetActiveStateNames() 출력
+- 로그: `LogStateTree`, `LogAI` (Verbose 권장)
+
+### Hot Reload 비호환
+
+신규 USTRUCT (Task/Condition) 추가 → **풀 리빌드 필수**.
+
 ## GAS (Gameplay Ability System) Architecture
 
 GAS 도입은 **5 Phase 마이그레이션** 으로 진행됩니다.
