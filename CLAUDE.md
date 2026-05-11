@@ -327,6 +327,7 @@ GAS 도입은 **5 Phase 마이그레이션** 으로 진행됩니다.
 | 1 | ASC + AttributeSet 부착 (병행 운영) | ✅ 완료 |
 | 2 | Damage 흐름 GE_Damage 컷오버 | ✅ 완료 |
 | 3 | 기본 공격 → GA_Attack 전환 | ✅ 완료 |
+| 3.5 | 캐릭터 애니메이션 슬롯 스캐폴딩 (자산 미연결) | ✅ 완료 |
 | 4 | 신규 스킬 추가 (GA_Charge / GA_Heal 등) | 🔜 |
 | 5 | AOSStructure 도 ASC 통합 | ✅ 완료 |
 
@@ -596,6 +597,215 @@ Instant 는 태그를 ASC 에 grant 할 수 없음 (즉시 만료). 데미지 �
 
 ASC/AttributeSet 신규 추가, 모듈 의존성 변경 등은 **풀 리빌드 필요**.
 매 Phase 시작 시 에디터 종료 후 Build.bat 실행.
+
+## 캐릭터 애니메이션 시스템 (Phase 3.5)
+
+캐릭터 애니메이션은 **C++ 슬롯 + BP 자산 연결** 패턴.
+Phase 3.5 는 슬롯만 만든 상태이며, **자산은 디자이너가 BP_Character 디테일에서 채운다**.
+
+### 핵심 클래스
+
+- **`UAOSAnimInstance`** (`Source/TDProject/AOS/AOSAnimInstance.h/cpp`)
+  - BlueprintReadOnly 변수: `Speed`, `Direction`, `bIsMoving`, `bIsFalling`, `bIsAttacking`, `bIsCasting`, `bIsHitReacting`, `bIsDead`
+  - `NativeUpdateAnimation` 에서 `OwningCharacter->GetVelocity()` + `CachedASC->HasMatchingGameplayTag(...)` 로 매 tick 갱신
+  - DS 환경: `Velocity` 는 클라에 자동 replicate → 별도 동기화 코드 없음
+  - GAS 태그 미러는 정의된 태그만 (`Ability.Attack.Basic`). 미정의 태그는 Phase 4 에서 추가.
+
+- **`UAOSAnimNotify_AttackHit`** (`Source/TDProject/AOS/Anim/AOSAnimNotify_AttackHit.h/cpp`)
+  - 본 Phase: 빈 껍데기 (로깅만)
+  - Phase 4 에서 `GA_Attack` 의 `PlayMontageAndWait` + `WaitGameplayEvent` 패턴과 결합 → montage-driven damage
+
+### `AAOSCharacter` 몽타주 슬롯
+
+```cpp
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
+TObjectPtr<UAnimMontage> AttackMontage;
+
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
+TObjectPtr<UAnimMontage> HitReactMontage;
+
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
+TObjectPtr<UAnimMontage> DeathMontage;
+
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
+TMap<FGameplayTag, TObjectPtr<UAnimMontage>> SkillMontages;  // Phase 4 확장
+
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation", meta=(ClampMin="0.0"))
+float RagdollSettleDuration = 2.0f;  // 사망 몽타주 종료 후 ragdoll 유지 시간(액터 destroy 까지)
+```
+
+- 슬롯이 nullptr 이면 조용히 skip — **자산 없어도 PIE 가 굴러간다.**
+- `GetSkillMontage(FGameplayTag)` 로 Phase 4 의 GA_Skill_X 가 매핑된 몽타주 조회.
+- `RagdollSettleDuration` 은 ragdoll 시뮬레이션이 정착할 시간 — 너무 짧으면 시체가 공중에서 사라짐.
+
+### 트리거 흐름
+
+| 애니메이션 | 트리거 진입점 | 호출 방식 |
+|----------|---------------|-----------|
+| Idle / Move | (없음 — ABP 가 `Speed`/`Direction` 변수만 읽음) | AnimGraph 자체 |
+| Attack | `GA_Attack::ActivateAbility` (서버) | `Char->PlayAnimMontage(AttackMontage)` 한 줄 (자동 replicate). **데미지는 즉시 적용 그대로** — Phase 4 에서 montage-driven 으로 전환 |
+| HitReact | `UAOSAttributeSet::PostGameplayEffectExecute` (서버, 데미지 차감 분기, NewHealth > 0 일 때) | `Char->Multicast_PlayHitReact()` (NetMulticast Reliable) |
+| Death | `AAOSCharacter::OnCharacterDeath` (서버) | (1) `Brain.StopLogic("Character died")` — StateTree 즉시 정지 (없으면 다음 tick 의 SendAttackEvent 가 DeathMontage 를 덮어씀) → (2) `CMC->SetMovementMode(MOVE_Walking)` 강제 (NavWalking 이면 root motion 무효) → (3) `Multicast_PlayDeathMontage()` (서버+클라 각각 `PlayAnimMontage` + 타이머 → `StartRagdoll`) → (4) `SetLifeSpan(MontageLength + RagdollSettleDuration)` |
+| Skill | (Phase 4) `GA_Skill_X::ActivateAbility` | `Char->PlayAnimMontage(GetSkillMontage(SkillTag))` |
+
+### Dedicated Server 네트워킹
+
+- `PlayAnimMontage` 는 `ACharacter` 내장 replicate — 서버 호출 시 자동.
+- `Multicast_PlayDeathMontage` / `Multicast_PlayHitReact` 는 명시 RPC — 서버 권한 진입점에서만 호출.
+- AnimNotify 는 클라/서버 양쪽 실행 → notify 안에 게임플레이 로직 절대 금지 (현재는 빈 껍데기).
+- 단일 진실 공급원: 쿨다운은 `Cooldown.Attack.Basic` 태그 (Phase 3 부터 적용) — 몽타주 길이 ≠ 쿨다운이어도 무영향.
+
+### Death Montage + Root Motion + Ragdoll 전환
+
+사망 시퀀스는 **(1) StateTree 정지 → (2) MovementMode 정정 → (3) Death montage 멀티캐스트 → (4) Ragdoll 전환 타이머 → (5) 액터 destroy** 5 단계.
+각 단계마다 함정이 있었고 아래는 그 결과로 굳어진 패턴.
+
+**`OnCharacterDeath` (서버) 핵심 호출 순서** — 순서 바꾸면 desync 또는 root motion 깨짐:
+
+```cpp
+void AAOSCharacter::OnCharacterDeath()
+{
+    if (!HasAuthority() || bIsDeadCached) return;
+    bIsDeadCached = true;
+
+    // (1) StateTree 즉시 정지 — 안 그러면 다음 tick 의 SendAttackEvent 가
+    //     AttackMontage 를 재생해서 같은 DefaultSlot 의 DeathMontage 를 덮어씀.
+    if (AController* C = GetController()) {
+        if (UBrainComponent* Brain = Cast<AAOSAIController>(C) ?
+            Cast<AAOSAIController>(C)->GetBrainComponent() : nullptr) {
+            Brain->StopLogic(TEXT("Character died"));
+        }
+    }
+
+    // (2) MovementMode 를 Walking 으로 강제 — AI 캐릭터의 기본 MOVE_NavWalking 은
+    //     NavMesh 밖으로 나가는 root motion delta 를 snap-to-navmesh 로 무효화.
+    if (UCharacterMovementComponent* CMC = GetCharacterMovement()) {
+        if (CMC->MovementMode == MOVE_NavWalking) CMC->SetMovementMode(MOVE_Walking);
+    }
+
+    // (3) 사망 몽타주 멀티캐스트 — 서버+모든 클라가 각자 PlayAnimMontage + StartRagdoll 타이머.
+    Multicast_PlayDeathMontage();
+
+    // (4) GameMode 통보, lifespan 설정 등 (기존 로직)
+    const float MontageLen = DeathMontage ? DeathMontage->GetPlayLength() : 0.f;
+    SetLifeSpan(MontageLen + RagdollSettleDuration);
+    // ⚠ SetActorTickEnabled(false) 호출 금지 — root motion 적용을 방해함.
+    // ⚠ Capsule collision 변경 금지 — CMC::FindFloor sweep 실패 → MOVE_Falling 전환 → root motion 흐름 깨짐.
+}
+```
+
+**`StartRagdoll` (각 머신 로컬, Multicast 의 타이머에서 호출)** — 이 시점부턴 root motion 끝났으므로 capsule 안전하게 끔:
+
+```cpp
+void AAOSCharacter::StartRagdoll()
+{
+    USkeletalMeshComponent* M = GetMesh();
+    if (!M || !M->GetPhysicsAsset()) {                 // PhysicsAsset 없으면 fallback
+        if (M) M->SetVisibility(false, true);
+        return;
+    }
+    if (UCapsuleComponent* Cap = GetCapsuleComponent()) // 이제 안전 — root motion 종료됨
+        Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+        CMC->SetMovementMode(MOVE_None);
+
+    M->SetCollisionProfileName(TEXT("Ragdoll"));
+    M->SetAllBodiesSimulatePhysics(true);
+    M->WakeAllRigidBodies();
+    M->bBlendPhysics = true;
+}
+```
+
+**호출 시점 — `Multicast_PlayDeathMontage` 안에서**:
+- DeathMontage + AnimInstance 둘 다 있으면: `PlayAnimMontage(DeathMontage)` + `MontageLength` 만큼 타이머 → `StartRagdoll`
+- 둘 중 하나라도 없으면: 즉시 `StartRagdoll` (fallback)
+
+**건드리면 안 되는 것 — 시도했다가 되돌린 변경**:
+- ❌ `SetActorEnableCollision(false)` / `Capsule->SetCollisionEnabled(NoCollision)` 를 사망 진입 시점에 호출 — `CMC::FindFloor` sweep 실패 → `MOVE_Falling` 전환 → root motion 흐름 깨짐. (Ragdoll 진입 시점엔 OK)
+- ❌ `Capsule->SetCollisionResponseToAllChannels(Overlap)` — 같은 이유.
+- ❌ `SetActorTickEnabled(false)` — 정확한 메커니즘은 불명이지만 root motion 적용 안 됨.
+- ❌ `AOSAIController::Tick` 의 사망 처리 블록에서 `StopMovement()` 호출 — `PathFollowingComponent::AbortMove` 가 CMC velocity 에 간섭하여 root motion 과 race. `Brain.StopLogic` 이 이미 StateTree 정지하므로 중복.
+
+**시체 collision 정책**: 사망 후 액터 destroy 전까지 캡슐 collision 은 **유지** (Pawn vs Pawn 충돌 그대로). 시체가 살아있는 캐릭터를 막는 건 게임 특색으로 의도. Ragdoll 진입 후엔 캡슐 NoCollision (메시가 물리 시뮬되므로 캡슐은 더 이상 의미 없음).
+
+### Root Motion 트러블슈팅 체크리스트
+
+새 root motion 자산 도입 시 — 또는 root motion 이 추출은 되는데 액터가 안 움직일 때 — 다음 순서로 점검.
+
+1. **AnimSequence 설정** — AS 의 디테일에서:
+   - `Enable Root Motion = true`
+   - `Force Root Lock = false` (true 면 root 가 origin 에 고정)
+   - `Root Motion Root Lock = Anim First Frame` (또는 자산 의도에 맞게)
+2. **AS preview viewport** — 자산 에디터에서 "Process Root Motion" 토글 ON → 캐릭터가 viewport 안에서 실제 이동하면 자산 데이터 정상. 안 움직이면 → 3번.
+3. **C++ 진단** — `Montage->ExtractRootMotion(0, MontageLen, false)` 호출해서 결과 transform 의 translation 확인:
+   - `HasRootMotion()=TRUE` 인데 `ExtractRootMotion(...)` 의 translation 이 (0,0,0) → **bone track 비어있음**, 데이터가 anim curve (`root_translation_Y` 등) 에만 있는 케이스 (Boss_Parried_RM 등 외부 자산에서 자주 발생).
+   - 해결: AS 에디터 → `EncodeRootBoneModifier` 적용. source bone `pelvis`, axis `XYZ-Axes` → pelvis 의 track 데이터를 root 본 raw track 으로 baking. **자산 복제 후 적용 권장** (destructive 변경).
+4. **AnimInstance RootMotionMode** — `UAnimInstance::RootMotionMode` 기본값이 `NoRootMotionExtraction` 이라 AnimSequence 의 `bEnableRootMotion=true` 도 무시됨. 우리는 `UAOSAnimInstance` 생성자에서:
+   ```cpp
+   RootMotionMode = ERootMotionMode::RootMotionFromMontagesOnly;
+   ```
+5. **런타임 로그** — `log LogRootMotion Verbose` 로 CMC 의 per-tick root motion 적용 추적. delta 가 매 tick 찍히면 추출은 정상.
+6. **MovementMode 확인** — `showdebug character` 로 실시간 표시. `MOVE_NavWalking` 이면 NavMesh 밖으로 나가는 root motion 이 snap-to-navmesh 로 무효화 → `MOVE_Walking` 으로 전환 필요. (사망 시퀀스에선 이미 자동 처리, 다른 곳에서 root motion 쓰는 경우 주의)
+7. **MovementMode 가 Falling 으로 바뀌었는지** — `FindFloor` sweep 이 실패하면 `MOVE_Falling` 으로 떨어지면서 root motion translation 이 중력/공기저항 로직에 가려짐. 캡슐 collision 을 끄거나 floor 가 갑자기 사라진 경우 발생.
+
+### Dedicated Server 환경에서의 Root Motion
+
+DS 에서 montage-driven root motion 은 다음 흐름으로 동작:
+
+```
+[서버] PlayAnimMontage (예: Multicast_PlayDeathMontage 의 ImplementationAll branch)
+   ↓ AnimInstance tick → RootMotionFromMontagesOnly → ExtractRootMotion
+   ↓ CMC::PerformMovement 가 RootMotionDelta 를 액터 위치에 적용 (Authority)
+   ↓ ACharacter 가 root motion source 를 RepRootMotion 으로 직렬화
+   ↓
+[리플리케이션]
+   ↓
+[각 클라이언트] OnRep_RootMotion → ACharacter::SimulatedRootMotionPositionFixup
+   ↓ CanUseRootMotionRepMove / FindRootMotionRepMove 로 서버와 시간/위치 동기화
+   ↓ AnimInstance 가 같은 montage 를 같은 위치에서 재생 (Multicast 가 이미 PlayAnimMontage 호출)
+```
+
+**중요한 함정**:
+- **서버에서 StateTree 가 살아있으면 죽음 직후 SendAttackEvent → AttackMontage 가 DeathMontage 를 덮어씀** → 서버는 Attack 재생, 클라는 Death 재생하는 **desync 발생**. 반드시 `OnCharacterDeath` 의 (1) 단계 `Brain.StopLogic` 으로 정지.
+- `Multicast_PlayDeathMontage` 는 서버에서도 실행됨 (NetMulticast 의 표준 동작) → 서버 자신도 PlayAnimMontage 호출하므로 서버 권한 액터의 위치가 root motion 으로 실제 이동.
+- 클라이언트는 `OnRep_RootMotion` 이 도착하기 전까지는 서버 위치를 따라가지만, RootMotion replication 이 시작되면 자체 시뮬레이션으로 전환 → 짧은 보간 갭이 생길 수 있음 (현재는 무시 가능 수준).
+
+### 자산 폴더 구조 (예정 — 사용자 import 후)
+
+```
+Content/AOS/Anim/
+├── ABP_AOSCharacter.uasset           // parent = UAOSAnimInstance
+├── BS_Locomotion.uasset              // BlendSpace1D, axis=Speed 0..600
+├── Montages/
+│   ├── AM_Attack.uasset              // slot=DefaultSlot, AnimNotify_AttackHit @ ~0.4s
+│   ├── AM_HitReact.uasset            // slot=UpperBody
+│   ├── AM_Death.uasset               // slot=FullBody
+│   └── AM_Skill_<Name>.uasset        // Phase 4
+└── Notifies/                         // 비움 (C++ notify 만 사용)
+```
+
+`SetupCharacterDefaults` 가 `/Game/AOS/Anim/ABP_AOSCharacter` 를 우선 로드, 자산 없으면 `ABP_Unarmed` (UE5 기본) 폴백.
+
+### Skeletal Mesh
+
+현재 모든 캐릭터는 **UE5 Mannequin (`SKM_Manny_Simple` + `IK_Mannequin`)** 을 dev 타깃으로.
+사용자가 다른 메시/스켈레톤 자산을 가져오면 IK Retargeter 로 SK_Mannequin 호환으로 retarget 후 같은 슬롯에 꽂으면 됨.
+캐릭터별 derived BP (`BP_Warrior` 등) 도입 시점에 캐릭터별 ABP / Skill 몽타주 매핑을 분리한다.
+
+### 사용자 수동 작업 (자산 import 후)
+
+1. **자산 import**: UE5 Mannequin 호환 또는 IK Retargeter 로 retarget. `Content/AOS/Anim/Montages/` 에 배치.
+2. **몽타주 슬롯**: AM 자산의 Anim Slot Manager 에 `DefaultSlot` (Attack/Death) / `UpperBody` (HitReact) 그룹 설정.
+3. **AttackHit Notify**: `AM_Attack` 타임라인에 `AOSAnimNotify_AttackHit` 트랙 추가, 무기 충격 프레임 (보통 0.3~0.5s).
+4. **BP_Character 디테일**:
+   - Mesh → Skeletal Mesh / Anim Class
+   - AOS|Animation → 4 개 Montage 슬롯 + SkillMontages map (Phase 4)
+
+### Hot Reload 비호환
+
+신규 UCLASS (`UAOSAnimInstance`, `UAOSAnimNotify_AttackHit`) 추가 → **풀 리빌드 필수**.
+신규 UPROPERTY (`RagdollSettleDuration`) / UFUNCTION (`StartRagdoll`, `Multicast_PlayDeathMontage` 시그니처 변경) 도입 시점에도 풀 리빌드 — 현재는 적용 완료, history 기록용.
+이후 슬롯 채우기 / 몽타주 변경은 hot reload OK.
 
 ## Memory Management Patterns
 

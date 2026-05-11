@@ -5,6 +5,8 @@
 #include "AbilitySystemInterface.h"
 #include "AOSGameMode.h"
 #include "Net/UnrealNetwork.h"
+#include "GameplayTagContainer.h"
+#include "Animation/AnimMontage.h"
 #include "AOSCharacter.generated.h"
 
 class UAOSAttributeComponent;
@@ -95,6 +97,48 @@ public:
 	// 사망 처리
 	void OnCharacterDeath();
 
+	// === Animation Slots (Phase 3.5) ===
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation")
+	TObjectPtr<UAnimMontage> AttackMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation")
+	TObjectPtr<UAnimMontage> HitReactMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation")
+	TObjectPtr<UAnimMontage> DeathMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ToolTip = "GameplayTag 기반 스킬 몽타주 매핑 (Phase 4)"))
+	TMap<FGameplayTag, TObjectPtr<UAnimMontage>> SkillMontages;
+
+	// 사망 몽타주 종료 후 ragdoll 상태로 유지할 시간 (초). 이 시간 후 액터 destroy.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ClampMin = "0.0", ToolTip = "사망 몽타주 종료 후 ragdoll 정착 시간 (초)"))
+	float RagdollSettleDuration = 2.0f;
+
+	// 접근자 (GA_Attack, GA_Skill 등에서 사용)
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimMontage* GetAttackMontage() const { return AttackMontage; }
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimMontage* GetHitReactMontage() const { return HitReactMontage; }
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimMontage* GetDeathMontage() const { return DeathMontage; }
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimMontage* GetSkillMontage(FGameplayTag SkillTag) const;
+
+	// === Multicast RPCs (Phase 3.5) ===
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayDeathMontage();
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayHitReact();
+
+	// 사망 몽타주 종료 시점에 호출 — 메시를 ragdoll 시뮬레이션으로 전환
+	// PhysicsAsset 가 없는 경우 fallback 으로 메시 hide.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Animation")
+	void StartRagdoll();
+
 protected:
 	// 팀 및 라인 정보
 	UPROPERTY(BlueprintReadWrite, Category = "AOS|Character")
@@ -177,4 +221,7 @@ private:
 	// Phase 3: 쿨타임 카운터 제거 — ASC 의 "Cooldown.Attack.Basic" 태그가 단일 진실 공급원
 
 	void SetupCharacterDefaults();
+
+	// Phase 3.5: 사망 몽타주 종료 후 ragdoll 전환 타이머 핸들 (각 클라이언트 로컬)
+	FTimerHandle RagdollTimerHandle;
 };

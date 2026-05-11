@@ -1,13 +1,17 @@
 #include "AOSCharacter.h"
 #include "AOSAIController.h"
 #include "AOSMapManager.h"
+#include "AIController.h"
+#include "BrainComponent.h"
 #include "GAS/AOSAbilitySystemComponent.h"
 #include "GAS/AOSAttributeSet.h"
 #include "GAS/Abilities/GA_Attack.h"
 #include "GAS/Data/AOSAttributeInitData.h"
 #include "GAS/Effects/GE_Damage.h"
 #include "UI/AOSHealthBarWidget.h"
+#include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
@@ -199,10 +203,92 @@ void AAOSCharacter::OnMoveSpeedAttributeChanged(const FOnAttributeChangeData& Da
 
 void AAOSCharacter::Multicast_OnDeath_Implementation()
 {
-	SetActorHiddenInGame(true);
+	// DeathMontage 가 없을 때만 즉시 hide — 몽타주가 있으면 Multicast_PlayDeathMontage 가 처리
+	if (!DeathMontage)
+	{
+		SetActorHiddenInGame(true);
+	}
 	if (HealthBarComponent)
 	{
 		HealthBarComponent->SetVisibility(false);
+	}
+}
+
+void AAOSCharacter::Multicast_PlayDeathMontage_Implementation()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	UAnimInstance* AnimInst = MeshComp ? MeshComp->GetAnimInstance() : nullptr;
+
+	// 몽타주 또는 AnimInstance 가 없으면 즉시 ragdoll 전환
+	if (!DeathMontage || !AnimInst)
+	{
+		StartRagdoll();
+		return;
+	}
+
+	// ACharacter::PlayAnimMontage 사용 — Character 의 root motion replication 통합 활용
+	const float Duration = PlayAnimMontage(DeathMontage);
+
+	if (Duration <= 0.f)
+	{
+		StartRagdoll();
+		return;
+	}
+
+	// 몽타주 길이 후 ragdoll 전환 (각 클라이언트 로컬 타이머)
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			RagdollTimerHandle,
+			this, &AAOSCharacter::StartRagdoll,
+			FMath::Max(0.01f, Duration), false);
+	}
+}
+
+void AAOSCharacter::StartRagdoll()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp) return;
+
+	// PhysicsAsset 미존재 시 fallback — 메시 hide (Idle 포즈 노출 방지)
+	if (!MeshComp->GetPhysicsAsset())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AOSCharacter] StartRagdoll: PhysicsAsset 없음 → 메시 hide fallback. SK 자산에 PhysicsAsset 할당 권장."));
+		SetActorHiddenInGame(true);
+		return;
+	}
+
+	// 캡슐 충돌 비활성화 — 시체가 살아있는 캐릭터를 막지 않도록
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	// CharacterMovement 정지 (이중 안전장치)
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		CMC->SetMovementMode(MOVE_None);
+		CMC->StopMovementImmediately();
+	}
+
+	// 메시를 ragdoll 모드로 전환
+	// CharacterMesh 프로파일은 Pawn ignore 라 캐릭터끼리 통과 — Ragdoll 프로파일은 World 와 충돌
+	MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	MeshComp->SetCollisionProfileName(TEXT("Ragdoll"));
+	MeshComp->SetAllBodiesSimulatePhysics(true);
+	MeshComp->SetSimulatePhysics(true);
+	MeshComp->WakeAllRigidBodies();
+	MeshComp->bBlendPhysics = true;
+}
+
+void AAOSCharacter::Multicast_PlayHitReact_Implementation()
+{
+	if (!HitReactMontage) return;
+	// 사망 진행 중이면 hit react 스킵 (사망 몽타주 우선)
+	if (!IsAlive()) return;
+	if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+	{
+		AnimInst->Montage_Play(HitReactMontage);
 	}
 }
 
@@ -365,10 +451,27 @@ void AAOSCharacter::OnCharacterDeath()
 		*TeamName, *LaneName,
 		GetActorLocation().X, GetActorLocation().Y, GetActorLocation().Z);
 
-	// 서버 전용: 이동/콜리전/틱 비활성화
-	GetCharacterMovement()->StopMovementImmediately();
-	SetActorEnableCollision(false);
-	SetActorTickEnabled(false);
+	// 사망 즉시 AI Brain 정지 — StateTree 가 계속 tick 하면서 SendAttackEvent 재트리거하는 것 방지.
+	// (이게 없으면 다음 tick 에 GA_Attack 활성화 → AttackMontage 가 DeathMontage 를 같은 슬롯에서 덮어쓰고,
+	//  서버는 Attack 모션, 클라는 Death 모션 → 클라가 서버 위치로 보정되며 순간이동 발생)
+	if (AAIController* AIC = Cast<AAIController>(GetController()))
+	{
+		if (UBrainComponent* Brain = AIC->GetBrainComponent())
+		{
+			Brain->StopLogic(TEXT("Character died"));
+		}
+	}
+
+	// 사망 시 캡슐 collision 은 그대로 유지 (시체가 살아있는 캐릭터를 막는 건 게임 특색으로 의도).
+	// StartRagdoll 시점에 메시가 Ragdoll 프로파일로 전환되어 ragdoll 시뮬레이션 시작.
+
+	// Root motion 이 NavMesh 구속 없이 적용되도록 MOVE_Walking 강제.
+	// AI 캐릭터는 보통 MOVE_NavWalking — backward 이동이 NavMesh 밖으로 나가면
+	// snap-to-navmesh 가 작동해서 액터가 원위치로 끌려옴 → 시각적으로 안 움직임.
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		CMC->SetMovementMode(MOVE_Walking);
+	}
 
 	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함)
 	Multicast_OnDeath();
@@ -379,8 +482,19 @@ void AAOSCharacter::OnCharacterDeath()
 		GameMode->OnCharacterDestroyed(this);
 	}
 
-	// 서버 전용: 2초 후 액터 제거 (bReplicates=true → Destroy()가 클라이언트에도 전파)
-	SetLifeSpan(2.0f);
+	// 사망 몽타주 길이 + ragdoll 정착 시간 후 destroy
+	// 몽타주 없으면 RagdollSettleDuration 만 (StartRagdoll 즉시 호출됨)
+	float DestroyDelay = RagdollSettleDuration;
+	if (DeathMontage)
+	{
+		DestroyDelay = DeathMontage->GetPlayLength() + RagdollSettleDuration;
+	}
+
+	// 서버 전용: DestroyDelay 후 액터 제거 (bReplicates=true → Destroy()가 클라이언트에도 전파)
+	SetLifeSpan(DestroyDelay);
+
+	// 모든 클라에 사망 몽타주 재생 (nullptr-safe — 없으면 내부에서 early return)
+	Multicast_PlayDeathMontage();
 }
 
 float AAOSCharacter::GetCurrentHealth() const
@@ -399,6 +513,16 @@ float AAOSCharacter::GetAttackDamage() const
 {
 	// Phase 3: AttributeSet wrapper (AttackDamage 멤버는 초기값 시드로만 유지)
 	return AttributeSet ? AttributeSet->GetAttackPower() : AttackDamage;
+}
+
+UAnimMontage* AAOSCharacter::GetSkillMontage(FGameplayTag SkillTag) const
+{
+	if (!SkillTag.IsValid()) return nullptr;
+	if (const TObjectPtr<UAnimMontage>* Found = SkillMontages.Find(SkillTag))
+	{
+		return *Found;
+	}
+	return nullptr;
 }
 
 FVector AAOSCharacter::GetLaneStartPosition() const
@@ -463,11 +587,20 @@ void AAOSCharacter::SetupCharacterDefaults()
 	}
 
 	// 런타임 애니메이션 블루프린트 로딩
+	// 우선순위 1: 본 프로젝트의 ABP_AOSCharacter
 	UClass* AnimBPClass = LoadClass<UAnimInstance>(nullptr,
-		TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"));
+		TEXT("/Game/AOS/Anim/ABP_AOSCharacter.ABP_AOSCharacter_C"));
+
+	// 폴백: UE5 기본 ABP_Unarmed
+	if (!AnimBPClass)
+	{
+		AnimBPClass = LoadClass<UAnimInstance>(nullptr,
+			TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C"));
+	}
+
 	if (AnimBPClass)
 	{
 		GetMesh()->SetAnimInstanceClass(AnimBPClass);
-		UE_LOG(LogTemp, Warning, TEXT("[Character] 애니메이션 설정: ABP_Unarmed"));
+		UE_LOG(LogTemp, Warning, TEXT("[Character] 애니메이션 설정: %s"), *AnimBPClass->GetName());
 	}
 }

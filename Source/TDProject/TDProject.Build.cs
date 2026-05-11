@@ -35,6 +35,7 @@ public class TDProject : ModuleRules
 			"TDProject",
 			"TDProject/AOS",
 			"TDProject/AOS/AI",
+			"TDProject/AOS/Anim",
 			"TDProject/AOS/GAS",
 			"TDProject/AOS/GAS/Abilities",
 			"TDProject/AOS/GAS/Data",

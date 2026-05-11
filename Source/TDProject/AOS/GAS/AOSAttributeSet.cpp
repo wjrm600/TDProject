@@ -64,10 +64,11 @@ void UAOSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 			const float NewHealth = FMath::Clamp(OldHealth - LocalDamage, 0.f, GetMaxHealth());
 			SetHealth(NewHealth);
 
+			AActor* Owner = GetOwningActor();
+
 			// 사망 처리: Health 가 처음 0 으로 떨어지는 순간만 1회 발동
 			if (NewHealth <= 0.f && OldHealth > 0.f)
 			{
-				AActor* Owner = GetOwningActor();
 				if (AAOSCharacter* Char = Cast<AAOSCharacter>(Owner))
 				{
 					Char->OnCharacterDeath();
@@ -76,6 +77,14 @@ void UAOSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 				{
 					// Phase 5: 구조물 파괴 처리 (캐릭터와 동일 진입점)
 					Struct->OnStructureDestroyed();
+				}
+			}
+			// 생존 시 hit react 재생 (사망 분기와 mutual exclusive)
+			else if (NewHealth > 0.f)
+			{
+				if (AAOSCharacter* Char = Cast<AAOSCharacter>(Owner))
+				{
+					Char->Multicast_PlayHitReact();
 				}
 			}
 		}

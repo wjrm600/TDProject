@@ -6,6 +6,7 @@
 #include "Effects/GE_Cooldown_Attack.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
+#include "AOS/AOSCharacter.h"
 
 UGA_Attack::UGA_Attack()
 {
@@ -97,6 +98,16 @@ void UGA_Attack::ActivateAbility(
 					FGameplayTag::RequestGameplayTag(FName("Data.Damage")), DamageAmount);
 				SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
 			}
+		}
+	}
+
+	// 시각용 공격 몽타주 재생 (자산 있으면) — 데미지 흐름과 무관, nullptr-safe
+	// ServerInitiated 정책 → 서버에서 PlayAnimMontage 호출 → 엔진이 클라에 자동 replicate
+	if (AAOSCharacter* AttackerChar = Cast<AAOSCharacter>(ActorInfo->AvatarActor.Get()))
+	{
+		if (UAnimMontage* M = AttackerChar->GetAttackMontage())
+		{
+			AttackerChar->PlayAnimMontage(M);
 		}
 	}
 

@@ -147,9 +147,12 @@ void AAOSAIController::Tick(float DeltaTime)
 	if (!ControlledCharacter || !ControlledCharacter->IsAlive())
 	{
 		// 캐릭터 사망 시 AI 정리
+		// 주의: StopMovement() 는 PathFollowing 의 AbortMove 를 트리거하여
+		//       CMC 의 root motion 적용을 방해할 수 있음. Brain.StopLogic 이 이미
+		//       OnCharacterDeath 에서 StateTree 를 정지시키므로 추가 StopMovement 불필요.
 		if (ControlledCharacter && !ControlledCharacter->IsAlive())
 		{
-			StopMovement();
+			// StopMovement();  // 의도적으로 호출하지 않음 — root motion 적용 보장
 			WaypointQueue.Empty();
 			CurrentTarget = nullptr;
 			ControlledCharacter = nullptr;
