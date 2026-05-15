@@ -406,11 +406,20 @@ ASC->ApplyGameplayEffectSpecToSelf(*Spec)
   - `InstancingPolicy = InstancedPerActor`, `NetExecutionPolicy = ServerInitiated`
   - AbilityTag: `Ability.Attack.Basic` (활성화 트리거)
   - `CooldownGameplayEffectClass = UGE_Cooldown_Attack::StaticClass()`
-  - `ActivateAbility`: CommitAbility → AttackPower 속성값 → 타겟에 GE_Damage 적용 → EndAbility
+  - `ActivationBlockedTags`: `State.HitReact` (HitReact 중 공격 차단)
+  - **AttackSpeed 적용** (Phase 3.5+ 갱신): `AttackSpeed` 속성을 추출하여
+    - `MontageTask.Rate = AttackSpeed` → 몽타주 재생 속도 스케일
+    - `CooldownSpec.SetSetByCallerMagnitude("Data.Duration", 1.0/AttackSpeed)` → 쿨다운 반비례
+    - 안전 가드: `AttackSpeed <= 0` 이면 1.0 fallback (cooldown 무한대 / freeze 회피)
+  - `ActivateAbility` (montage-driven, Phase 3.5+):
+    AttackSpeed 추출 → 쿨다운 GE (1/AttackSpeed) → CommitCost → 타겟 cache →
+    `PlayMontageAndWait(AttackMontage, Rate=AttackSpeed)` + `WaitGameplayEvent("AnimNotify.AttackHit")` →
+    Notify 시점에 GE_Damage 적용 → 몽타주 종료 시 EndAbility
   - **Structure fallback**: 타겟이 ASC 미보유면 `Cast<AAOSStructure>` → `ReceiveDamage(float)` 직접 호출 (Phase 5 에서 fallback 제거)
 
 - `UGE_Cooldown_Attack` (`Source/TDProject/AOS/GAS/Effects/GE_Cooldown_Attack.h/cpp`)
-  - Duration 1.0초 고정 (Phase 4+ 에서 SetByCaller / AttackSpeed 기반 동적화 검토)
+  - Duration = SetByCaller(`Data.Duration`) — GA_Attack 이 `1.0 / AttackSpeed` 로 set
+  - 예시: AttackSpeed=1.0 → 1.0s, 2.0 → 0.5s, 0.5 → 2.0s
   - GrantedTag: `Cooldown.Attack.Basic` (다음 활성화 차단)
 
 **AOSCharacter 통합 (Phase 3)**
@@ -446,7 +455,7 @@ ASC->ApplyGameplayEffectSpecToSelf(*Spec)
 ASC->HandleGameplayEvent("Ability.Attack.Basic", {Target, Instigator})
    ↓ 트리거
 [GA_Attack::ActivateAbility]
-   - 명시 Cooldown GE 적용 (1초간 "Cooldown.Attack.Basic" 태그 부여)
+   - 명시 Cooldown GE 적용 (Duration = 1.0/AttackSpeed 초, "Cooldown.Attack.Basic" 태그 부여)
    - DamageAmount = AttributeSet::AttackPower
    - Target IAbilitySystemInterface (Character/Structure 모두) → ApplyGameplayEffectSpecToTarget(GE_Damage, TargetASC)
    - EndAbility
@@ -647,6 +656,65 @@ float RagdollSettleDuration = 2.0f;  // 사망 몽타주 종료 후 ragdoll 유�
 | HitReact | `UAOSAttributeSet::PostGameplayEffectExecute` (서버, 데미지 차감 분기, NewHealth > 0 일 때) | `Char->Multicast_PlayHitReact()` (NetMulticast Reliable) |
 | Death | `AAOSCharacter::OnCharacterDeath` (서버) | (1) `Brain.StopLogic("Character died")` — StateTree 즉시 정지 (없으면 다음 tick 의 SendAttackEvent 가 DeathMontage 를 덮어씀) → (2) `CMC->SetMovementMode(MOVE_Walking)` 강제 (NavWalking 이면 root motion 무효) → (3) `Multicast_PlayDeathMontage()` (서버+클라 각각 `PlayAnimMontage` + 타이머 → `StartRagdoll`) → (4) `SetLifeSpan(MontageLength + RagdollSettleDuration)` |
 | Skill | (Phase 4) `GA_Skill_X::ActivateAbility` | `Char->PlayAnimMontage(GetSkillMontage(SkillTag))` |
+
+### HitReact ↔ Attack 충돌 규칙 (Phase 3.5+)
+
+두 몽타주가 같은 `DefaultSlot` 에서 재생되므로 HitReact 가 Attack 을 중간에 끊는 문제가 있었음.
+또한 AI 가 HitReact 중에도 공격을 시도해서 부자연스러웠음. 다음 두 규칙으로 해결:
+
+#### Rule A — 공격 중 HitReact 스킵
+
+`AAOSCharacter::Multicast_PlayHitReact_Implementation` 진입 시 ASC 가 `Ability.Attack.Basic`
+태그를 가지고 있으면 (= GA_Attack 활성 중) HitReact 재생을 스킵.
+
+```cpp
+if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag("Ability.Attack.Basic")))
+{
+    return;  // 공격 진행 중 — hit react 무시
+}
+```
+
+#### Rule B — HitReact 중 공격 차단
+
+`State.HitReact` GameplayTag + `UGE_HitReact_State` Duration GE (`UTargetTagsGameplayEffectComponent`
+로 태그 부여) + GA_Attack 의 `ActivationBlockedTags` 에 `State.HitReact` 등록.
+
+흐름:
+1. 데미지 받음 → `Multicast_PlayHitReact` 호출
+2. Rule A 통과 (공격 중 아님) → 서버에서 `ApplyHitReactStateGE()` 호출
+3. `UGE_HitReact_State` 적용 → `State.HitReact` 태그 부여 (Duration = HitReactMontage 길이)
+4. 태그 active 동안 GA_Attack 활성화 시도 시 `ActivationBlockedTags` 에 걸려 거부됨
+5. AI 의 StateTree 가 `SendAttackEvent` 를 계속 보내도 ability 가 무시 → 사실상 일시 정지
+6. HitReactMontage 길이 만큼 후 GE 만료 → 태그 제거 → 공격 재개 가능
+
+```cpp
+// GA_Attack 생성자
+ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag("State.HitReact"));
+```
+
+#### HitReact Duration — SetByCaller 동적 매핑
+
+`UGE_HitReact_State` 의 `DurationMagnitude` 는 `SetByCaller(Data.Duration)`. 호출 측에서:
+```cpp
+Spec.Data->SetSetByCallerMagnitude(
+    FGameplayTag::RequestGameplayTag("Data.Duration"),
+    HitReactMontage->GetPlayLength());
+```
+이렇게 자산 길이에 맞춰 동적으로 duration 설정. BP 에서 HitReactMontage 를 교체하면 자동으로 적절한 차단 시간 유지.
+
+#### 신규 게임플레이 태그 (DefaultGameplayTags.ini)
+
+- `State.HitReact` — 피격 리액션 중 (공격/스킬 차단)
+- `Data.Duration` — GE SetByCaller duration key
+
+#### `UAOSAnimInstance` 의 `bIsHitReacting` 태그 미러
+
+Phase 3.5 당시 TODO 로 남겨뒀던 부분 활성화. `NativeUpdateAnimation` 안에서
+`ASC->HasMatchingGameplayTag("State.HitReact")` 로 갱신. ABP 가 이 변수로 transition 가능.
+
+#### Hot Reload 비호환
+
+신규 UCLASS `UGE_HitReact_State` + 신규 UFUNCTION `ApplyHitReactStateGE` 도입 → **풀 리빌드 필수**.
 
 ### Dedicated Server 네트워킹
 

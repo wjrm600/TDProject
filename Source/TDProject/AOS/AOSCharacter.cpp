@@ -8,6 +8,7 @@
 #include "GAS/Abilities/GA_Attack.h"
 #include "GAS/Data/AOSAttributeInitData.h"
 #include "GAS/Effects/GE_Damage.h"
+#include "GAS/Effects/GE_HitReact_State.h"
 #include "UI/AOSHealthBarWidget.h"
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -286,9 +287,52 @@ void AAOSCharacter::Multicast_PlayHitReact_Implementation()
 	if (!HitReactMontage) return;
 	// 사망 진행 중이면 hit react 스킵 (사망 몽타주 우선)
 	if (!IsAlive()) return;
+
+	// Rule A: 공격 중이면 hit react 스킵 — DefaultSlot 충돌 방지.
+	// "Ability.Attack.Basic" 태그가 활성 = GA_Attack 의 ActivationOwnedTags 가 부여 중.
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		static const FGameplayTag AttackActiveTag =
+			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
+		if (ASC->HasMatchingGameplayTag(AttackActiveTag))
+		{
+			// 공격 진행 중 — hit react 몽타주 재생 무시
+			return;
+		}
+	}
+
+	// Rule B: 서버에서 State.HitReact 태그 GE 적용.
+	// GE 는 ASC 리플리케이션으로 클라에 자동 전파 → 클라 측 GA_Attack 도 차단됨.
+	if (HasAuthority())
+	{
+		ApplyHitReactStateGE();
+	}
+
+	// 서버/클라 양쪽에서 몽타주 재생
 	if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 	{
 		AnimInst->Montage_Play(HitReactMontage);
+	}
+}
+
+void AAOSCharacter::ApplyHitReactStateGE()
+{
+	// 서버 전용 — HasAuthority() 는 호출자(Multicast_PlayHitReact_Implementation)에서 보장.
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC || !HitReactMontage) return;
+
+	FGameplayEffectContextHandle Ctx = ASC->MakeEffectContext();
+	Ctx.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(
+		UGE_HitReact_State::StaticClass(), 1.0f, Ctx);
+	if (Spec.IsValid())
+	{
+		// Duration = 몽타주 길이 — HitReact 재생 동안만 공격 차단
+		Spec.Data->SetSetByCallerMagnitude(
+			FGameplayTag::RequestGameplayTag(FName("Data.Duration")),
+			HitReactMontage->GetPlayLength());
+		ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
 	}
 }
 

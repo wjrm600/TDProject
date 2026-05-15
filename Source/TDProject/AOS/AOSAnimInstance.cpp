@@ -99,12 +99,12 @@ void UAOSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
         FGameplayTag::RequestGameplayTag(FName("State.Dead"), /*bErrorIfNotFound=*/true);
     bIsDead = ASC->HasMatchingGameplayTag(DeadTag);
 
-    // State.HitReact — 현재 미정의. false 고정.
-    // TODO: Phase 4 — DefaultGameplayTags.ini 에 State.HitReact 추가 후 아래 활성화:
-    //   static const FGameplayTag HitReactTag =
-    //       FGameplayTag::RequestGameplayTag(FName("State.HitReact"), false);
-    //   bIsHitReacting = ASC->HasMatchingGameplayTag(HitReactTag);
-    bIsHitReacting = false;
+    // State.HitReact — DefaultGameplayTags.ini 에 정의됨 → bErrorIfNotFound=true OK
+    // 호출 측: AAOSCharacter::Multicast_PlayHitReact 에서 UGE_HitReact_State 로 부여, duration 은
+    // HitReactMontage 길이만큼 유지. ABP 가 이 변수로 transition 가능.
+    static const FGameplayTag HitReactTag =
+        FGameplayTag::RequestGameplayTag(FName("State.HitReact"), /*bErrorIfNotFound=*/true);
+    bIsHitReacting = ASC->HasMatchingGameplayTag(HitReactTag);
 
     // Ability.Skill — 부모 태그 (Ability.Skill.Heal / Charge 는 Phase 4 에서 정의 예정).
     // HasMatchingGameplayTag 는 exact match → 부모 태그 "Ability.Skill" 이 ASC 에

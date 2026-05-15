@@ -222,6 +222,12 @@ private:
 
 	void SetupCharacterDefaults();
 
+	// HitReact ↔ Attack 충돌 방지 (Rule B) — 서버 전용.
+	// GE_HitReact_State 를 ASC 에 적용해 HitReactMontage 재생 시간 동안
+	// "State.HitReact" 태그를 부여 → GA_Attack::ActivationBlockedTags 가 공격 차단.
+	// Duration = HitReactMontage->GetPlayLength() via SetByCaller(Data.Duration).
+	void ApplyHitReactStateGE();
+
 	// Phase 3.5: 사망 몽타주 종료 후 ragdoll 전환 타이머 핸들 (각 클라이언트 로컬)
 	FTimerHandle RagdollTimerHandle;
 };

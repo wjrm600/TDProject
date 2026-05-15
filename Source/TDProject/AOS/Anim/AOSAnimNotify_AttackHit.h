@@ -7,13 +7,12 @@
 /**
  * 공격 몽타주의 데미지 적용 타이밍 마커 (단발 Notify).
  *
- * 현재 Phase: 로깅만 수행. 빈 껍데기.
- * Phase 4: GA_Attack 의 PlayMontageAndWait + WaitGameplayEvent 패턴과 결합하여
- *          실제 데미지 판정을 이 Notify 시점에 트리거한다.
+ * GA_Attack 의 WaitGameplayEvent("AnimNotify.AttackHit") 가 이 이벤트를 받아 데미지 적용.
+ * Owner 의 ASC 에 HandleGameplayEvent("AnimNotify.AttackHit") 를 송출한다.
  *
  * DS 환경:
- *  - Notify 는 클라이언트(애니메이션 재생 쪽)에서 주로 실행됨.
- *  - 게임플레이 로직(데미지 적용 등)은 HasAuthority() 가드 필수.
+ *  - Notify 는 서버/클라 양쪽에서 fire 됨.
+ *  - HasAuthority() 가드로 서버에서만 GameplayEvent 를 송출 (GA_Attack 인스턴스가 서버에만 존재).
  */
 UCLASS(meta = (DisplayName = "AOS Attack Hit"))
 class TDPROJECT_API UAOSAnimNotify_AttackHit : public UAnimNotify

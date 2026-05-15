@@ -8,8 +8,12 @@ UGE_Cooldown_Attack::UGE_Cooldown_Attack()
 {
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
 
-	// 1초 고정 (Phase 4+ 에서 SetByCaller 또는 AttackSpeed 속성 기반으로 동적화 검토)
-	DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(1.0f));
+	// Duration 은 SetByCaller(Data.Duration) — 호출자(GA_Attack) 가 1.0/AttackSpeed 전달.
+	// AttackSpeed=1.0 → 1.0s, AttackSpeed=2.0 → 0.5s, AttackSpeed=0.5 → 2.0s.
+	// 호출자에서 SetSetByCallerMagnitude 안 하면 0 으로 평가되어 즉시 만료 — GA_Attack 이 항상 명시 set.
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataTag = FGameplayTag::RequestGameplayTag(FName("Data.Duration"));
+	DurationMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 
 	// UE 5.4+: cooldown 검증은 UTargetTagsGameplayEffectComponent 만 인식.
 	// 생성자에서 NewObject() 직접 호출은 금지 (CDO 생성 중 fatal) →
