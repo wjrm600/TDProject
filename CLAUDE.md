@@ -328,7 +328,7 @@ GAS 도입은 **5 Phase 마이그레이션** 으로 진행됩니다.
 | 2 | Damage 흐름 GE_Damage 컷오버 | ✅ 완료 |
 | 3 | 기본 공격 → GA_Attack 전환 | ✅ 완료 |
 | 3.5 | 캐릭터 애니메이션 슬롯 스캐폴딩 (자산 미연결) | ✅ 완료 |
-| 4 | 신규 스킬 추가 (GA_Charge / GA_Heal 등) | 🔜 |
+| 4 | 신규 스킬 추가 — Alex 캐릭터 4스킬 (Garen 스타일 Q/W/E/R) | ✅ 완료 (상하체 분리는 후속) |
 | 5 | AOSStructure 도 ASC 통합 | ✅ 완료 |
 
 ### 모듈/플러그인 (Phase 0)
@@ -493,6 +493,64 @@ if (NewHealth <= 0 && OldHealth > 0) {
 **GA_Attack fallback 제거**: 이제 Structure 도 IAbilitySystemInterface 구현 → 모던 경로 (`ApplyGameplayEffectSpecToTarget`) 가 자동 처리. `Cast<AAOSStructure>` 분기 제거.
 
 **구조물의 자체 공격은 그대로**: `Tower::FireAtTarget` 의 `Target->ReceiveDamage(...)` 호출은 변경 없음 (Character::ReceiveDamage 가 이미 GE_Damage wrapper). GA_Tower_Attack 미적용 — 단순 공격이라 GE 만으로 충분.
+
+### Phase 4: 캐릭터 스킬 시스템 — Alex (Garen 스타일 Q/W/E/R)
+
+LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는 가렌 스킬셋.
+
+**스킬 매핑**
+
+| 슬롯 | 이름 | 효과 (단순화) | 쿨다운 |
+|------|------|---------------|--------|
+| Q | DecisiveStrike | 3s +300 MoveSpeed (`State.SpeedBoost`) + 다음 공격 1.5배 (`State.EnhancedAttack`) | 8s |
+| W | Courage | 2s 받는 데미지 50% 감소 (`State.DamageShield`) | 15s |
+| E | Judgment | 3s 회전, 0.5s마다 반경 250 적에 50 데미지 (6틱) | 10s |
+| R | DemacianJustice | 단일 처형: 250 + (MaxHP-HP)×0.3 | 90s |
+
+**핵심 클래스** (`Source/TDProject/AOS/GAS/`)
+
+- `UGA_Alex_Q/W/E/R` (`Abilities/`) — 모두 `InstancedPerActor` + `ServerInitiated`, `ActivationBlockedTags=State.HitReact`
+  - Q/W: 쿨다운 GE → 자기 버프 GE 적용 → `SkillMontages[tag]` 재생 (PlayMontageAndWait)
+  - E: 쿨다운 → `FTimerManager` 0.5s × 6틱 → `OverlapMultiByChannel(ECC_Pawn, 반경 250)` → 적팀만 GE_Damage. `ActivationOwnedTags`에 `State.Spinning`. `EndAbility` 에서 타이머 정리
+  - R: 쿨다운 → 타겟의 missing HP 비례 데미지. **타겟 fallback**: `TriggerEventData->Target` null 이면 (= ActivateAbilityByTag 경로) `AIController->GetCurrentTargetCharacter()` → `FindNearestEnemy()`
+- `UGE_Cooldown_Alex_Q/W/E/R` (`Effects/`) — 고정 Duration + `Cooldown.Skill.Alex.X` 태그 (GE_Cooldown_Attack 패턴)
+- `UGE_MoveSpeed_Boost` — MoveSpeed Additive +300, `State.SpeedBoost`
+- `UGE_EnhancedAttack` — `State.EnhancedAttack` 마커 (modifier 없음). GA_Attack 이 데미지 시 ×1.5 + `RemoveActiveEffectsWithGrantedTags` 로 1회 소비
+- `UGE_DamageShield` — `State.DamageShield`. `AOSAttributeSet::PostGameplayEffectExecute` 가 데미지 차감 분기에서 `Data.Target.HasMatchingGameplayTag(State.DamageShield)` 시 `LocalDamage *= 0.5`
+
+**StateTree Condition 추가** (`AOSStateTreeConditions.h/cpp`)
+- `FStateTreeCond_HasNearbyEnemies(MinCount, Radius)` — 반경 내 적팀 N명 (E용)
+- `FStateTreeCond_TargetHealthBelowPct(Threshold)` — CurrentTarget HP% (R용)
+
+**BP_Char_Alex 설정**: `StartupAbilities` 에 GA_Alex_Q/W/E/R 추가 + `SkillMontages` 매핑 (`Ability.Skill.Alex.Q` → `AM_Alex_Q` 등)
+
+### StateTree 스킬 통합 — "Design B" (재선택 패턴)
+
+스킬을 StateTree 에 통합할 때 핵심 함정과 채택한 패턴:
+
+**StateTree task 와 GameplayAbility 의 수명은 분리됨**
+- `FStateTreeTask_ActivateAbilityByTag` 는 `TryActivateAbilitiesByTag` 후 **즉시 Succeeded** 반환 (ability 종료를 기다리지 않음).
+- GA 자체는 몽타주 완료 시 `OnMontageCompleted → EndAbility` (별도 긴 수명).
+- 따라서 StateTree 는 스킬 발동 즉시 재선택 → 이동 재개. **몽타주는 DefaultSlot 에서 계속 재생 → 캡슐 이동 + 정지 캐스트 애니 = "슬라이드"** 현상.
+
+**Design B — running state 만 재선택 트리거** (채택)
+- 스킬(UseR/W/Q/E)은 task 가 즉시 완료형 → **재선택 자동 트리거 → 트랜지션 불필요**.
+- RUNNING 유지 state (PushLane=MoveToCurrentWaypoint, AttackEnemy=MoveToCurrentTarget) 만 `On Tick → Root` 재선택 트랜지션 필요.
+- **우선순위 = 자식 노드 순서 한 곳**: `UseR → UseW → UseQ → UseE → AttackEnemy → AttackStructure → PushLane` (PushLane 은 조건 없는 fallback 이라 **반드시 맨 마지막**).
+- 새 스킬 추가 시 자식 노드만 추가 (트랜지션 변경 불필요) → 확장성 ↑.
+- (대안 Design A: Root 에 per-skill On-Tick 전환 — 스킬 추가마다 전환 추가 필요, 비추천)
+
+**트랜지션 우선순위**: 한 state 에 트랜지션 여러 개가 동시에 참일 수 있을 때 위→아래 첫 통과가 이김. Design B 에선 각 running state 가 `→ Root` 하나뿐이라 우선순위는 자식 순서가 담당.
+
+**HasCooldownTag 는 bInvert=true**: "쿨다운 **없을 때** 사용 가능" 의미. false 면 거꾸로 (쿨다운 중에만 발동) → 스킬 영영 안 나감.
+
+### 🔜 후속 (Phase 4+): 상하체 분리 (Layered Animation)
+
+위 "슬라이드" 의 근본 해결 — 이동형 스킬 (Q 이동버프 등) 은 **상체만 캐스트, 하체는 locomotion** 유지:
+- 스킬 몽타주를 `DefaultSlot` → **`UpperBody` 슬롯**으로 (AM_HitReact 패턴 재활용)
+- ABP 에 `Layered Blend Per Bone` (spine_01 위쪽 = 상체) 추가
+- E(회전)/R(처형) 같은 정지형은 전신 + 시전 중 root 유지 (별도 검토)
+- 미구현 — 애니 작업 범위가 커서 별도 phase 로 분리
 
 ### Attribute 초기값 세팅 패턴 (DataTable 기반)
 

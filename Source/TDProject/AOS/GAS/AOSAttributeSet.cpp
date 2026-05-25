@@ -55,8 +55,19 @@ void UAOSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 	// Phase 2: Damage 메타 속성 → Health 차감 + 메타 리셋
 	if (Data.EvaluatedData.Attribute == GetDamageAttribute())
 	{
-		const float LocalDamage = GetDamage();
+		float LocalDamage = GetDamage();
 		SetDamage(0.f); // 메타 리셋 (다음 GE 적용 시 깨끗한 상태)
+
+		// Phase 4: State.DamageShield 활성 시 받는 데미지 50% 감소 (Alex W 후속).
+		if (LocalDamage > 0.f)
+		{
+			static const FGameplayTag DamageShieldTag =
+				FGameplayTag::RequestGameplayTag(FName("State.DamageShield"));
+			if (Data.Target.HasMatchingGameplayTag(DamageShieldTag))
+			{
+				LocalDamage *= 0.5f;
+			}
+		}
 
 		if (LocalDamage > 0.f)
 		{

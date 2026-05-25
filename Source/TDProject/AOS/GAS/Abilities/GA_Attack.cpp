@@ -257,11 +257,27 @@ void UGA_Attack::ApplyDamageToCachedTarget()
 
 	// AttackPower 속성값 = 데미지 양
 	const UAOSAttributeSet* SourceAttrSet = SourceASC->GetSet<UAOSAttributeSet>();
-	const float DamageAmount = SourceAttrSet ? SourceAttrSet->GetAttackPower() : 0.0f;
+	float DamageAmount = SourceAttrSet ? SourceAttrSet->GetAttackPower() : 0.0f;
 	if (DamageAmount <= 0.0f)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GA_Attack] DamageAmount <= 0 — 데미지 미적용"));
 		return;
+	}
+
+	// Phase 4: State.EnhancedAttack 태그 활성 시 데미지 1.5배 + 효과 1회 소비 (Alex Q 후속).
+	static const FGameplayTag EnhancedAttackTag =
+		FGameplayTag::RequestGameplayTag(FName("State.EnhancedAttack"));
+	if (SourceASC->HasMatchingGameplayTag(EnhancedAttackTag))
+	{
+		DamageAmount *= 1.5f;
+		// GE_EnhancedAttack 효과 제거 — 1회 소비. RemoveActiveEffectsWithGrantedTags 는
+		// State.EnhancedAttack 을 GrantedTag 로 가진 모든 active GE 를 종료시킴.
+		FGameplayTagContainer RemoveTags;
+		RemoveTags.AddTag(EnhancedAttackTag);
+		const int32 Removed = SourceASC->RemoveActiveEffectsWithGrantedTags(RemoveTags);
+		UE_LOG(LogTemp, Verbose,
+			TEXT("[GA_Attack] EnhancedAttack 활성 — 데미지 1.5배 적용 (소비된 GE: %d)"),
+			Removed);
 	}
 
 	AActor* TargetActor = CachedTarget.Get();
