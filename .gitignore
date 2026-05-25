@@ -50,6 +50,9 @@ __pycache__/
 # Claude Code worktrees
 .claude/worktrees/
 
+# Claude Code 머신별 로컬 설정 (permission/hook 경로가 머신마다 다름 — 추적 X)
+.claude/settings.local.json
+
 # Temporary files
 *.tmp
 *.bak
