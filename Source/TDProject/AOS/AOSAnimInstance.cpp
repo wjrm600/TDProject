@@ -106,9 +106,11 @@ void UAOSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
         FGameplayTag::RequestGameplayTag(FName("State.HitReact"), /*bErrorIfNotFound=*/true);
     bIsHitReacting = ASC->HasMatchingGameplayTag(HitReactTag);
 
-    // Ability.Skill — 부모 태그 (Ability.Skill.Heal / Charge 는 Phase 4 에서 정의 예정).
-    // HasMatchingGameplayTag 는 exact match → 부모 태그 "Ability.Skill" 이 ASC 에
-    // 직접 부여될 일이 없으므로 현재는 항상 false.
-    // TODO: Phase 4 — HasAnyMatchingGameplayTags + FGameplayTagContainer{Skill tags} 로 갱신.
-    bIsCasting = false;
+    // State.Casting — 스킬 GA(GA_Alex_Q/W/E/R) 가 ActivationOwnedTags 로 부여.
+    // ABP 가 이 변수로 상하체 분리(Layered Blend Per Bone) transition 트리거:
+    //   이동 중 + bIsCasting → 상체 스킬 + 하체 locomotion
+    //   정지 + bIsCasting   → 전신 스킬 애니
+    static const FGameplayTag CastingTag =
+        FGameplayTag::RequestGameplayTag(FName("State.Casting"), /*bErrorIfNotFound=*/true);
+    bIsCasting = ASC->HasMatchingGameplayTag(CastingTag);
 }

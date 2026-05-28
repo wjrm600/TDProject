@@ -17,6 +17,7 @@ UGA_Alex_W::UGA_Alex_W()
 	const FGameplayTag AbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Skill.Alex.W"));
 	AbilityTags.AddTag(AbilityTag);
 	ActivationOwnedTags.AddTag(AbilityTag);
+	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Casting")));
 
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.HitReact")));
@@ -83,6 +84,12 @@ void UGA_Alex_W::ActivateAbility(
 		UE_LOG(LogTemp, Verbose, TEXT("[GA_Alex_W] SkillMontage 없음 — 효과만 적용, 즉시 종료"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
+	}
+
+	// Phase 4+: 이동 불가 스킬이면 root. W 는 기본 true 라 보통 skip.
+	if (!bAllowMovementDuringCast && Char)
+	{
+		Char->ApplyCastRoot(SkillMontage->GetPlayLength());
 	}
 
 	UAbilityTask_PlayMontageAndWait* MontageTask =

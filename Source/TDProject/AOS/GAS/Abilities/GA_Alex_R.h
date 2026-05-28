@@ -30,6 +30,11 @@ class TDPROJECT_API UGA_Alex_R : public UGameplayAbility
 public:
 	UGA_Alex_R();
 
+	// 시전 중 이동 가능 여부. false(R): 처형 모션 중 고정 — GA 가 State.Rooted 부여 + StopMovement
+	// → AI 가 스킬 끝까지 홀드.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Skill")
+	bool bAllowMovementDuringCast = false;
+
 	virtual void ActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,

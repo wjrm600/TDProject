@@ -197,7 +197,7 @@ schema 등록 클래스와 mismatch 되어 자동 binding 실패** (engine 의 `
 | `FStateTreeTask_MoveToCurrentWaypoint` | CurrentMoveTarget 으로 이동. 도착 시 **자동으로 `AdvanceToNextWaypoint()` 호출 + RUNNING 유지** (state transition 없이 task 안에서 큐 진행) |
 | `FStateTreeTask_AdvanceWaypoint` | CurrentWaypointIndex++ 후 SUCCESS |
 | `FStateTreeTask_SendAttackEvent` | ASC->HandleGameplayEvent(`Ability.Attack.Basic`, {Target}) — 타겟은 캐릭터/구조물 선택 |
-| `FStateTreeTask_ActivateAbilityByTag` | Phase 4 스킬용. ASC->TryActivateAbilitiesByTag(Tag) |
+| `FStateTreeTask_ActivateAbilityByTag` | Phase 4 스킬용. ASC->TryActivateAbilitiesByTag(Tag). **활성화 후 `State.Rooted` 보유 시 RUNNING 유지(Tick 에서 재확인) → 이동 불가 스킬이 끝날 때까지 AI 가 해당 state 에 홀드**. root 미부여(이동 가능 스킬)면 즉시 Succeeded → Design B 대로 root 재선택 |
 
 ### Custom Conditions (`Source/TDProject/AOS/AI/AOSStateTreeConditions.h/cpp`)
 
@@ -544,13 +544,29 @@ LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는
 
 **HasCooldownTag 는 bInvert=true**: "쿨다운 **없을 때** 사용 가능" 의미. false 면 거꾸로 (쿨다운 중에만 발동) → 스킬 영영 안 나감.
 
-### 🔜 후속 (Phase 4+): 상하체 분리 (Layered Animation)
+### Phase 4+: 스킬 시전 root + 상하체 분리 (Layered Animation)
 
-위 "슬라이드" 의 근본 해결 — 이동형 스킬 (Q 이동버프 등) 은 **상체만 캐스트, 하체는 locomotion** 유지:
-- 스킬 몽타주를 `DefaultSlot` → **`UpperBody` 슬롯**으로 (AM_HitReact 패턴 재활용)
-- ABP 에 `Layered Blend Per Bone` (spine_01 위쪽 = 상체) 추가
-- E(회전)/R(처형) 같은 정지형은 전신 + 시전 중 root 유지 (별도 검토)
-- 미구현 — 애니 작업 범위가 커서 별도 phase 로 분리
+위 "슬라이드" 의 근본 해결. **스킬 GA 의 플래그 1개(`bAllowMovementDuringCast`)가 이동 가능/불가를 결정**하고, 애니는 이동 여부에 따라 상하체 분리 / 전신을 자동 선택.
+
+**스킬별 이동 가능 플래그** (`GA_Alex_*.h` — `UPROPERTY(EditDefaultsOnly, Category="AOS|Skill") bool bAllowMovementDuringCast`)
+- 기본값: **Q=true, W=true** (이동하며 시전), **E=false, R=false** (시전 중 고정). 디자이너가 BP/CDO 에서 조정 가능.
+- `true`: root 안 함 → StateTree task 즉시 Succeeded (Design B) → 이동 재개 → ABP 가 상하체 분리.
+- `false`: GA 가 `Char->ApplyCastRoot(Duration)` 호출 → `State.Rooted` 부여 + `StopMovementImmediately()` → 캐릭터 정지 + AI 가 스킬 끝까지 홀드.
+
+**C++ 구성 요소** (Part A — 구현 완료)
+- `UGE_Rooted` (`Effects/GE_Rooted.h/cpp`) — Duration GE, `SetByCaller(Data.Duration)`, `State.Rooted` 부여 (GE_HitReact_State 패턴).
+- `AAOSCharacter::ApplyCastRoot(float Duration)` — `UGE_Rooted` self 적용(Duration 전달) + `CMC->StopMovementImmediately()`. 서버 권한 가정.
+- `GA_Alex_Q/W/E/R` — 4개 공통: 생성자에 `ActivationOwnedTags += State.Casting` (ABP 신호용), `ActivateAbility` 의 몽타주 직전에 `if (!bAllowMovementDuringCast && Char) Char->ApplyCastRoot(...)`.
+  - Q/W: root 미적용(기본 true). E: root 길이 = `MaxSpinTicks * SpinTickInterval`(3s, 회전 지속시간). R: root 길이 = 몽타주 길이.
+- `FStateTreeTask_ActivateAbilityByTag` — 활성화 후 `State.Rooted` 보유 시 RUNNING(EnterState+Tick), 해제 시 Succeeded. GE_Rooted 가 고정 Duration 이라 반드시 만료 → 무한 홀드 없음.
+- `UAOSAnimInstance::bIsCasting` — `State.Casting` 태그 미러 (ABP 상하체 분리 트리거).
+
+**ABP 애니 작업** (Part B — 사용자/agent-art-anim, 미완)
+- 스킬 몽타주 `AM_Alex_*` 를 `DefaultSlot` → **`UpperBody` 슬롯**으로 (Attack/Death 전신용과 분리, AM_HitReact 패턴 재활용).
+- ABP AnimGraph: locomotion 을 cached pose 로 저장 → 정지 시 전신 스킬(슬롯을 전신 적용), 이동 시 `Layered Blend Per Bone`(base=loco, layer=슬롯, mask=`spine_01`↑) → `Blend Poses by bool(bIsMoving)`.
+- 상체 전용 자산 **불필요** — Layered Blend Per Bone 본 마스크가 전신 몽타주의 상체만 추출.
+
+**검증**: Q → 적에게 달려가며 시전, 다리는 계속 달리고 상체만 스킬(슬라이드 없음). E/R → 시전 시 즉시 정지 + 전신 애니, 끝날 때까지 AI 가 그 자리. BP 에서 E 의 플래그를 true 로 바꾸면 이동하며 상체 분리되는지 확인.
 
 ### Attribute 초기값 세팅 패턴 (DataTable 기반)
 

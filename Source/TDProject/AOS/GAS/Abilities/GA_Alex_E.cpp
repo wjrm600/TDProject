@@ -29,6 +29,10 @@ UGA_Alex_E::UGA_Alex_E()
 	ActivationOwnedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.Spinning")));
 
+	// 시전 중 표시 — ABP 의 bIsCasting 미러 (상하체 분리 트리거)
+	ActivationOwnedTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Casting")));
+
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.HitReact")));
 
@@ -88,6 +92,14 @@ void UGA_Alex_E::ActivateAbility(
 	UAnimMontage* SkillMontage = Char
 		? Char->GetSkillMontage(FGameplayTag::RequestGameplayTag(FName("Ability.Skill.Alex.E")))
 		: nullptr;
+
+	// Phase 4+: 이동 불가 스킬이면 root. E 는 기본 false 라 회전(3s) 내내 고정.
+	// 루트 길이는 몽타주가 아니라 spin 지속시간(MaxSpinTicks * SpinTickInterval)에 맞춤
+	// — 몽타주가 없거나 길이가 달라도 회전 끝까지 AI 가 홀드.
+	if (!bAllowMovementDuringCast && Char)
+	{
+		Char->ApplyCastRoot(MaxSpinTicks * SpinTickInterval);
+	}
 
 	if (!SkillMontage)
 	{

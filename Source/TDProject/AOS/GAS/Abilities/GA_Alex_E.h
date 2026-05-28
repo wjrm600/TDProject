@@ -30,6 +30,11 @@ class TDPROJECT_API UGA_Alex_E : public UGameplayAbility
 public:
 	UGA_Alex_E();
 
+	// 시전 중 이동 가능 여부. false(E): 회전 중 고정 — GA 가 State.Rooted 부여 + StopMovement
+	// → AI 가 스킬(회전) 끝까지 홀드. true 로 바꾸면 회전하며 이동 가능 (LoL 가렌식).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Skill")
+	bool bAllowMovementDuringCast = false;
+
 	virtual void ActivateAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,

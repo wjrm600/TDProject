@@ -78,6 +78,10 @@ Guides/
 - **내용**: 타워 크래시 수정 (LoadObject vs ConstructorHelpers)
 - **추천 대상**: `prog-object` 에이전트 (트러블슈팅)
 
+### [UPPER_LOWER_BODY_SPLIT.md](./03_Implementation/UPPER_LOWER_BODY_SPLIT.md)
+- **내용**: 스킬 상하체 분리 (Layered Blend Per Bone) + 시전 중 이동 플래그(`bAllowMovementDuringCast`) — Part A(C++ 완료) + Part B(ABP 수동 배선 가이드)
+- **추천 대상**: `prog-anim`, `art-anim` 에이전트, ABP 작업 시
+
 ---
 
 ## 04_Testing
@@ -102,6 +106,10 @@ Guides/
 
 ### [NEW_MACHINE_SETUP.md](./04_Testing/NEW_MACHINE_SETUP.md)
 - **내용**: 새 컴퓨터에서 프로젝트 환경 구성 (MCP 포함)
+
+### [TROUBLESHOOTING_BSOD_cbfltfs4.md](./04_Testing/TROUBLESHOOTING_BSOD_cbfltfs4.md)
+- **내용**: UE 에디터 + Claude Desktop 동시 실행 시 강제 재부팅(BSOD 0x50) 진단/해결 — 고아 DRM 드라이버 `cbfltfs4.sys`(MarkAny ePageSafer) 원인
+- **추천 대상**: 데브머신 강제 재부팅/BSOD 발생 시
 
 ---
 
@@ -158,8 +166,8 @@ Guides/
 |---------|--------|---------|
 | 01_GameOverview | 2개 | 전체 |
 | 02_Design | 3개 | 기획자 에이전트 |
-| 03_Implementation | 7개 | 프로그래머 에이전트 |
-| 04_Testing | 6개 | 전체 |
+| 03_Implementation | 8개 | 프로그래머 에이전트 |
+| 04_Testing | 7개 | 전체 |
 | 05_ProgressLog | 6개 | 참고용 |
 | 06_BalanceLog | 1개 (README) | design-balance |
-| **총계** | **25개** | |
+| **총계** | **27개** | |

@@ -18,6 +18,8 @@ UGA_Alex_Q::UGA_Alex_Q()
 	const FGameplayTag AbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Skill.Alex.Q"));
 	AbilityTags.AddTag(AbilityTag);
 	ActivationOwnedTags.AddTag(AbilityTag);
+	// 시전 중 표시 — ABP 의 bIsCasting 미러 (상하체 분리 트리거)
+	ActivationOwnedTags.AddTag(FGameplayTag::RequestGameplayTag(FName("State.Casting")));
 
 	// HitReact 중엔 스킬 차단 (Rule B 와 일관)
 	ActivationBlockedTags.AddTag(
@@ -90,6 +92,12 @@ void UGA_Alex_Q::ActivateAbility(
 		UE_LOG(LogTemp, Verbose, TEXT("[GA_Alex_Q] SkillMontage 없음 — buff 만 적용, 즉시 종료"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
+	}
+
+	// Phase 4+: 이동 불가 스킬이면 root (State.Rooted + StopMovement). Q 는 기본 true 라 보통 skip.
+	if (!bAllowMovementDuringCast && Char)
+	{
+		Char->ApplyCastRoot(SkillMontage->GetPlayLength());
 	}
 
 	// 5. PlayMontageAndWait — 몽타주 종료 시 EndAbility

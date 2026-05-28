@@ -21,6 +21,10 @@ UGA_Alex_R::UGA_Alex_R()
 	AbilityTags.AddTag(AbilityTag);
 	ActivationOwnedTags.AddTag(AbilityTag);
 
+	// 시전 중 표시 — ABP 의 bIsCasting 미러 (상하체 분리 트리거)
+	ActivationOwnedTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Casting")));
+
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.HitReact")));
 
@@ -104,6 +108,12 @@ void UGA_Alex_R::ActivateAbility(
 		UE_LOG(LogTemp, Verbose, TEXT("[GA_Alex_R] SkillMontage 없음 — 데미지만 적용, 즉시 종료"));
 		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 		return;
+	}
+
+	// Phase 4+: 이동 불가 스킬이면 root. R 은 기본 false 라 처형 모션 내내 고정.
+	if (!bAllowMovementDuringCast && Char)
+	{
+		Char->ApplyCastRoot(SkillMontage->GetPlayLength());
 	}
 
 	UAbilityTask_PlayMontageAndWait* MontageTask =

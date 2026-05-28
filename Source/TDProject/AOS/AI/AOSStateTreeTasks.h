@@ -176,4 +176,8 @@ struct TDPROJECT_API FStateTreeTask_ActivateAbilityByTag : public FStateTreeTask
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+	// 이동 불가 스킬(State.Rooted 부여)이면 root 가 풀릴 때까지 RUNNING 유지 →
+	// AI 가 해당 스킬 state 에 머무름. root 해제(또는 미부여)면 Succeeded.
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 };

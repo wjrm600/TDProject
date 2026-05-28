@@ -9,6 +9,7 @@
 #include "GAS/Data/AOSAttributeInitData.h"
 #include "GAS/Effects/GE_Damage.h"
 #include "GAS/Effects/GE_HitReact_State.h"
+#include "GAS/Effects/GE_Rooted.h"
 #include "UI/AOSHealthBarWidget.h"
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -333,6 +334,31 @@ void AAOSCharacter::ApplyHitReactStateGE()
 			FGameplayTag::RequestGameplayTag(FName("Data.Duration")),
 			HitReactMontage->GetPlayLength());
 		ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+	}
+}
+
+void AAOSCharacter::ApplyCastRoot(float Duration)
+{
+	// 서버 전용 — 호출자(스킬 GA, ServerInitiated)에서 서버 권한 보장.
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC || Duration <= 0.0f) return;
+
+	// GE_Rooted 적용 — Duration 동안 State.Rooted 부여 (StateTree task 가 이 태그로 AI 홀드).
+	FGameplayEffectContextHandle Ctx = ASC->MakeEffectContext();
+	Ctx.AddSourceObject(this);
+	FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(
+		UGE_Rooted::StaticClass(), 1.0f, Ctx);
+	if (Spec.IsValid())
+	{
+		Spec.Data->SetSetByCallerMagnitude(
+			FGameplayTag::RequestGameplayTag(FName("Data.Duration")), Duration);
+		ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+	}
+
+	// 시전 시작 시 이동 즉시 정지 — 잔여 velocity 로 미끄러지지 않도록.
+	if (UCharacterMovementComponent* CMC = GetCharacterMovement())
+	{
+		CMC->StopMovementImmediately();
 	}
 }
 

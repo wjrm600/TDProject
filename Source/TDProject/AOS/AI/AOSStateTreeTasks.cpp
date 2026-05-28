@@ -305,5 +305,35 @@ EStateTreeRunStatus FStateTreeTask_ActivateAbilityByTag::EnterState(
 	const FGameplayTagContainer TagContainer(InstanceData.AbilityTag);
 	const bool bActivated = ASC->TryActivateAbilitiesByTag(TagContainer);
 
-	return bActivated ? EStateTreeRunStatus::Succeeded : EStateTreeRunStatus::Failed;
+	if (!bActivated)
+		return EStateTreeRunStatus::Failed;
+
+	// 이동 불가 스킬: GA 가 ActivateAbility 내에서 State.Rooted 를 동기 부여(서버) →
+	// 이미 태그가 붙어 있으면 RUNNING 으로 홀드 (AI 가 스킬 state 에 머무름).
+	// 이동 가능 스킬(root 미부여): 즉시 Succeeded → Design B 대로 root 재선택.
+	static const FGameplayTag RootedTag = FGameplayTag::RequestGameplayTag(FName("State.Rooted"));
+	return ASC->HasMatchingGameplayTag(RootedTag)
+		? EStateTreeRunStatus::Running
+		: EStateTreeRunStatus::Succeeded;
+}
+
+EStateTreeRunStatus FStateTreeTask_ActivateAbilityByTag::Tick(
+	FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	if (!InstanceData.AIController)
+		return EStateTreeRunStatus::Succeeded;
+
+	AAOSAIController* AOSAI = Cast<AAOSAIController>(InstanceData.AIController);
+	AAOSCharacter* SourceChar = AOSAI ? Cast<AAOSCharacter>(AOSAI->GetPawn()) : nullptr;
+	UAbilitySystemComponent* ASC = SourceChar ? SourceChar->GetAbilitySystemComponent() : nullptr;
+	if (!ASC)
+		return EStateTreeRunStatus::Succeeded;
+
+	// State.Rooted 가 풀리면(GE_Rooted 만료 = 몽타주/회전 종료) state 완료 → root 재선택.
+	// GE_Rooted 는 고정 Duration 이라 반드시 만료 → 무한 홀드 없음.
+	static const FGameplayTag RootedTag = FGameplayTag::RequestGameplayTag(FName("State.Rooted"));
+	return ASC->HasMatchingGameplayTag(RootedTag)
+		? EStateTreeRunStatus::Running
+		: EStateTreeRunStatus::Succeeded;
 }

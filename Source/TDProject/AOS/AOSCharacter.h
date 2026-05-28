@@ -139,6 +139,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Animation")
 	void StartRagdoll();
 
+	// Phase 4+: 시전 중 이동 불가 스킬 root — GE_Rooted(Duration) 적용 + 이동 즉시 정지.
+	// 스킬 GA 가 bAllowMovementDuringCast=false 일 때 호출 (서버 전용).
+	// State.Rooted 태그가 Duration 동안 부여되어 StateTree task 가 RUNNING 유지 → AI 홀드.
+	void ApplyCastRoot(float Duration);
+
 protected:
 	// 팀 및 라인 정보
 	UPROPERTY(BlueprintReadWrite, Category = "AOS|Character")
