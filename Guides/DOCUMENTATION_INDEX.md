@@ -22,8 +22,12 @@ Guides/
 
 ## 01_GameOverview
 
+### [GAME_VISION.md](./01_GameOverview/GAME_VISION.md) ⭐ "무엇을 만드는가"
+- **내용**: 게임 정체성(오토배틀러 MOBA), 코어 루프, 라운드 모델(맵 누적), 디자인 기둥, 임계 경로 로드맵(Slice 0~4)
+- **추천 대상**: 신규 합류자·에이전트 1순위. 기능/우선순위 판단 전 반드시 읽을 것
+
 ### [AOS_SYSTEM_OVERVIEW.md](./01_GameOverview/AOS_SYSTEM_OVERVIEW.md)
-- 전체 게임 시스템 아키텍처, 클래스 구조, 게임 플로우
+- 전체 게임 시스템 아키텍처, 클래스 구조, 게임 플로우 ("어떻게")
 - **추천 대상**: 프로젝트 처음 접하는 모든 에이전트
 
 ### [SPAWN_SYSTEM_DIAGRAM.md](./01_GameOverview/SPAWN_SYSTEM_DIAGRAM.md)
@@ -163,6 +167,9 @@ Guides/
 **"스폰 포인트를 설정하고 싶다"**
 → [04_Testing/SPAWN_POINT_SETUP.md](./04_Testing/SPAWN_POINT_SETUP.md)
 
+**"이 게임이 뭘 만드는 건지 / 다음 우선순위가 뭔지 알고 싶다"**
+→ [01_GameOverview/GAME_VISION.md](./01_GameOverview/GAME_VISION.md) ⭐
+
 **"프로젝트 전체 흐름을 이해하고 싶다"**
 → [01_GameOverview/AOS_SYSTEM_OVERVIEW.md](./01_GameOverview/AOS_SYSTEM_OVERVIEW.md)
 
@@ -175,7 +182,7 @@ Guides/
 
 | 카테고리 | 문서 수 | 주요 대상 |
 |---------|--------|---------|
-| 01_GameOverview | 2개 | 전체 |
+| 01_GameOverview | 3개 | 전체 (GAME_VISION 1순위) |
 | 02_Design | 3개 | 기획자 에이전트 |
 | 03_Implementation | 9개 | 프로그래머 에이전트 |
 | 04_Testing | 7개 | 전체 |
