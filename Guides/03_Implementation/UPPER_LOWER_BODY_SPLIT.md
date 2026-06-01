@@ -39,7 +39,11 @@ bAllowMovementDuringCast
 | StateTree task | `AI/AOSStateTreeTasks.h/cpp` | `FStateTreeTask_ActivateAbilityByTag` — `State.Rooted` 보유 시 RUNNING 유지(EnterState+Tick) |
 | AnimInstance | `AOSAnimInstance.cpp` | `bIsCasting` = `State.Casting` 태그 미러 |
 
-**플래그 기본값**: Q=true, W=true (이동하며 시전), E=false, R=false (시전 중 고정). 디자이너가 BP/CDO 에서 조정 가능.
+**플래그 기본값**:
+- **C++ 헤더 default** (`GA_Alex_*.h` 의 UPROPERTY 초기값): Q=true, W=true, E=false, R=false
+- **현 BP 운영 값** (`BP_GA_Alex_*` Class Defaults — 2단계 데이터 주도 마이그레이션 후): **Q=false**, W=true, E=false, R=false
+  - 변경 사유: "Q 풀 애니메이션 재생" 디자인 결정 → Q 도 R 처럼 root + 홀드 패턴 채택 (이동 버프는 Q 종료 후 효과)
+- 디자이너가 BP CDO 에서 자유 조정 가능. 헤더 default 는 3단계 cleanup 에서 기존 C++ 4종이 제거되면 의미 없어짐.
 
 **root 길이**: Q/W = 미적용. E = `MaxSpinTicks * SpinTickInterval`(3s, 회전 지속). R = 몽타주 길이.
 

@@ -38,6 +38,14 @@ UGA_Attack::UGA_Attack()
 	// GE_HitReact_State 가 HitReactMontage 재생 시간 동안 이 태그를 ASC 에 부여한다.
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.HitReact")));
+
+	// Phase 4+: 스킬 시전 중 일반 공격 차단 — 스킬 GA(UGA_SkillBase)가 State.Casting 부여.
+	// 이걸로 막지 않으면 AttackEnemy → GA_Attack 활성화 직후 UseQ → GA_Skill 이 같은 슬롯에
+	// 새 몽타주를 깔면서 AM_Attack 을 interrupt → GA_Attack 의 PlayMontageAndWait 가
+	// bAllowInterruptAfterBlendOut=false 일 때 OnInterrupted 콜백이 누락되어 EndAbility 가
+	// 호출 안 됨 → GA_Attack 인스턴스가 영구 active 로 stuck → 이후 일반 공격 영영 발동 X.
+	ActivationBlockedTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Casting")));
 }
 
 void UGA_Attack::ActivateAbility(
@@ -124,7 +132,9 @@ void UGA_Attack::ActivateAbility(
 	// 5. PlayMontageAndWait task
 	//    Rate=AttackSpeed: 몽타주 재생 속도 = AttackSpeed (1.0=평소, 2.0=2x 빠름).
 	//    bStopWhenAbilityEnds=true: Ability 가 취소될 때 몽타주도 함께 중단
-	//    bAllowInterruptAfterBlendOut=false: BlendOut 시작 후 Interrupted 이벤트 차단 (OnCompleted 만 fire)
+	//    bAllowInterruptAfterBlendOut=true: BlendOut 이후에도 Interrupted 콜백 보장 →
+	//    스킬 몽타주가 같은 슬롯을 덮어쓸 때 OnInterrupted 가 확실히 fire 되어 EndAbility 호출 →
+	//    GA_Attack 인스턴스가 영구 stuck 되는 race 차단.
 	UAbilityTask_PlayMontageAndWait* MontageTask =
 		UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
 			this,
@@ -135,7 +145,7 @@ void UGA_Attack::ActivateAbility(
 			/*bStopWhenAbilityEnds=*/true,
 			/*AnimRootMotionTranslationScale=*/1.0f,
 			/*StartTimeSeconds=*/0.0f,
-			/*bAllowInterruptAfterBlendOut=*/false);
+			/*bAllowInterruptAfterBlendOut=*/true);
 
 	if (MontageTask)
 	{
@@ -219,15 +229,14 @@ void UGA_Attack::OnMontageCompleted()
 
 void UGA_Attack::OnMontageBlendOut()
 {
-	// BlendOut 시작 알림 — EndAbility 는 OnMontageCompleted 가 담당.
-	// bAllowInterruptAfterBlendOut=false 이므로 BlendOut 후 OnInterrupted 는 fire 안 됨.
+	// BlendOut 시작 알림 — EndAbility 는 OnMontageCompleted/OnMontageInterrupted 가 담당.
 	// 별도 처리 없음.
 }
 
 void UGA_Attack::OnMontageInterrupted()
 {
-	// 외부 몽타주 덮어씀(사망/스턴) 또는 엔진 내부 중단 — 데미지 미적용으로 능력 종료
-	// bAllowInterruptAfterBlendOut=false 설정으로 BlendOut 이후 이 콜백은 호출 안 됨
+	// 외부 몽타주 덮어씀(스킬 시전 등) 또는 엔진 내부 중단 — 데미지 미적용으로 능력 종료
+	// bAllowInterruptAfterBlendOut=true 이므로 BlendOut 이후에도 이 콜백이 안전하게 fire.
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 }
 

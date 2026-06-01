@@ -2,7 +2,7 @@
 
 **위치**: `Guides/` 폴더
 **엔진**: Unreal Engine 5.7 / Visual Studio 2026
-**최종 업데이트**: 2026-04-21
+**최종 업데이트**: 2026-06-01
 
 ---
 
@@ -82,6 +82,10 @@ Guides/
 - **내용**: 스킬 상하체 분리 (Layered Blend Per Bone) + 시전 중 이동 플래그(`bAllowMovementDuringCast`) — Part A(C++ 완료) + Part B(ABP 수동 배선 가이드)
 - **추천 대상**: `prog-anim`, `art-anim` 에이전트, ABP 작업 시
 
+### [SKILL_AUTHORING_GUIDE.md](./03_Implementation/SKILL_AUTHORING_GUIDE.md)
+- **내용**: `UGA_SkillBase` 데이터 주도식 패턴으로 **새 스킬 1개를 5~10분 안에 추가**하는 절차 — BP 자산 2개 + 태그 2개 + 몽타주 매핑. 패턴별 UPROPERTY 치트시트(Self/SingleEnemy/AoE_Sphere/Periodic), 특이 데미지식 BP override, 흔한 함정 8가지
+- **추천 대상**: `design-balance` 에이전트, 새 캐릭터 스킬 작업자, `prog-character` 에이전트
+
 ---
 
 ## 04_Testing
@@ -114,6 +118,10 @@ Guides/
 ---
 
 ## 05_ProgressLog
+
+### [TIMELINE.md](./05_ProgressLog/TIMELINE.md) ⭐ 발표/회고 자료
+- **내용**: 시간 순 작업 이력 (작업 내용 · 문제점 · 해결 · 결과). 자동 갱신 규칙은 CLAUDE.md "작업 타임라인 자동 갱신" 섹션
+- **추천 대상**: 발표/회고 자료 작성 시 1순위, 모든 에이전트 — 의미 작업 완료 시 갱신 필수
 
 ### [PROJECT_PROGRESS_LOG.md](./05_ProgressLog/PROJECT_PROGRESS_LOG.md)
 - 초기 요구사항부터 Phase 4까지 전체 진행 이력
@@ -158,6 +166,9 @@ Guides/
 **"프로젝트 전체 흐름을 이해하고 싶다"**
 → [01_GameOverview/AOS_SYSTEM_OVERVIEW.md](./01_GameOverview/AOS_SYSTEM_OVERVIEW.md)
 
+**"새 스킬을 추가하고 싶다"**
+→ [03_Implementation/SKILL_AUTHORING_GUIDE.md](./03_Implementation/SKILL_AUTHORING_GUIDE.md) (BP 자산만으로 5~10분)
+
 ---
 
 ## 문서 통계
@@ -166,8 +177,8 @@ Guides/
 |---------|--------|---------|
 | 01_GameOverview | 2개 | 전체 |
 | 02_Design | 3개 | 기획자 에이전트 |
-| 03_Implementation | 8개 | 프로그래머 에이전트 |
+| 03_Implementation | 9개 | 프로그래머 에이전트 |
 | 04_Testing | 7개 | 전체 |
-| 05_ProgressLog | 6개 | 참고용 |
+| 05_ProgressLog | 7개 | 발표/회고용 (TIMELINE 1순위) |
 | 06_BalanceLog | 1개 (README) | design-balance |
-| **총계** | **27개** | |
+| **총계** | **29개** | |

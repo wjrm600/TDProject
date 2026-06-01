@@ -6,6 +6,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **TDProject** is an Unreal Engine 5.7 MOBA-style (AOS - Auto Oriented Strategy) game with 3-lane tower defense mechanics. The project implements AI-controlled characters that push lanes, attack towers sequentially, and compete to destroy the enemy Command Center.
 
+## 작업 타임라인 자동 갱신 (필수)
+
+발표·회고용 작업 이력 파일: **`Guides/05_ProgressLog/TIMELINE.md`**
+
+### 갱신 트리거 — 다음 시점에 항목을 추가/갱신한다
+1. **의미 있는 작업 완료 시**: feat/fix/refactor/perf 류 커밋 직후 (사소한 오타·포맷팅 제외)
+2. **트러블슈팅 원인 확정 + 해결책 적용 시**: 환경/도구/네트워크/엔진 이슈 포함
+3. **새 아키텍처/시스템 도입 결정 시점**: 도입 시작 시점에 "진행 중" 섹션에, 완료 시 본문으로 이동
+4. **외부에서 발견한 비호환/제약**: UE 엔진 동작·서드파티 드라이버·플러그인 한계 등
+
+### 항목 형식 (필수 4블록 + 선택)
+```
+## YYYY-MM-DD — 한 줄 제목
+
+**작업 내용**: 핵심 변경 사항 bullet
+**문제점**: 막혔던 지점·원인 (없으면 생략)
+**해결 방법**: 어떻게 풀었는가
+**결과**: 영향 범위 + 관련 커밋 해시
+(선택) 관련 가이드: Guides/... 링크
+```
+
+### 운영 원칙
+- 항목은 **시간 순(오래된 것 위)** — 발표 시 스토리텔링 흐름 유지
+- 진행 중인 작업은 파일 하단 `## 진행 중` 섹션에 임시로 → 완료 시 본문으로 이동
+- 동일 작업 세션 내 다수 갱신 지양, **의미 단위**로 묶어 한 항목으로 작성
+- 커밋 해시는 `git log --pretty=format:"%h" -1` 로 확정 후 기재
+- 갱신 누락 시 다음 세션의 Claude 가 git log + 코드 diff 로 역으로 재구성하여 추가
+
 ## Build Commands
 
 ### Building the Project
@@ -496,6 +524,10 @@ if (NewHealth <= 0 && OldHealth > 0) {
 
 ### Phase 4: 캐릭터 스킬 시스템 — Alex (Garen 스타일 Q/W/E/R)
 
+> ⚠️ **이 섹션은 원본 Phase 4 (캐릭터당 4 C++ Ability + 4 쿨다운 GE) 구현 기록**.
+> **2026-06-02 데이터 주도 마이그레이션 완료** — 이 8개 C++ 클래스(`GA_Alex_Q/W/E/R`, `GE_Cooldown_Alex_Q/W/E/R`)는 모두 **제거**되었고, `UGA_SkillBase` 기반 BP 자산(`BP_GA_Alex_*`, `BP_GE_Cooldown_Alex_*`)으로 대체됨. 아래 "스킬 데이터 주도식 — `UGA_SkillBase`" 섹션이 **현재 운영 패턴**.
+> 이 섹션은 게임 스펙(스킬 수치/효과) 참고용으로만 유지.
+
 LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는 가렌 스킬셋.
 
 **스킬 매핑**
@@ -524,6 +556,62 @@ LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는
 
 **BP_Char_Alex 설정**: `StartupAbilities` 에 GA_Alex_Q/W/E/R 추가 + `SkillMontages` 매핑 (`Ability.Skill.Alex.Q` → `AM_Alex_Q` 등)
 
+### 스킬 데이터 주도식 — `UGA_SkillBase` (Phase 4+ 진행 중)
+
+위 Phase 4 의 "캐릭터당 4개 C++ Ability + 4개 쿨다운 GE" 패턴은 캐릭터·스킬 수가 늘수록 폭증. 이를 해소하기 위해 **C++ 1개 base 클래스 + BP child 자산** 패턴으로 전환 중.
+
+**핵심 클래스** (`Source/TDProject/AOS/GAS/`)
+
+- `UGA_SkillBase` (`Abilities/GA_SkillBase.h/cpp`) — UCLASS(Abstract). 모든 캐릭터 스킬의 부모. 데이터 주도식 UPROPERTY 다발:
+  - **Identity**: `SkillIdentityTag` (Ability.Skill.* — `AbilityTags`/`ActivationOwnedTags` 에 `PostInitProperties`/`PostLoad` 가 자동 추가)
+  - **Cast**: `bAllowMovementDuringCast`, `ExplicitRootDuration`(-1=자동: Periodic→Montage 길이)
+  - **Cooldown**: `CooldownDuration` (`CooldownGameplayEffectClass`는 표준 슬롯)
+  - **Effects**: `SelfAppliedEffects[]`, `TargetAppliedEffects[]`, `DamageGameplayEffectClass`
+  - **Targeting**: `ESkillTargetType` (Self/SingleEnemy/AoE_Sphere), `AoERadius`
+  - **Damage**: `BaseDamage`, `MissingHpDamageScale` (R 의 처형식 = 0.3)
+  - **Periodic**: `PeriodicTickCount`, `PeriodicTickInterval` (E 의 6틱 × 0.5s)
+  - 특이 데미지식은 `BlueprintNativeEvent CalculateTargetDamage(Target)` 를 BP override
+  - 공통 적용: `ActivationOwnedTags += State.Casting`, `ActivationBlockedTags += State.HitReact`
+
+- `UGE_SkillCooldown_Base` (`Effects/GE_SkillCooldown_Base.h/cpp`) — Duration GE + SetByCaller(Data.Duration). 태그 grant 는 BP child 가 `UTargetTagsGameplayEffectComponent` 로 추가 (예: `BP_GE_Cooldown_Alex_Q` 가 `Cooldown.Skill.Alex.Q`).
+
+**ActivateAbility 통합 흐름** (모든 스킬 동일)
+1. 쿨다운 GE (SetByCaller Data.Duration = CooldownDuration)
+2. CommitAbilityCost
+3. SelfAppliedEffects → self 일괄 적용
+4. TargetType 분기:
+   - Self: skip
+   - SingleEnemy: TriggerEventData→Target / AIController fallback (R 패턴) → 데미지 + TargetAppliedEffects
+   - AoE_Sphere: PeriodicTickCount>0 → FTimerManager 로 Interval×Count, 아니면 즉발 1회 — `OverlapMultiByChannel(ECC_Pawn)` 적팀만
+5. `!bAllowMovementDuringCast` → `ApplyCastRoot(ResolveRootDuration())` (Explicit>0 ? : Periodic>0 ? Count×Interval : Montage 길이)
+6. SkillMontage (`AOSCharacter::GetSkillMontage(SkillIdentityTag)`) 재생 (`PlayMontageAndWait`)
+7. 몽타주 종료 또는 Periodic 마지막 tick 에서 `EndAbility` (둘 중 늦은 쪽)
+
+**BP child 작성 패턴 (디자이너 작업)**
+
+새 스킬 = `BP_GA_<Char>_<Slot>` 자산 1개 + `BP_GE_Cooldown_<Char>_<Slot>` 자산 1개:
+- Right-click → Blueprint Class → Parent: `UGA_SkillBase` → 이름 `BP_GA_Alex_Q`
+- Class Defaults 에서 UPROPERTY 채움
+- 쿨다운: `BP_GE_Cooldown_Alex_Q` (parent=`UGE_SkillCooldown_Base`) → Components → TargetTagsGameplayEffectComponent → `Cooldown.Skill.Alex.Q`
+- `BP_Char_Alex.StartupAbilities` 에 BP_GA_Alex_Q 추가
+- 특이 로직 시: BP event graph 의 `Calculate Target Damage` override
+
+**예시 설정값 (기존 4스킬 이식)**
+| 스킬 | TargetType | 핵심 UPROPERTY |
+|------|-----------|----------------|
+| Q (DecisiveStrike) | Self | SelfEffects=[GE_MoveSpeed_Boost, GE_EnhancedAttack], Cooldown=8, bAllowMovement=false |
+| W (Courage) | Self | SelfEffects=[GE_DamageShield], Cooldown=15, bAllowMovement=true |
+| E (Judgment) | AoE_Sphere | AoERadius=250, PeriodicTickCount=6, PeriodicTickInterval=0.5, BaseDamage=50, Damage=GE_Damage, Cooldown=10, bAllowMovement=false |
+| R (DemacianJustice) | SingleEnemy | BaseDamage=250, MissingHpDamageScale=0.3, Damage=GE_Damage, Cooldown=90, bAllowMovement=false |
+
+**마이그레이션 상태** (2026-06-02 완료)
+- ✅ 1단계: C++ base 작성 (`UGA_SkillBase`, `UGE_SkillCooldown_Base`)
+- ✅ 2단계: BP child 8개(`BP_GA_Alex_*` + `BP_GE_Cooldown_Alex_*`) 생성 + `BP_Char_Alex.StartupAbilities` 매핑 교체
+- ✅ 3단계: 기존 C++ 클래스 8개(`GA_Alex_Q/W/E/R` + `GE_Cooldown_Alex_Q/W/E/R`) 제거
+- 보너스: `GA_Attack` stuck race 픽스 (State.Casting 차단 + UGA_SkillBase 가 시작 시 active Attack `CancelAbilities` + `bAllowInterruptAfterBlendOut=true`)
+
+이제부터 새 캐릭터/스킬 추가는 **BP 자산만 작성** (C++ 빌드 불필요). `Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md` 참고.
+
 ### StateTree 스킬 통합 — "Design B" (재선택 패턴)
 
 스킬을 StateTree 에 통합할 때 핵심 함정과 채택한 패턴:
@@ -548,16 +636,16 @@ LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는
 
 위 "슬라이드" 의 근본 해결. **스킬 GA 의 플래그 1개(`bAllowMovementDuringCast`)가 이동 가능/불가를 결정**하고, 애니는 이동 여부에 따라 상하체 분리 / 전신을 자동 선택.
 
-**스킬별 이동 가능 플래그** (`GA_Alex_*.h` — `UPROPERTY(EditDefaultsOnly, Category="AOS|Skill") bool bAllowMovementDuringCast`)
-- 기본값: **Q=true, W=true** (이동하며 시전), **E=false, R=false** (시전 중 고정). 디자이너가 BP/CDO 에서 조정 가능.
+**스킬별 이동 가능 플래그** (`UGA_SkillBase::bAllowMovementDuringCast` — BP CDO 에서 디자이너가 조정)
+- 현 BP 운영 값: **Q=false** (풀 애니메이션 holds), **W=true** (이동 시전), **E=false** (회전 중 고정), **R=false** (처형 모션 중 고정)
 - `true`: root 안 함 → StateTree task 즉시 Succeeded (Design B) → 이동 재개 → ABP 가 상하체 분리.
-- `false`: GA 가 `Char->ApplyCastRoot(Duration)` 호출 → `State.Rooted` 부여 + `StopMovementImmediately()` → 캐릭터 정지 + AI 가 스킬 끝까지 홀드.
+- `false`: `UGA_SkillBase` 가 `Char->ApplyCastRoot(Duration)` 호출 → `State.Rooted` 부여 + `StopMovementImmediately()` → 캐릭터 정지 + AI 가 스킬 끝까지 홀드.
 
-**C++ 구성 요소** (Part A — 구현 완료)
+**C++ 구성 요소**
 - `UGE_Rooted` (`Effects/GE_Rooted.h/cpp`) — Duration GE, `SetByCaller(Data.Duration)`, `State.Rooted` 부여 (GE_HitReact_State 패턴).
 - `AAOSCharacter::ApplyCastRoot(float Duration)` — `UGE_Rooted` self 적용(Duration 전달) + `CMC->StopMovementImmediately()`. 서버 권한 가정.
-- `GA_Alex_Q/W/E/R` — 4개 공통: 생성자에 `ActivationOwnedTags += State.Casting` (ABP 신호용), `ActivateAbility` 의 몽타주 직전에 `if (!bAllowMovementDuringCast && Char) Char->ApplyCastRoot(...)`.
-  - Q/W: root 미적용(기본 true). E: root 길이 = `MaxSpinTicks * SpinTickInterval`(3s, 회전 지속시간). R: root 길이 = 몽타주 길이.
+- `UGA_SkillBase` (데이터 주도 부모) — 생성자에 `ActivationOwnedTags += State.Casting` (ABP 신호 공통), `ActivateAbility` 의 몽타주 직전에 `if (!bAllowMovementDuringCast && Char) Char->ApplyCastRoot(ResolveRootDuration())`.
+  - `ResolveRootDuration()` = `ExplicitRootDuration > 0 ? : PeriodicTickCount > 0 ? Count*Interval : Montage 길이`
 - `FStateTreeTask_ActivateAbilityByTag` — 활성화 후 `State.Rooted` 보유 시 RUNNING(EnterState+Tick), 해제 시 Succeeded. GE_Rooted 가 고정 Duration 이라 반드시 만료 → 무한 홀드 없음.
 - `UAOSAnimInstance::bIsCasting` — `State.Casting` 태그 미러 (ABP 상하체 분리 트리거).
 

@@ -106,7 +106,7 @@ void UAOSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
         FGameplayTag::RequestGameplayTag(FName("State.HitReact"), /*bErrorIfNotFound=*/true);
     bIsHitReacting = ASC->HasMatchingGameplayTag(HitReactTag);
 
-    // State.Casting — 스킬 GA(GA_Alex_Q/W/E/R) 가 ActivationOwnedTags 로 부여.
+    // State.Casting — 스킬 GA(UGA_SkillBase 자식 BP) 가 ActivationOwnedTags 로 부여.
     // ABP 가 이 변수로 상하체 분리(Layered Blend Per Bone) transition 트리거:
     //   이동 중 + bIsCasting → 상체 스킬 + 하체 locomotion
     //   정지 + bIsCasting   → 전신 스킬 애니
