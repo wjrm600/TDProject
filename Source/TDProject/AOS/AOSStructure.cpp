@@ -1,5 +1,7 @@
 #include "AOSStructure.h"
 #include "AOSCharacter.h"
+#include "AOSGameMode.h"
+#include "Kismet/GameplayStatics.h"
 #include "GAS/AOSAbilitySystemComponent.h"
 #include "GAS/AOSAttributeSet.h"
 #include "GAS/Data/AOSAttributeInitData.h"
@@ -506,6 +508,12 @@ void AAOSStructure::OnStructureDestroyed()
 	// 서버 전용: Tick/타겟 해제
 	SetActorTickEnabled(false);
 	CurrentTarget = nullptr;
+
+	// Slice 0: 파괴한 팀에 골드 지급 (서버 권한 — OnStructureDestroyed 는 서버에서 호출됨)
+	if (AAOSGameMode* GM = Cast<AAOSGameMode>(UGameplayStatics::GetGameMode(this)))
+	{
+		GM->OnStructureDestroyedAwardGold(this);
+	}
 
 	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함)
 	Multicast_OnDestroyed();

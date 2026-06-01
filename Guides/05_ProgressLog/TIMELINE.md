@@ -304,6 +304,32 @@
 
 ---
 
+## 2026-06-02 — Slice 0: 골드 경제 + 아이템 상점 메커니즘 (심장박동 검증 통과)
+
+**작업 내용**
+- 비전 로드맵 Slice 0 ("심장박동 증명") 구현 — *골드 벌고 → 아이템 사고 → 캐릭터 강해진다* 루프
+- **골드 (`AOSGameState`)**: `Team1/Team2Gold` (Replicated + OnRep + 델리게이트), `ServerAddGold/ServerSetGold/GetGold`
+- **적립 (`AOSGameMode`)**: 캐릭터 처치 시 상대 팀 +50, 구조물 파괴 시 +150, 라운드 시작 패시브 +100 (전부 EditAnywhere 튜닝). killer 추적 없이 "죽은 쪽 반대 팀" 으로 단순화
+- **아이템 (`FAOSItemRow` DataTable + `AOSGameMode`)**: `(팀,라인)→구매 아이템 GE 목록` 서버 인벤토리. `SpawnCharactersForRound` 에서 스폰 직후 재적용 → **라운드 리셋돼도 누적**. `ServerBuyLaneItem`(준비/정산 단계 + 골드 검증), `BuyItem` 콘솔 exec(테스트), `Server_BuyLaneItem` RPC(위변조 방지=서버가 PlayerState 팀 강제)
+- **BP 자산** (agent-design-balance): `BP_GE_Item_Sword`(AttackPower+25, Infinite), `BP_GE_Item_Vitality`(MaxHealth+200), `DT_Items`(Sword/Vitality 각 100골드), `TDProj_GM.ItemTable` 연결
+
+**문제점 / 난관**
+- 구매 시 "ItemTable 미설정" 로그 — 아이템이 안 사짐
+- 원인 추적: World Settings 오버라이드는 TDProj_GM_C 로 정상인데도 실패 → `DefaultEngine.ini` 의 **`GlobalDefaultGameMode=/Script/TDProject.AOSGameMode` (C++ 스태틱 클래스)** 발견. BP `TDProj_GM` 의 모든 설정(ItemTable/Roster)이 빠진 raw C++ 인스턴스가 특정 경로에서 활성화됨
+- 추가로 design-balance 가 Python `set_editor_property` 로 CDO 만 바꾸고 BP 재컴파일을 안 해 stale CDO 가능성
+
+**해결 방법**
+- `DefaultEngine.ini` → `GlobalDefaultGameMode=/Game/TDProj_GM.TDProj_GM_C` (BP 로 교체)
+- TDProj_GM 강제 재컴파일 + 저장 (ItemTable 을 generated class CDO 에 확정)
+- 사용자 직감("스태틱 클래스가 들어가 있다")이 정확했음 — 진단의 결정적 단서
+
+**결과**
+- PIE 검증 통과: 아이템 정상 구매 + 캐릭터 점점 강해짐 확인 → **게임의 핵심 루프 작동 증명**
+- 다음(Slice 1 — 가독성): 미니맵 / 라운드 결과 요약 / 데미지 피드백. 비전 기둥 2 "관전이 읽혀야 한다"
+- 관련 문서: `Guides/01_GameOverview/GAME_VISION.md` (로드맵)
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

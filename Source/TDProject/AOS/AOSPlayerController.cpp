@@ -750,6 +750,29 @@ void AAOSPlayerController::Server_RequestStartRound_Implementation()
 	}
 }
 
+// Slice 0: Server RPC 구현 - 라인 아이템 구매 (서버가 자기 팀 골드로 검증)
+void AAOSPlayerController::Server_BuyLaneItem_Implementation(EAOSLane Lane, FName ItemRowName)
+{
+	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
+	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
+	if (!GM || !PS)
+	{
+		return;
+	}
+
+	// 클라가 임의 팀을 지정 못 하도록 서버가 PlayerState 의 팀으로 강제
+	GM->ServerBuyLaneItem(PS->GetTeam(), Lane, ItemRowName);
+}
+
+// Slice 0: 테스트용 콘솔 명령 — 로컬에서 입력 → Server RPC 로 전달
+void AAOSPlayerController::BuyItem(int32 LaneIndex, FName ItemRowName)
+{
+	const EAOSLane Lane = static_cast<EAOSLane>(FMath::Clamp(LaneIndex, 0, 2));
+	Server_BuyLaneItem(Lane, ItemRowName);
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] BuyItem 콘솔 명령 → 서버 요청 (Lane=%d, Item=%s)"),
+		LaneIndex, *ItemRowName.ToString());
+}
+
 // 로비 화면 표시
 void AAOSPlayerController::ShowLobby()
 {

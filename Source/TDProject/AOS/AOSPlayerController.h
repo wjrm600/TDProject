@@ -94,6 +94,14 @@ public:
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_RequestStartRound();
 
+	// Slice 0: 라인 아이템 구매 요청 (클라 → 서버). 상점 UI 가 호출. 서버가 골드 검증.
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_BuyLaneItem(EAOSLane Lane, FName ItemRowName);
+
+	// Slice 0: 테스트용 콘솔 명령 — 예) "BuyItem 0 Sword" (LaneIndex: 0=Top,1=Mid,2=Bottom)
+	UFUNCTION(Exec)
+	void BuyItem(int32 LaneIndex, FName ItemRowName);
+
 	// 서버 → 클라이언트: 캐릭터 로스터 전달
 	UFUNCTION(Client, Reliable, Category = "AOS|Network")
 	void Client_ReceiveCharacterRoster(const TArray<FCharacterRosterEntry>& Roster);

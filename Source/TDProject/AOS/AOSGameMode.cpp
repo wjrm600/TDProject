@@ -7,6 +7,10 @@
 #include "AOSMapManager.h"
 #include "AOSGameState.h"
 #include "AOSPlayerState.h"
+#include "GAS/Data/AOSItemData.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemInterface.h"
+#include "Engine/DataTable.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 #include "GameFramework/PlayerState.h"
@@ -199,6 +203,10 @@ void AAOSGameMode::StartRound()
 	{
 		AOSGS->ServerSetCurrentRound(CurrentRound);
 	}
+
+	// Slice 0: 라운드 패시브 수입 — 양 팀에 매 라운드 시작 시 골드 지급 (경제 보장).
+	AwardGold(EAOSTeam::Team1, GoldPerRoundIncome);
+	AwardGold(EAOSTeam::Team2, GoldPerRoundIncome);
 
 	// 이전 라운드 캐릭터 참조 정리
 	Team1Characters.Empty();
@@ -573,6 +581,9 @@ void AAOSGameMode::SpawnCharactersForRound()
 						Team1Characters.Add(NewCharacter);
 					else
 						Team2Characters.Add(NewCharacter);
+
+					// Slice 0: 이 라인이 구매한 아이템 GE 를 재적용 (라운드 리셋돼도 누적)
+					ApplyLaneItemsToCharacter(CurrentTeam, CurrentLane, NewCharacter);
 				}
 			}
 
@@ -737,6 +748,11 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 캐릭터 사망. 남은: %d"), Team2Characters.Num());
 	}
 
+	// Slice 0: 처치한 팀(= 죽은 캐릭터의 반대 팀)에 골드 지급.
+	// killer 추적 없이 단순화 — 팀 대 팀 구도라 반대 팀이 처치자.
+	const EAOSTeam KillerTeam = (CharacterTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+	AwardGold(KillerTeam, GoldPerCharacterKill);
+
 	// 양 팀 모두 캐릭터가 없으면 라운드 종료 (3초 딜레이)
 	if (AOSGameState == EAOSGameState::RoundRunning &&
 		Team1Characters.Num() == 0 && Team2Characters.Num() == 0)
@@ -754,6 +770,156 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 				false
 			);
 		}
+	}
+}
+
+// ============================================================
+// Slice 0: 골드 적립
+// ============================================================
+
+void AAOSGameMode::AwardGold(EAOSTeam Team, int32 Amount)
+{
+	if (!HasAuthority() || Amount == 0)
+	{
+		return;
+	}
+
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerAddGold(Team, Amount);
+		UE_LOG(LogTemp, Log, TEXT("[Economy] %s 골드 %+d → 총 %d"),
+			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+			Amount, AOSGS->GetGold(Team));
+	}
+}
+
+void AAOSGameMode::OnStructureDestroyedAwardGold(AAOSStructure* DestroyedStructure)
+{
+	if (!HasAuthority() || !DestroyedStructure)
+	{
+		return;
+	}
+
+	// 파괴한 팀 = 구조물 소유 팀의 반대.
+	const EAOSTeam StructureTeam = DestroyedStructure->GetOwnerTeam();
+	const EAOSTeam DestroyerTeam = (StructureTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+	AwardGold(DestroyerTeam, GoldPerStructureKill);
+}
+
+// ============================================================
+// Slice 0: 아이템 구매 / 소유 / 적용
+// ============================================================
+
+bool AAOSGameMode::ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRowName)
+{
+	if (!HasAuthority())
+	{
+		return false;
+	}
+
+	if (!ItemTable)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Economy] ItemTable 미설정 — 구매 불가. BP_AOSGameMode 에 DT_Items 지정 필요."));
+		return false;
+	}
+
+	// 라운드 준비 단계에서만 구매 허용 (전투 중 구매 방지)
+	if (AOSGameState != EAOSGameState::RoundPreparation && AOSGameState != EAOSGameState::Settlement)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Economy] 준비/정산 단계가 아님 — 구매 거부 (현재 상태=%d)"), (int32)AOSGameState);
+		return false;
+	}
+
+	const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(ItemRowName, TEXT("ServerBuyLaneItem"));
+	if (!Row)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Economy] 아이템 Row '%s' 없음"), *ItemRowName.ToString());
+		return false;
+	}
+
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS)
+	{
+		return false;
+	}
+
+	// 골드 검증
+	if (AOSGS->GetGold(Team) < Row->Cost)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Economy] %s 골드 부족 (보유 %d < 비용 %d) — '%s' 구매 실패"),
+			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+			AOSGS->GetGold(Team), Row->Cost, *ItemRowName.ToString());
+		return false;
+	}
+
+	// 차감 + 인벤토리 추가
+	AwardGold(Team, -Row->Cost);
+
+	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	const int32 L = static_cast<int32>(Lane);
+	ItemInventory[T][L].ItemRowNames.Add(ItemRowName);
+
+	UE_LOG(LogTemp, Log, TEXT("[Economy] %s %s 라인 '%s' 구매 완료 (-%d골드). 라인 보유 아이템 %d개"),
+		Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+		L == 0 ? TEXT("Top") : L == 1 ? TEXT("Mid") : TEXT("Bottom"),
+		*ItemRowName.ToString(), Row->Cost, ItemInventory[T][L].ItemRowNames.Num());
+
+	return true;
+}
+
+TArray<FName> AAOSGameMode::GetLaneItems(EAOSTeam Team, EAOSLane Lane) const
+{
+	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	const int32 L = static_cast<int32>(Lane);
+	return ItemInventory[T][L].ItemRowNames;
+}
+
+void AAOSGameMode::ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSCharacter* Character)
+{
+	if (!HasAuthority() || !Character || !ItemTable)
+	{
+		return;
+	}
+
+	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	const int32 L = static_cast<int32>(Lane);
+	const TArray<FName>& Owned = ItemInventory[T][L].ItemRowNames;
+	if (Owned.Num() == 0)
+	{
+		return;
+	}
+
+	IAbilitySystemInterface* AsiChar = Cast<IAbilitySystemInterface>(Character);
+	UAbilitySystemComponent* ASC = AsiChar ? AsiChar->GetAbilitySystemComponent() : nullptr;
+	if (!ASC)
+	{
+		return;
+	}
+
+	int32 Applied = 0;
+	for (const FName& RowName : Owned)
+	{
+		const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(RowName, TEXT("ApplyLaneItems"));
+		if (!Row || !Row->StatEffect)
+		{
+			continue;
+		}
+
+		FGameplayEffectContextHandle Ctx = ASC->MakeEffectContext();
+		Ctx.AddSourceObject(this);
+		FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(Row->StatEffect, 1.0f, Ctx);
+		if (Spec.IsValid())
+		{
+			ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+			Applied++;
+		}
+	}
+
+	if (Applied > 0)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("[Economy] %s %s 라인 캐릭터에 아이템 %d개 적용"),
+			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+			L == 0 ? TEXT("Top") : L == 1 ? TEXT("Mid") : TEXT("Bottom"), Applied);
 	}
 }
 

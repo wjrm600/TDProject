@@ -19,6 +19,15 @@ struct FAOSLaneDeployPlan
 	TArray<TSubclassOf<AAOSCharacter>> Classes;
 };
 
+// Slice 0: 라인별 구매 아이템 인벤토리 (DeployPlan 과 동일한 [2][3] 래핑 패턴)
+USTRUCT()
+struct FAOSLaneItemInventory
+{
+	GENERATED_BODY()
+	// DT_Items 의 RowName 목록 — 같은 아이템 중복 구매 시 중복 추가(스택)
+	TArray<FName> ItemRowNames;
+};
+
 // 에디터에서 등록하는 캐릭터 Blueprint 정보
 USTRUCT(BlueprintType)
 struct FCharacterRosterEntry
@@ -162,6 +171,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Characters")
 	void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
 
+	// Slice 0: 구조물(타워/CC) 파괴 시 호출 — 파괴한 쪽(= 구조물 반대 팀)에 골드 지급
+	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
+	void OnStructureDestroyedAwardGold(AAOSStructure* DestroyedStructure);
+
+	// Slice 0: 팀에 골드 지급/차감 (서버 권한). GameState 경유.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
+	void AwardGold(EAOSTeam Team, int32 Amount);
+
+	// Slice 0: 라인 아이템 구매 (서버 권한). 골드 검증 → 차감 → 인벤토리 추가. 성공 시 true.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
+	bool ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRowName);
+
+	// Slice 0: 특정 (팀,라인) 이 소유한 아이템 RowName 목록 (상점 UI/디버그용)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
+	TArray<FName> GetLaneItems(EAOSTeam Team, EAOSLane Lane) const;
+
 	// Getter
 
 	/** Returns the MapManager instance owned/discovered by this GameMode (server-side only). */
@@ -239,6 +264,23 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
 	float GameDuration = 600.0f; // 10분
 
+	// Slice 0: 골드 보상 수치 (design-balance 튜닝 대상)
+	// 적 캐릭터 처치 시 처치한 팀에 지급
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
+	int32 GoldPerCharacterKill = 50;
+
+	// 적 타워/CC 파괴 시 파괴한 팀에 지급
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
+	int32 GoldPerStructureKill = 150;
+
+	// 라운드 시작 시 양 팀에 지급되는 패시브 수입 (라운드 보장 경제)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
+	int32 GoldPerRoundIncome = 100;
+
+	// Slice 0: 아이템 정의 DataTable (Row 타입 = FAOSItemRow). BP_AOSGameMode 에서 DT_Items 지정.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
+	TObjectPtr<UDataTable> ItemTable = nullptr;
+
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	float RemainingGameTime;
 
@@ -298,6 +340,9 @@ protected:
 	// 라운드 기반 캐릭터 생성
 	void SpawnCharactersForRound();
 
+	// Slice 0: 스폰된 캐릭터에 그 (팀,라인) 이 소유한 아이템 GE 들을 재적용 (라운드 누적)
+	void ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSCharacter* Character);
+
 private:
 	void SetGameState(EAOSGameState NewState);
 	void UpdateGameTime(float DeltaTime);
@@ -306,4 +351,8 @@ private:
 	// 배치 계획 저장 (TMap<EAOSTeam, TMap<>> 은 UHT 미지원이므로 배열로 관리)
 	// DeployPlan[TeamIndex][LaneIndex].Classes = 배치할 캐릭터 클래스 목록
 	FAOSLaneDeployPlan DeployPlan[2][3];
+
+	// Slice 0: 라인별 구매 아이템 인벤토리 (서버 전용, 라운드 간 누적)
+	// ItemInventory[TeamIndex][LaneIndex].ItemRowNames
+	FAOSLaneItemInventory ItemInventory[2][3];
 };

@@ -18,6 +18,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChangedClient, EAOSGameS
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundNumberChanged, int32, NewRound);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTeamReadyChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerCountChanged, int32, Count);
+// Slice 0: 팀 골드 변경 알림 (UI 바인딩용). 두 팀 중 어느 팀이 얼마가 됐는지.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTeamGoldChanged, EAOSTeam, Team, int32, NewGold);
 
 UCLASS()
 class TDPROJECT_API AAOSGameState : public AGameStateBase
@@ -56,6 +58,14 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_IsDraw, BlueprintReadOnly, Category = "AOS|Game")
 	bool bIsDraw = false;
 
+	// Slice 0: 팀별 글로벌 골드 (상점에서 아이템 구매에 사용). 라운드 간 누적.
+	// 기존 bTeam1Ready/bTeam2Ready 패턴 답습 — 배열 대신 팀별 개별 프로퍼티 (UHT 친화).
+	UPROPERTY(ReplicatedUsing = OnRep_Gold, BlueprintReadOnly, Category = "AOS|Economy")
+	int32 Team1Gold = 0;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Gold, BlueprintReadOnly, Category = "AOS|Economy")
+	int32 Team2Gold = 0;
+
 	// 서버 전용: 상태 업데이트 (AOSGameMode에서 호출)
 	void ServerSetCurrentState(EAOSGameState NewState);
 	void ServerSetCurrentRound(int32 NewRound);
@@ -63,6 +73,13 @@ public:
 	void ServerSetConnectedCount(int32 Count);
 	void ServerSetPreparationTime(float Time);
 	void SetIsDraw(bool bDraw);
+
+	// Slice 0: 골드 — 서버 전용 가감/설정 + 조회
+	void ServerAddGold(EAOSTeam Team, int32 Amount);   // Amount 음수면 차감 (구매)
+	void ServerSetGold(EAOSTeam Team, int32 NewGold);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
+	int32 GetGold(EAOSTeam Team) const;
 
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -90,9 +107,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
 	FOnPlayerCountChanged OnPlayerCountChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Economy")
+	FOnTeamGoldChanged OnTeamGoldChanged;
+
 protected:
 	UFUNCTION()
 	void OnRep_CurrentState();
+
+	UFUNCTION()
+	void OnRep_Gold();
 
 	UFUNCTION()
 	void OnRep_CurrentRound();

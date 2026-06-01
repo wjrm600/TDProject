@@ -18,6 +18,8 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, ConnectedCount);
 	DOREPLIFETIME(AAOSGameState, PreparationTimeRemaining);
 	DOREPLIFETIME(AAOSGameState, bIsDraw);
+	DOREPLIFETIME(AAOSGameState, Team1Gold);
+	DOREPLIFETIME(AAOSGameState, Team2Gold);
 }
 
 void AAOSGameState::ServerSetCurrentState(EAOSGameState NewState)
@@ -143,4 +145,58 @@ void AAOSGameState::SetIsDraw(bool bDraw)
 void AAOSGameState::OnRep_IsDraw()
 {
 	// Settlement 표시 시 bIsDraw를 직접 읽으므로 별도 델리게이트 불필요
+}
+
+// ============================================================
+// Slice 0: 팀 골드
+// ============================================================
+
+void AAOSGameState::ServerAddGold(EAOSTeam Team, int32 Amount)
+{
+	if (!HasAuthority() || Amount == 0)
+	{
+		return;
+	}
+
+	int32& Gold = (Team == EAOSTeam::Team1) ? Team1Gold : Team2Gold;
+	const int32 NewGold = FMath::Max(0, Gold + Amount);
+	if (NewGold == Gold)
+	{
+		return;
+	}
+
+	Gold = NewGold;
+	// 서버(리스너)에서도 즉시 브로드캐스트 — 클라는 OnRep_Gold 가 처리
+	OnTeamGoldChanged.Broadcast(Team, Gold);
+}
+
+void AAOSGameState::ServerSetGold(EAOSTeam Team, int32 NewGold)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	NewGold = FMath::Max(0, NewGold);
+	int32& Gold = (Team == EAOSTeam::Team1) ? Team1Gold : Team2Gold;
+	if (Gold == NewGold)
+	{
+		return;
+	}
+
+	Gold = NewGold;
+	OnTeamGoldChanged.Broadcast(Team, Gold);
+}
+
+int32 AAOSGameState::GetGold(EAOSTeam Team) const
+{
+	return (Team == EAOSTeam::Team1) ? Team1Gold : Team2Gold;
+}
+
+void AAOSGameState::OnRep_Gold()
+{
+	// 클라이언트: 어느 팀이 바뀌었는지 구분 없이 양쪽 모두 브로드캐스트해도 UI 가 자기 팀만 읽으면 됨.
+	// 단순화를 위해 두 팀 모두 알림 (구독자가 Team 파라미터로 필터).
+	OnTeamGoldChanged.Broadcast(EAOSTeam::Team1, Team1Gold);
+	OnTeamGoldChanged.Broadcast(EAOSTeam::Team2, Team2Gold);
 }
