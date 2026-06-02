@@ -74,7 +74,7 @@ EStateTreeRunStatus FStateTreeTask_MoveToCurrentTarget::EnterState(
 	AAOSAIController* AOSAI = Cast<AAOSAIController>(InstanceData.AIController);
 	if (!AOSAI) return EStateTreeRunStatus::Failed;
 
-	UE_LOG(LogTemp, Warning, TEXT("[ST/MoveToCurrentTarget] EnterState"));
+	UE_LOG(LogTemp, Verbose, TEXT("[ST/MoveToCurrentTarget] EnterState"));
 	AOSAI->RequestMoveToCurrentTarget();
 	return EStateTreeRunStatus::Running;
 }
@@ -124,7 +124,7 @@ EStateTreeRunStatus FStateTreeTask_MoveToCurrentWaypoint::EnterState(
 	AAOSAIController* AOSAI = Cast<AAOSAIController>(InstanceData.AIController);
 	if (!AOSAI) return EStateTreeRunStatus::Failed;
 
-	UE_LOG(LogTemp, Warning, TEXT("[ST/MoveToCurrentWaypoint] EnterState — Pawn=%s"),
+	UE_LOG(LogTemp, Verbose, TEXT("[ST/MoveToCurrentWaypoint] EnterState — Pawn=%s"),
 		AOSAI->GetPawn() ? *AOSAI->GetPawn()->GetName() : TEXT("null"));
 	AOSAI->RequestMoveToCurrentWaypoint();
 	return EStateTreeRunStatus::Running;
@@ -183,7 +183,7 @@ EStateTreeRunStatus FStateTreeTask_SendAttackEvent::EnterState(
 		UE_LOG(LogTemp, Error, TEXT("[ST/SendAttackEvent] AIController context is NULL"));
 		return EStateTreeRunStatus::Failed;
 	}
-	UE_LOG(LogTemp, Warning, TEXT("[ST/SendAttackEvent] EnterState — bTargetCurrentEnemy=%s"),
+	UE_LOG(LogTemp, Verbose, TEXT("[ST/SendAttackEvent] EnterState — bTargetCurrentEnemy=%s"),
 		bTargetCurrentEnemy ? TEXT("true") : TEXT("false"));
 
 	AAOSAIController* AOSAI = Cast<AAOSAIController>(InstanceData.AIController);

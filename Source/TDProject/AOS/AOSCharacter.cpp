@@ -49,6 +49,8 @@ AAOSCharacter::AAOSCharacter()
 	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
 	HealthBarComponent->SetDrawSize(FVector2D(150.0f, 15.0f));
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
+	HealthBarComponent->SetTwoSided(true);  // 뒤에서 봐도 렌더 + 깜빡임 완화
+	HealthBarComponent->SetBlendMode(EWidgetBlendMode::Masked);  // 알파 테스트 → 반투명 정렬 깜빡임 제거
 
 	// --- GAS Phase 1: ASC + AttributeSet 부착 ---
 	AbilitySystemComponent = CreateDefaultSubobject<UAOSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -185,6 +187,34 @@ void AAOSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Phase 2: CurrentHealth 멤버 제거 — Health 는 AttributeSet 가 ReplicatedUsing 처리
+	// HP 바 팀 색상용 — DS 클라가 팀을 알아야 함
+	DOREPLIFETIME(AAOSCharacter, Team);
+}
+
+void AAOSCharacter::OnRep_Team()
+{
+	// 클라: 팀 도착 → HP 바 색상 갱신 (위젯이 아직 없으면 Tick 이 lazy 적용)
+	bHealthBarColorApplied = false;
+	RefreshHealthBarTeamColor();
+}
+
+void AAOSCharacter::RefreshHealthBarTeamColor()
+{
+	// 위젯은 렌더링 머신(클라/리슨서버)에만 존재 — DS 서버에서는 GetUserWidgetObject()=null → skip
+	if (!HealthBarComponent)
+	{
+		return;
+	}
+	if (!HealthBarWidget)
+	{
+		HealthBarWidget = Cast<UAOSHealthBarWidget>(HealthBarComponent->GetUserWidgetObject());
+	}
+	if (HealthBarWidget)
+	{
+		const FLinearColor BarColor = (Team == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
+		HealthBarWidget->SetBarColor(BarColor);
+		bHealthBarColorApplied = true;
+	}
 }
 
 void AAOSCharacter::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
@@ -399,6 +429,13 @@ void AAOSCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// Phase 3: 쿨타임 카운터 제거 — 쿨타임은 ASC 의 "Cooldown.Attack.Basic" 태그로 관리
+
+	// HP 바 팀 색상 lazy 적용: 위젯은 렌더링 머신에서 늦게 생성될 수 있어
+	// (OnRep_Team 이 위젯보다 먼저 도착하면 색이 안 칠해짐) → 위젯 준비되면 1회 적용.
+	if (!bHealthBarColorApplied && GetNetMode() != NM_DedicatedServer)
+	{
+		RefreshHealthBarTeamColor();
+	}
 
 	// HP 바 빌보드: World Space에서 카메라 정면을 향하도록 (DS에서는 스킵)
 	if (GetNetMode() != NM_DedicatedServer && HealthBarComponent && HealthBarComponent->IsVisible())

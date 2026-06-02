@@ -28,7 +28,14 @@ void AAOSMapManager::BeginPlay()
 	FlushPersistentDebugLines(GetWorld());
 
 	InitializeMap();
-	SpawnStructures();
+
+	// 구조물은 서버(권한)만 스폰 → 클라는 리플리케이션으로 수신.
+	// 가드 없으면 클라가 로컬 중복 구조물을 스폰 → 서버가 못 건드리는 "유령" 메시 +
+	// HP바 2개 겹침(깜빡임) 발생. (클라는 SpawnStructures 스킵)
+	if (HasAuthority())
+	{
+		SpawnStructures();
+	}
 }
 
 void AAOSMapManager::Tick(float DeltaTime)

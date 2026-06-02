@@ -34,4 +34,7 @@ protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
 	virtual void NativeDestruct() override;
+
+	// 드레인된(빈) 부분을 불투명 어두운 색으로 — World-space 반투명 정렬 깜빡임 방지
+	void ApplyOpaqueBackgroundStyle();
 };

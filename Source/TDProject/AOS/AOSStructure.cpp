@@ -51,6 +51,8 @@ AAOSStructure::AAOSStructure()
 	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
 	HealthBarComponent->SetDrawSize(FVector2D(120.0f, 12.0f));
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
+	HealthBarComponent->SetTwoSided(true);  // 뒤에서 봐도 렌더 + 깜빡임 완화
+	HealthBarComponent->SetBlendMode(EWidgetBlendMode::Masked);  // 알파 테스트 → 반투명 정렬 깜빡임 제거
 
 	// --- GAS Phase 5: ASC + AttributeSet 부착 ---
 	AbilitySystemComponent = CreateDefaultSubobject<UAOSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -155,15 +157,68 @@ void AAOSStructure::OnHealthAttributeChanged(const FOnAttributeChangeData& Data)
 {
 	// Phase 5: Health 또는 MaxHealth 변경 → HP 바 자동 갱신 (서버/클라 양쪽)
 	UpdateHealthBar();
+
+	// #3 클라 신뢰성: Multicast_OnDestroyed 는 호출 시점 relevancy 에 의존해 클라에 안 닿을 수 있음.
+	// 반면 Health 리플리케이션은 클라까지 확실히 도달(HP바가 클라에서 깎이는 게 그 증거)하므로,
+	// Health 가 0 이 되는 시점에 각 머신(서버+클라)이 스스로 시각적으로 숨긴다.
+	if (AttributeSet && AttributeSet->GetHealth() <= 0.0f)
+	{
+		SetActorHiddenInGame(true);
+		if (MeshComponent) { MeshComponent->SetVisibility(false); }
+		if (HealthBarComponent) { HealthBarComponent->SetVisibility(false); }
+	}
 }
 
 void AAOSStructure::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Phase 5: CurrentHealth 멤버 제거 — Health 는 AttributeSet 가 ReplicatedUsing 처리
-	DOREPLIFETIME(AAOSStructure, StructureType);
-	DOREPLIFETIME(AAOSStructure, OwnerTeam); // ReplicatedUsing=OnRep_OwnerTeam — 클라이언트 HP 바 색상 갱신
+	// ⚠️ REPNOTIFY_Always: 복제값이 기본값(Tower/Team1)과 같아도 초기 복제 때 OnRep 강제 발화.
+	// (기본 OnChanged 면 Team1 Tower 는 값이 기본과 같아 OnRep 미발화 → 클라 메시 셋업 누락 → 안 보임)
+	DOREPLIFETIME_CONDITION_NOTIFY(AAOSStructure, StructureType, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(AAOSStructure, OwnerTeam, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME(AAOSStructure, Lane);
+	DOREPLIFETIME(AAOSStructure, bDestroyedVisual); // #3 파괴 시각 상태 (OnRep 이 클라 메시 숨김)
+}
+
+void AAOSStructure::OnRep_StructureType()
+{
+	// 클라: 타입 수신 → 메시 셋업 (서버는 Initialize 에서 이미 처리)
+	if (!HasAuthority())
+	{
+		SetupMeshForCurrentType();
+	}
+}
+
+void AAOSStructure::SetupMeshForCurrentType()
+{
+	// 이미 파괴된 구조물이 늦게 복제된 경우(late-join) 메시를 다시 보이게 하지 않음
+	if (bDestroyedVisual)
+	{
+		return;
+	}
+
+	if (StructureType == EStructureType::CommandCenter)
+	{
+		SetupCommandCenterMesh();
+	}
+	else
+	{
+		SetupTowerMesh();
+	}
+}
+
+void AAOSStructure::OnRep_DestroyedVisual()
+{
+	if (!bDestroyedVisual)
+	{
+		return;
+	}
+
+	// 액터 전체 숨김 (메시 + HP바). 클라 중복 스폰 제거 후엔 이 복제 구조물이 유일하므로 확실히 사라짐.
+	SetActorHiddenInGame(true);
+	if (MeshComponent) { MeshComponent->SetVisibility(false); }
+	if (HealthBarComponent) { HealthBarComponent->SetVisibility(false); }
 }
 
 void AAOSStructure::OnRep_OwnerTeam()
@@ -178,10 +233,23 @@ void AAOSStructure::OnRep_OwnerTeam()
 		FLinearColor BarColor = (OwnerTeam == EAOSTeam::Team1) ? FLinearColor::Red : FLinearColor::Blue;
 		HealthBarWidget->SetBarColor(BarColor);
 	}
+
+	// 클라: 메시 머티리얼 색은 OwnerTeam 에 의존 → 타입/팀 도착 순서 무관하게 올바른 색으로 재셋업.
+	// (이미 파괴된 구조물이 늦게 복제되면 OnRep_DestroyedVisual 가 다시 숨김)
+	if (!HasAuthority())
+	{
+		SetupMeshForCurrentType();
+	}
 }
 
 void AAOSStructure::Multicast_OnDestroyed_Implementation()
 {
+	// 액터 전체를 숨김 — C++ MeshComponent 뿐 아니라 BP 에서 추가한 메시 컴포넌트까지 모두 가려짐.
+	// (레벨의 타워 BP 가 C++ MeshComponent 와 별개 메시를 가질 수 있어, MeshComponent 만
+	//  SetVisibility(false) 하면 BP 메시가 그대로 남는 문제 방지)
+	SetActorHiddenInGame(true);
+
+	// 명시적으로도 한 번 더 (SetActorHiddenInGame 가 처리하지만 의도 명확화)
 	if (MeshComponent)
 	{
 		MeshComponent->SetVisibility(false);
@@ -190,6 +258,8 @@ void AAOSStructure::Multicast_OnDestroyed_Implementation()
 	{
 		HealthBarComponent->SetVisibility(false);
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Structure] %s 파괴 — 메시 숨김 (SetActorHiddenInGame)"), *GetName());
 }
 
 void AAOSStructure::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -210,6 +280,15 @@ void AAOSStructure::BeginPlay()
 	// (서버는 Initialize() 내에서 InitializeHealthBar()를 호출하지만, 클라이언트는 이를 수신하지 않음)
 	// OwnerTeam은 아직 리플리케이션 전일 수 있어 기본 색상으로 설정 — OnRep_OwnerTeam에서 갱신됨
 	InitializeHealthBar();
+
+	// 클라: 복제 구조물 메시 셋업 (서버는 Initialize 에서 처리).
+	// ⚠️ OnRep 에 의존하면 안 됨 — UE 초기 복제는 CDO 기본값과 다른 프로퍼티만 전송하므로
+	//   Team1/Tower(둘 다 기본값) 구조물은 OwnerTeam/StructureType 이 아예 전송 안 돼 OnRep 미발화.
+	//   BeginPlay 시점엔 복제 프로퍼티가 이미 적용됨 + 기본값은 생성자 기본과 동일 → 항상 정확.
+	if (!HasAuthority())
+	{
+		SetupMeshForCurrentType();
+	}
 }
 
 void AAOSStructure::Tick(float DeltaTime)
@@ -515,7 +594,13 @@ void AAOSStructure::OnStructureDestroyed()
 		GM->OnStructureDestroyedAwardGold(this);
 	}
 
-	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함)
+	// #3 파괴 시각 상태 복제 — 멀티캐스트보다 신뢰성 높음(relevancy/dormancy 무관하게 전파).
+	// 서버에서 직접 적용 + 복제 강제(FlushNetDormancy) + 호스트용 OnRep 수동 호출.
+	bDestroyedVisual = true;
+	FlushNetDormancy();
+	OnRep_DestroyedVisual();
+
+	// 모든 클라이언트에 시각 효과 전파 (서버 자신도 포함 — 향후 VFX 용)
 	Multicast_OnDestroyed();
 }
 

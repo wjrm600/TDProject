@@ -145,8 +145,8 @@ public:
 	void ApplyCastRoot(float Duration);
 
 protected:
-	// 팀 및 라인 정보
-	UPROPERTY(BlueprintReadWrite, Category = "AOS|Character")
+	// 팀 및 라인 정보 — DS 클라가 팀을 알아야 HP 바 색상을 칠할 수 있으므로 Replicated
+	UPROPERTY(ReplicatedUsing = OnRep_Team, BlueprintReadWrite, Category = "AOS|Character")
 	EAOSTeam Team = EAOSTeam::Team1;
 
 	UPROPERTY(BlueprintReadWrite, Category = "AOS|Character")
@@ -211,6 +211,17 @@ protected:
 	void GiveStartupAbilities();
 
 	void UpdateHealthBar();
+
+	// HP 바를 팀 색상(Team1=Red, Team2=Blue)으로 칠함. 위젯 미생성 시 안전하게 skip.
+	// 렌더링 머신(클라/리슨서버)에서 호출되어야 함 — 위젯은 그쪽에만 존재.
+	void RefreshHealthBarTeamColor();
+
+	// Team 리플리케이션 콜백 (클라) — 팀 도착 시 HP 바 색상 갱신
+	UFUNCTION()
+	void OnRep_Team();
+
+	// HP 바 팀 색상이 1회 적용됐는지 (Tick 의 lazy 적용 가드)
+	bool bHealthBarColorApplied = false;
 
 	// Phase 2: AttributeSet Health 변경 콜백 (HP 바 자동 갱신)
 	void OnHealthAttributeChanged(const FOnAttributeChangeData& Data);

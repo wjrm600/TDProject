@@ -330,6 +330,35 @@
 
 ---
 
+## 2026-06-02 — DS 클라이언트 시각 버그 4종 수정 (HP바·구조물 파괴·로그)
+
+**작업 내용**
+- #1 로그 스팸: StateTree task EnterState 로그(MoveToCurrentWaypoint/Target, SendAttackEvent) Warning→Verbose (Design B 재선택으로 매 틱 도배)
+- #2 캐릭터 HP바 팀 색상: `Team` 을 `ReplicatedUsing=OnRep_Team` 으로 + `RefreshHealthBarTeamColor`(Team1=Red/Team2=Blue) 를 OnRep + Tick lazy 적용 (DS 클라가 팀을 알아야 색칠 가능)
+- #3 구조물 파괴 시 클라 메시 잔존 + #4 HP바 드레인 깜빡임 — **단일 근본 원인 해결**
+- HP바 위젯 일반 개선: World-space 양면 렌더(`SetTwoSided`), Masked 블렌드, 드레인부 불투명 배경
+
+**문제점 / 난관 (디버깅 여정)**
+- #3·#4 가 **클라에서만** 발생 (호스트 정상) → 네트워킹 문제로 좁힘
+- 멀티캐스트·Health델리게이트·복제 bool(OnRep) 등 여러 숨김 경로를 넣어도 클라 메시가 안 사라짐 → 진단 로그로 실측
+- 로그 분석 결과 **`MapManager::SpawnStructures` 가 클라에서도 실행** (권한 가드 없음) → 클라가 구조물을 **로컬 중복 스폰**. 클라엔 구조물 2벌(로컬 유령 + 서버 복제본)이 존재:
+  - #3 = 서버가 못 건드리는 로컬 유령 메시가 남음
+  - #4 = HP바 2개(로컬 풀 + 복제본 드레인)가 겹쳐 깜빡임
+- 클라 중복 제거 후엔 복제본에 메시가 없음(`SetupTowerMesh` 는 서버 전용 `Initialize` 에서만 호출) → Team1(레드)만 안 보임
+- 그 원인: UE 초기 복제는 **CDO 기본값과 다른 프로퍼티만 전송** → Team1/Tower(둘 다 기본값)는 `OwnerTeam`/`StructureType` 이 전송조차 안 됨 → OnRep(REPNOTIFY_Always 로도) 미발화
+
+**해결 방법**
+- `MapManager::SpawnStructures` 를 `if (HasAuthority())` 가드 → 서버만 스폰, 클라는 복제 수신 (유령·중복 제거 = #3·#4 동시 해결)
+- 클라 복제 구조물 메시: `BeginPlay` 에서 `if (!HasAuthority()) SetupMeshForCurrentType()` 직접 호출 (이 시점엔 복제 프로퍼티 적용됨 + 기본값은 생성자 기본과 동일 → 전 구조물 정확). OnRep_StructureType/OwnerTeam 은 보정·색상용
+- `bDestroyedVisual` 복제 bool + late-join 가드(파괴된 구조물 재표시 방지)
+
+**결과**
+- 클라에서 양 팀 타워·CC 정상 표시 + 파괴 시 즉시 사라짐 + HP바 깜빡임 없음 (PIE 리슨서버 확인)
+- 보너스: 클라가 스폰하던 유령 구조물 ~20개 제거 → 클라 성능·정확성 개선
+- 교훈: "클라에서만" 증상 = 권한 가드 누락/초기 복제 미전송 의심. 증상별 땜질보다 NetMode 별 실행 경로 추적이 빠름
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

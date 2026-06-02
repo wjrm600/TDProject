@@ -87,7 +87,8 @@ public:
 
 protected:
 	// 기본 설정 — 서버에서 Initialize()로 설정, 클라이언트로 리플리케이션 필요
-	UPROPERTY(BlueprintReadOnly, Replicated, Category = "AOS|Structure")
+	// ReplicatedUsing — 클라가 타입 수신 시 메시 셋업 (서버 전용 Initialize 를 클라가 못 받으므로)
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_StructureType, Category = "AOS|Structure")
 	EStructureType StructureType = EStructureType::Tower; // 기본값을 Tower로 명시 (enum 첫 값이 CommandCenter여서 미리플리케이션 시 오표시 방지)
 
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_OwnerTeam, Category = "AOS|Structure")
@@ -95,6 +96,11 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Replicated, Category = "AOS|Structure")
 	EAOSLane Lane = EAOSLane::Mid;
+
+	// #3 클라 신뢰성: 파괴 시각 상태를 복제 (멀티캐스트 relevancy 의존 회피 — #2 Team 패턴과 동일).
+	// 서버가 OnStructureDestroyed 에서 true 설정 → OnRep 이 클라에서 메시 숨김.
+	UPROPERTY(ReplicatedUsing = OnRep_DestroyedVisual)
+	bool bDestroyedVisual = false;
 
 	// 체력 시스템 (Phase 5: AttributeSet 으로 이전)
 	// MaxHealth 는 AttributeSet 초기값 시드로 유지 (Initialize 에서 StructureType 별로 갱신)
@@ -170,6 +176,17 @@ protected:
 	// OwnerTeam 리플리케이션 콜백 — 클라이언트에서 HP 바 색상 갱신
 	UFUNCTION()
 	void OnRep_OwnerTeam();
+
+	// #3 파괴 시각 상태 복제 콜백 — 클라이언트(+서버)에서 메시/HP바 숨김
+	UFUNCTION()
+	void OnRep_DestroyedVisual();
+
+	// StructureType 복제 콜백 — 클라에서 타입에 맞는 메시 셋업 (서버는 Initialize 에서 처리)
+	UFUNCTION()
+	void OnRep_StructureType();
+
+	// 현재 StructureType 에 맞는 메시/머티리얼 셋업 (클라 전용 호출 경로용)
+	void SetupMeshForCurrentType();
 
 	// HP 바 위젯 클래스 (에디터에서 설정 또는 코드에서 자동 로드)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|UI")
