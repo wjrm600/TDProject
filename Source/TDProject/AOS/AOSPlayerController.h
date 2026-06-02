@@ -51,6 +51,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
 	void ZoomCamera(float AxisValue);
 
+	// 라운드 시작 시: 로컬 클라이언트 카메라를 자기 팀 커맨드 센터로 포커스
+	// (현재 회전·줌은 유지하고 XY 위치만 이동하여 CC 가 화면 중앙에 오도록)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	void FocusCameraOnOwnCommandCenter();
+
 	// 캐릭터 배치 관련
 	UFUNCTION(BlueprintCallable, Category = "AOS|Deployment")
 	void SetCharacterDeployment(const TArray<EAOSLane>& LaneAssignments);
@@ -217,11 +222,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float ZoomSpeed = 2000.0f;
 
+	// 줌 인 한계 — 카메라가 가장 가까이(확대)된 상태의 높이.
+	// ⚠ 높이 기반이라 값이 "작을수록" 더 확대(줌 인)됩니다. 더 당겨 보려면 이 값을 낮추세요.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MinZoomHeight = 4000.0f;
+	float MaxZoomInHeight = 800.0f;
 
+	// 줌 아웃 한계 — 카메라가 가장 멀리(축소)된 상태의 높이.
+	// 값이 "클수록" 더 축소(줌 아웃)됩니다.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
-	float MaxZoomHeight = 20000.0f;
+	float MaxZoomOutHeight = 20000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Camera")
 	float MapBoundaryX = 40000.0f;

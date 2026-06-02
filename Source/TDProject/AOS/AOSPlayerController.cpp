@@ -366,8 +366,8 @@ void AAOSPlayerController::ZoomCamera(float AxisValue)
 	// 줌 변경량 계산 (마우스 휠 위로 = 줌 인, 아래로 = 줌 아웃)
 	float ZoomDelta = -AxisValue * ZoomSpeed;
 
-	// 새로운 높이 계산 및 범위 제한
-	float NewHeight = FMath::Clamp(CurrentLocation.Z + ZoomDelta, MinZoomHeight, MaxZoomHeight);
+	// 새로운 높이 계산 및 범위 제한 (MaxZoomInHeight=가장 확대된 낮은 높이, MaxZoomOutHeight=가장 축소된 높은 높이)
+	float NewHeight = FMath::Clamp(CurrentLocation.Z + ZoomDelta, MaxZoomInHeight, MaxZoomOutHeight);
 
 	// 높이만 변경
 	CurrentLocation.Z = NewHeight;
@@ -375,6 +375,75 @@ void AAOSPlayerController::ZoomCamera(float AxisValue)
 
 	// CameraHeight 변수도 업데이트
 	CameraHeight = NewHeight;
+}
+
+// 라운드 시작 시: 로컬 클라이언트 카메라를 자기 팀 커맨드 센터로 포커스
+// 회전(Yaw/Pitch)·줌(Z) 은 그대로 두고 XY 만 이동하여 CC 가 화면 중앙에 오도록 한다.
+void AAOSPlayerController::FocusCameraOnOwnCommandCenter()
+{
+	if (!RTSCamera)
+	{
+		return;
+	}
+
+	// 로컬 플레이어 팀 — PlayerState 가 진실 공급원 (복제됨), 없으면 PlayerTeam 폴백
+	EAOSTeam MyTeam = PlayerTeam;
+	if (AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>())
+	{
+		MyTeam = PS->GetTeam();
+	}
+
+	// 내 팀의 커맨드 센터 찾기.
+	// 클라이언트는 GameMode 가 없으므로(GetAuthGameMode=null) 복제된 구조물 액터를 직접 탐색한다.
+	// (StructureType / OwnerTeam 은 복제되는 프로퍼티)
+	AAOSStructure* OwnCC = nullptr;
+	TArray<AActor*> Structures;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AAOSStructure::StaticClass(), Structures);
+	for (AActor* A : Structures)
+	{
+		AAOSStructure* S = Cast<AAOSStructure>(A);
+		if (S && S->GetStructureType() == EStructureType::CommandCenter && S->GetOwnerTeam() == MyTeam)
+		{
+			OwnCC = S;
+			break;
+		}
+	}
+
+	if (!OwnCC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] FocusCameraOnOwnCommandCenter: 팀%d CC 미발견 (복제 대기?)"),
+			static_cast<int32>(MyTeam));
+		return;
+	}
+
+	// 현재 카메라 높이(줌)·회전을 유지한 채, 지면(z=0) 교차점이 CC 위치가 되도록 XY 재계산
+	const FVector CamLoc = RTSCamera->GetActorLocation();
+	const FRotator CamRot = RTSCamera->GetActorRotation();
+	const FVector Fwd = CamRot.Vector(); // 단위 전방 벡터 (아래를 향하므로 Z<0)
+	const FVector CCLoc = OwnCC->GetActorLocation();
+
+	FVector NewLoc = CamLoc;
+	if (!FMath::IsNearlyZero(Fwd.Z))
+	{
+		const float T = -CamLoc.Z / Fwd.Z;      // 카메라에서 지면까지의 광선 거리
+		NewLoc.X = CCLoc.X - T * Fwd.X;
+		NewLoc.Y = CCLoc.Y - T * Fwd.Y;
+	}
+	else
+	{
+		// 비정상(거의 수평) — CC 바로 위로 폴백
+		NewLoc.X = CCLoc.X;
+		NewLoc.Y = CCLoc.Y;
+	}
+
+	// 맵 경계 클램프 (Tick 이동과 동일 규칙)
+	NewLoc.X = FMath::Clamp(NewLoc.X, -MapBoundaryX, MapBoundaryX);
+	NewLoc.Y = FMath::Clamp(NewLoc.Y, -MapBoundaryY, MapBoundaryY);
+
+	RTSCamera->SetActorLocation(NewLoc);
+
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 카메라 → 팀%d CC 포커스 (CC=%s, cam=(%.0f, %.0f, %.0f))"),
+		static_cast<int32>(MyTeam), *CCLoc.ToString(), NewLoc.X, NewLoc.Y, NewLoc.Z);
 }
 
 // 게임 상태 변경 핸들러
@@ -416,6 +485,8 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 		HideCharacterSelect();
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
+		// 라운드 시작 → 각 클라이언트 카메라를 자기 팀 CC 로 포커스
+		FocusCameraOnOwnCommandCenter();
 		break;
 
 	case EAOSGameState::Settlement:

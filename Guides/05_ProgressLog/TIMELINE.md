@@ -359,6 +359,40 @@
 
 ---
 
+## 2026-06-03 — 관전 카메라: 방향 정렬 + 줌 리네이밍/확대 + 라운드시작 자기CC 포커스
+
+**작업 내용**
+- **방향(요청1)**: `BP_AOSPlayerController` CDO `CameraYaw` 30 → **270**
+  - 스폰포인트 월드좌표 분석: Team1(Red)=(−X,+Y) 코너, Team2(Blue)=(+X,−Y) 코너, 맵은 월드축 정렬
+  - 다운뷰 화면 매핑식으로 Yaw=270 이 "정사각형 축정렬 + Red 좌하단 + Blue 우상단"을 동시 만족함을 도출
+- **시작 높이/범위**: `CameraHeight` 2000 → 6000 (시작값이 줌 범위 안으로 → 첫 휠 점프 제거)
+- **확대 확장(요청2)**: 줌 인 한계 4000 → **800** (BP CDO 즉시 반영)
+- **줌 프로퍼티 리네이밍(요청2)**: `MinZoomHeight`→`MaxZoomInHeight`, `MaxZoomHeight`→`MaxZoomOutHeight` (C++)
+  - "Min/Max" 가 줌 인/아웃 중 뭔지 헷갈린다는 피드백 → 이름에 ZoomIn/ZoomOut 명시 + 주석("값이 작을수록 더 확대")
+  - `DefaultEngine.ini [CoreRedirects] +PropertyRedirects` 2줄로 BP CDO override 자동 마이그레이션 (리빌드 후)
+- **라운드 시작 시 자기 진영 CC 포커스(요청3)**: `AAOSPlayerController::FocusCameraOnOwnCommandCenter()` 신규 → `OnGameStateChanged(RoundRunning)` 에서 매 라운드 호출
+  - 클라엔 GameMode 없음 → 복제된 `AAOSStructure`(CommandCenter + 내 OwnerTeam) 직접 탐색, 팀은 `PlayerState->GetTeam()`
+  - 공유 방향(270/−70)·줌(Z) 유지, 지면 교차점이 CC 가 되도록 카메라 XY 만 재배치 (NewXY = CC − (−Z/Fwd.Z)·Fwd.xy)
+
+**문제점**
+- 카메라가 비스듬히 돌아가 정사각형이 다이아몬드처럼 보임 + 팀 코너가 원하는 화면 위치와 불일치
+- 시작 높이(2000)가 줌 최소높이(4000)보다 낮아 첫 휠 입력에 튕기는 점프
+- 줌 한계가 Min/MaxZoomHeight 라 줌 인/아웃 방향이 직관적이지 않음
+
+**해결 방법**
+- 실제 실행값 소스가 C++ CDO 가 아니라 **BP_AOSPlayerController CDO override** 임을 `inspect_cdo` 로 확인 → BP 값은 Python(`set_editor_property`+`save_asset`)으로 즉시 수정
+- Yaw 는 스폰포인트 좌표 + 다운뷰 매핑식(screen_x=−Px·sinθ+Py·cosθ, screen_y=Px·cosθ+Py·sinθ)으로 270° 계산
+- 프로퍼티 rename 은 CoreRedirects 로 기존 BP override 보존 (풀 리빌드 필요)
+
+**결과**
+- 정사각형이 화면축에 정렬 + Red 좌하단/Blue 우상단, 첫 휠 점프 제거, 800까지 더 확대 가능
+- 카메라는 PlayerController `BeginPlay` 1회 스폰 → BP CDO 변경은 **다음 PIE 부터** 반영(현 세션 재시작 필요). rename 은 **풀 리빌드** 후 반영
+- 줌 한계 이름이 명확해져 디자이너가 줌 인/아웃 구분 가능
+- 라운드(RoundRunning) 시작마다 각 클라이언트가 자기 CC 중앙 뷰로 시작 (공유 방향·줌은 보존)
+- 참고: pitch −70 유지 → 원근 때문에 완전 평면이 아닌 약한 사다리꼴(완전 top-down 원하면 pitch −90). 카메라 (0,0) 고정이라 약간 하단 프레이밍 — 중앙정렬은 후속 옵션
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
