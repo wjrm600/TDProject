@@ -1037,6 +1037,57 @@ Content/AOS/Anim/
 신규 UPROPERTY (`RagdollSettleDuration`) / UFUNCTION (`StartRagdoll`, `Multicast_PlayDeathMontage` 시그니처 변경) 도입 시점에도 풀 리빌드 — 현재는 적용 완료, history 기록용.
 이후 슬롯 채우기 / 몽타주 변경은 hot reload OK.
 
+## Economy & Shop System (Slice 0+)
+
+오토배틀러 MOBA 의 핵심 루프 "골드 벌어 → 아이템 사서 → 유닛 강화 → 라인 이김". 구매는 전투 중이 아니라 **준비/정산 단계**에서.
+
+### 골드 (글로벌, 팀 공유 풀)
+
+- **`AAOSGameState`**: `Team1Gold`/`Team2Gold` (`ReplicatedUsing=OnRep_Gold`), `GetGold(Team)`, `ServerAddGold`/`ServerSetGold`(서버 전용), `OnTeamGoldChanged(Team,NewGold)` 델리게이트(UI 라이브 갱신).
+- **`AAOSGameMode`**: `AwardGold(Team,Amount)`(음수=차감). EditAnywhere: `GoldPerCharacterKill`(50)/`GoldPerStructureKill`(150)/`GoldPerRoundIncome`(100).
+- 클라엔 GameMode 없음 → 골드는 **GameState 경유로만** 조회 (DS 규칙).
+
+### 아이템 (유닛 귀속, 라운드 간 누적)
+
+- **카탈로그**: `/Game/AOS/GAS/Data/DT_Items` (Row=`FAOSItemRow`: DisplayName/Cost/StatEffect(Infinite GE)/Icon/Description/**RecommendedClasses**). 현재 5종:
+
+  | Row | 효과 | 추천 |
+  |---|---|---|
+  | Sword(롱소드) | 공격력 +25 | 켄·알렉스·캐미 |
+  | Vitality(체력의 물약) | 최대체력 +200 | 베가·알렉스·가일 |
+  | Boots(신속의 신발) | 이속 +100 | 캐미·알렉스 |
+  | Dagger(재빠른 단검) | 공속 +0.3 | 켄·캐미 |
+  | Cannon(오래된 포신) | 사거리 +150 | 가일·베가 |
+
+- **아이템 GE 패턴**: `BP_GE_Item_*` = Infinite Duration + AttributeSet 속성에 AddBase Modifier. 새 아이템 = `BP_GE_Item_Sword` 복제 → Modifier 속성/크기 변경 → `DT_Items` 행 추가.
+- **유닛 귀속**: 아이템은 **유닛(UnitId = 로스터 인덱스)** 에 귀속·라운드 누적. 캐릭터는 매 라운드 리스폰되지만 배치된 유닛의 아이템이 스폰 시 재적용.
+  - `AAOSGameMode::UnitItemInventory[2]` = `TMap<int32(UnitId),TArray<FName>>` (서버 전용)
+  - `ServerBuyItemForUnit(Team,UnitId,Row)` — 단계/골드 검증 → 차감 → 인벤토리 추가
+  - `DeployPlan[T][L].UnitIds` (Classes 와 평행) → 스폰 시 `ApplyUnitItemsToCharacter(Team,UnitId,Char)` 로 GE 재적용
+  - ⚠️ **중복 배치 불가**: 한 유닛(로스터 항목)은 한 슬롯에만 (유닛 정체성 — CharacterSelect 드롭에서 강제)
+- **구매 단계 제한**: `RoundPreparation`/`Settlement` 에서만 허용 (전투 중 차단).
+
+### 상점 UI (팝업)
+
+- **`UAOSShopWidget`** (`UI/AOSShopWidget.*`) — 준비 화면(`UAOSCharacterSelectWidget`)에 **전체화면 오버레이 자식**으로 임베드(평소 Collapsed). "상점 열기" 버튼으로 표시.
+  - **View1 유닛 선택**: 배치된 유닛(최대 5) → 클릭 (`UAOSShopUnitButton`)
+  - **View2 아이템 페이지**: 동일 목록, **`RecommendedClasses` 매칭 유닛이면 ★ 추천 상단 정렬** (`UAOSShopItemButton`). 골드 부족 시 버튼 비활성.
+  - **뒤로가기**(유닛 선택) + **닫기**, 헤더에 **골드 + 준비 남은시간 상시 표시**(CharacterSelect 가 매 틱 `UpdateTimer` 포워딩).
+- **구매 경로**: ShopItemButton → `AAOSPlayerController::Server_BuyItemForUnit(UnitId,Row)` RPC → 서버가 PlayerState 팀 강제 → `GameMode::ServerBuyItemForUnit`. (클라는 `DT_Items` 직접 로드, 구매만 서버.)
+- 콘솔 테스트: `BuyItem <UnitId> <RowName>` (Exec).
+
+### 캐릭터 로스터 (현재 5종)
+
+`TDProj_GM` (BP GameMode) `CharacterRoster`: **알렉스 / 베가 / 켄 / 캐미 / 가일**. 모두 `BP_Character` 자식 + Mannequin(`SK_Mannequin_UE4_WithWeapon`) + `ABP_AOSCharacter`.
+- 스탯: `AttributeInitRowName` → `DT_CharacterAttributes` 행.
+- 스킬: **알렉스만 풀스킬**(Q/W/E/R, BP_GA_Alex_*). 나머지는 기본 공격(GA_Attack)만 — 새 캐릭터는 **BP_Char_Ken 복제 = 기본형**이 표준.
+
+### MCP 로 에셋 데이터 편집 (함정 주의)
+
+- **DataTable 행 추가·수정**: `DataTableFunctionLibrary.export_data_table_to_json_string` ↔ `fill_data_table_from_json_string` **JSON 라운드트립**(기존 필드 보존). `export_to_json` 은 없음.
+- **EditDefaultsOnly 구조체**(FCharacterRosterEntry, FGameplayModifierInfo 등): `set_editor_property` 가 "cannot be edited on instances" 로 막힘 → **`struct.import_text("(Field=Value,...)")`** 직렬화 우회. 클래스/텍스처 참조: `/Script/Engine.BlueprintGeneratedClass'/Game/...'`.
+- **BP CDO 편집 후 저장**: `set_editor_property` 가 패키지를 dirty 로 안 만들 수 있음 → **`save_asset(path, only_if_is_dirty=False)` 강제 저장 필수** (안 하면 디스크 미반영 → 재시작 시 유실). 구조체 필드 접근은 **snake_case**(`character_class`).
+
 ## Memory Management Patterns
 
 ### UPROPERTY Requirements
