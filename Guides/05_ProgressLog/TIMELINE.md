@@ -443,6 +443,29 @@
 
 ---
 
+## 2026-06-04 — MCP 자동화 브리지 0.6.0 → 0.1.4 교체 (네이티브 :3000 → WebSocket bridge)
+
+**작업 내용**
+- `McpAutomationBridge` 플러그인을 커스텀 0.6.0(네이티브 `:3000` HTTP transport)에서 공식 0.1.4(ChiR24/Unreal_mcp, WebSocket `:8091` bridge)로 교체
+- 0.6.0 네이티브 레이어(`MCP/McpToolRegistry`·`McpNativeTransport`·`McpJsonRpc`·`Tools/McpTool_*`)와 상태바 위젯(`SMcpStatusBarWidget`) 제거(49개 삭제), 핸들러/Build.cs 0.1.4 원본 복원(17개)
+- 연결 설정 전환: `.mcp.json`·`claude_desktop_config.json`(전역, git 미추적)·`example` — `type:url :3000/mcp` → `npx unreal-engine-mcp-server`(stdio, `UE_PROJECT_PATH` + `MCP_AUTOMATION_PORT=8091`)
+
+**문제점**
+- 다른 도구로 교체 중 토큰 소진으로 중단 → 파일 교체는 됐으나 연결 설정/문서가 구버전(`:3000`) 잔존
+- 버전 혼동: 레포/npm 릴리스는 0.5.21인데 플러그인 모듈(uplugin)은 0.1.4 — 별개 체계
+- 에디터 좌하단 "MCP 연결" 표시가 사라져 연결 끊김으로 오인
+
+**해결 방법**
+- 정합성 검증(0.6.0 심볼·삭제파일 참조·잘린 파일 0 확인) 후 연결 설정 4곳 + 문서(`CLAUDE.md`·`Mcp_Tools/README.md`)를 일괄 0.1.4 방식으로 갱신
+- 좌하단 표시는 0.6.0 전용 위젯이라 0.1.4 미표시가 정상 — `inspect get_viewport_info` 호출로 실연결 확인(770×742 응답)
+
+**결과**
+- MCP 연결 정상(에디터 ↔ WebSocket `:8091` ↔ npx 중계). 플러그인 `Binaries` 없음 → 풀 리빌드는 사용자 진행 예정
+- 커밋: `3882984` (플러그인 교체 + 설정 + 문서). 게임코드(`AOS*`)·발표자료는 분리 제외
+- 관련 가이드: `Mcp_Tools/README.md`
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
