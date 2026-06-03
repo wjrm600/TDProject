@@ -32,15 +32,7 @@
 // 
 // Performance:
 //   - Uses AssetRegistry cached data - no asset loading required
-//   - ScanPathsSynchronous() was REMOVED to prevent GameThread blocking
-//     (which caused SSE/HTTP transport timeouts on slow projects).
-//     Asset listing now uses cached AssetRegistry data exclusively.
-//
-// LIMITATION: Recently-added assets (created on disk but not yet indexed
-// by the editor's background scanner) will NOT appear in search results
-// until the editor rescans. Use the Asset Registry's "Rescan" button in
-// the Content Browser, or call system_control rescan_content_directory,
-// to force an update before querying.
+//   - REMOVED ScanPathsSynchronous() to prevent indefinite hangs on unindexed paths
 // =============================================================================
 
 #include "McpVersionCompatibility.h"  // MUST be first - UE version compatibility macros
@@ -215,10 +207,6 @@ bool UMcpAutomationBridgeSubsystem::HandleAssetQueryAction(
         Filter.PackagePaths.Add(FName(*Path));
         Filter.bRecursivePaths = true;
 
-        // NOTE: ScanPathsSynchronous() was removed to prevent GameThread blocking.
-        // Asset listing uses cached AssetRegistry data exclusively.
-        // LIMITATION: Assets not yet indexed by the editor's background scanner
-        // will NOT appear. Use Content Browser "Rescan" or rescan_content_directory.
         TArray<FAssetData> AssetDataList;
         AssetRegistry.GetAssets(Filter, AssetDataList);
 
@@ -466,10 +454,6 @@ bool UMcpAutomationBridgeSubsystem::HandleAssetQueryAction(
             FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
         IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
-        // NOTE: ScanPathsSynchronous() was removed to prevent GameThread blocking.
-        // Asset listing uses cached AssetRegistry data exclusively.
-        // LIMITATION: Assets not yet indexed by the editor's background scanner
-        // will NOT appear. Use Content Browser "Rescan" or rescan_content_directory.
         TArray<FAssetData> AssetDataList;
         AssetRegistry.GetAssets(Filter, AssetDataList);
 

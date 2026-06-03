@@ -2881,7 +2881,7 @@ bool UMcpAutomationBridgeSubsystem::HandleControlEditorAction(
 
   if (LowerSub == TEXT("play"))
     return HandleControlEditorPlay(RequestId, Payload, RequestingSocket);
-  if (LowerSub == TEXT("stop") || LowerSub == TEXT("stop_pie"))
+  if (LowerSub == TEXT("stop"))
     return HandleControlEditorStop(RequestId, Payload, RequestingSocket);
   if (LowerSub == TEXT("eject"))
     return HandleControlEditorEject(RequestId, Payload, RequestingSocket);
@@ -3064,24 +3064,19 @@ bool UMcpAutomationBridgeSubsystem::HandleControlEditorScreenshot(
     return true;
   }
 
-  // Request a screenshot — async, captured on the next rendered viewport frame.
-  // The file will NOT exist immediately; the editor window must be visible and
-  // actively rendering for the capture to complete.
+  // Request a screenshot
+  bool bCaptured = false;
   FScreenshotRequest::RequestScreenshot(FullPath, false, false);
-
+  
+  // Since screenshot is async, we respond with the expected path
   TSharedPtr<FJsonObject> Resp = McpHandlerUtils::CreateResultObject();
   Resp->SetBoolField(TEXT("success"), true);
   Resp->SetStringField(TEXT("filename"), Filename);
   Resp->SetStringField(TEXT("path"), FullPath);
-  Resp->SetBoolField(TEXT("async"), true);
-  Resp->SetStringField(TEXT("message"),
-      TEXT("Screenshot queued. File will be written on the next rendered frame "
-           "(typically within 100-200ms). Poll the file path to confirm availability. "
-           "The editor window must be visible for capture to complete."));
-  Resp->SetStringField(TEXT("expectedDelay"), TEXT("200ms"));
-
+  Resp->SetStringField(TEXT("message"), TEXT("Screenshot request submitted"));
+  
   SendAutomationResponse(Socket, RequestId, true,
-                         TEXT("Screenshot queued"), Resp, FString());
+                         TEXT("Screenshot requested"), Resp, FString());
   return true;
 #else
   SendStandardErrorResponse(this, Socket, RequestId, TEXT("NOT_IMPLEMENTED"),

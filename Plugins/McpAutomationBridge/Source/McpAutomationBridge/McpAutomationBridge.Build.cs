@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using EpicGames.Core;
 
 public class McpAutomationBridge : ModuleRules
 {
@@ -118,8 +119,11 @@ public class McpAutomationBridge : ModuleRules
         // Disable PCH to prevent virtual memory exhaustion
         PCHUsage = PCHUsageMode.NoPCHs;
         
+        // Unity builds enabled - combine files for faster compilation
+        // Note: If you get "compiler out of heap space" errors, install BuildConfiguration.xml
+        // from plugins/McpAutomationBridge/Config/BuildConfiguration.xml to %AppData%\Unreal Engine\UnrealBuildTool\
         bUseUnity = true;
-        // NumIncludedBytesPerUnityCPPOverride = 256 * 1024; // Not available in this UE build
+        Console.WriteLine("McpAutomationBridge: Unity builds enabled");
 
 PublicDependencyModuleNames.AddRange(new string[]
         {
@@ -145,8 +149,7 @@ PublicDependencyModuleNames.AddRange(new string[]
                 "ApplicationCore","Slate","SlateCore","Projects","InputCore","DeveloperSettings","Settings","EngineSettings",
                 "Sockets","Networking","EditorSubsystem","EditorScriptingUtilities","BlueprintGraph","SSL",
                 "Kismet","KismetCompiler","AssetRegistry","AssetTools","SourceControl",
-                "AudioEditor", "AudioMixer",
-                // Native MCP uses raw sockets (Sockets/Networking already listed above)
+                "AudioEditor", "AudioMixer"
                 // Optional plugins are handled by AddOptionalDynamicModule() below with delay-load
             });
 

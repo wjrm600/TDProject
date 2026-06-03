@@ -11,8 +11,7 @@
 void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
     const FString &RequestId, const FString &Action,
     const TSharedPtr<FJsonObject> &Payload,
-    TSharedPtr<FMcpBridgeWebSocket> RequestingSocket,
-    ERequestOrigin Origin) {
+    TSharedPtr<FMcpBridgeWebSocket> RequestingSocket) {
   // This large implementation was extracted from the original subsystem
   // translation unit to keep the core file smaller and focused. It
   // contains the main dispatcher that delegates to specialized handler
@@ -43,10 +42,10 @@ void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
            *RequestId, *Action);
     AsyncTask(ENamedThreads::GameThread,
               [WeakThis = TWeakObjectPtr<UMcpAutomationBridgeSubsystem>(this),
-               RequestId, Action, Payload, RequestingSocket, Origin]() {
+               RequestId, Action, Payload, RequestingSocket]() {
                 if (UMcpAutomationBridgeSubsystem *Pinned = WeakThis.Get()) {
                   Pinned->ProcessAutomationRequest(RequestId, Action, Payload,
-                                                   RequestingSocket, Origin);
+                                                   RequestingSocket);
                 }
               });
     return;
@@ -66,7 +65,6 @@ void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
     P.Action = Action;
     P.Payload = Payload;
     P.RequestingSocket = RequestingSocket;
-    P.Origin = Origin;
     {
       FScopeLock Lock(&PendingAutomationRequestsMutex);
       PendingAutomationRequests.Add(MoveTemp(P));
@@ -94,7 +92,6 @@ void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
     P.Action = Action;
     P.Payload = Payload;
     P.RequestingSocket = RequestingSocket;
-    P.Origin = Origin;
     {
       FScopeLock Lock(&PendingAutomationRequestsMutex);
       PendingAutomationRequests.Add(MoveTemp(P));
@@ -108,7 +105,6 @@ void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
   }
 
   bProcessingAutomationRequest = true;
-  CurrentRequestOrigin = Origin;
   bool bDispatchHandled = false;
   FString ConsumedHandlerLabel = TEXT("unknown-handler");
   const double DispatchStartSeconds = FPlatformTime::Seconds();
@@ -145,7 +141,6 @@ void UMcpAutomationBridgeSubsystem::ProcessAutomationRequest(
       }
       
       bProcessingAutomationRequest = false;
-      CurrentRequestOrigin = ERequestOrigin::WebSocket;
       const double DispatchEndSeconds = FPlatformTime::Seconds();
       const double DurationMs =
           (DispatchEndSeconds - DispatchStartSeconds) * 1000.0;

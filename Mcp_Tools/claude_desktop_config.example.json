@@ -13,9 +13,13 @@
   },
   "mcpServers": {
     "unreal-engine": {
-      "_comment": "McpAutomationBridge 플러그인이 에디터 안에서 띄우는 HTTP MCP 서버에 mcp-remote로 연결. 에디터를 켠 상태여야 동작함.",
+      "_comment": "McpAutomationBridge(0.1.4) 플러그인이 에디터 안에서 WebSocket(:8091)을 띄우면, unreal-engine-mcp-server(npm)가 거기에 붙어 MCP stdio를 제공. 에디터를 켠 상태여야 동작함. UE_PROJECT_PATH는 본인의 .uproject 절대경로로 치환.",
       "command": "npx",
-      "args": [ "-y", "mcp-remote", "http://localhost:3000/mcp" ]
+      "args": [ "-y", "unreal-engine-mcp-server" ],
+      "env": {
+        "UE_PROJECT_PATH": "${PROJECT_ROOT}\\TDProject.uproject",
+        "MCP_AUTOMATION_PORT": "8091"
+      }
     },
     "unreal-rag": {
       "_comment": "프로젝트 C++ 코드베이스 RAG 검색 서버. python 인터프리터 + langchain/chromadb 의존성 필요 (Mcp_Tools/requirements.txt 참고).",

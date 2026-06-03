@@ -5,7 +5,7 @@
 
 | MCP 서버 | 역할 | 실행 방식 |
 |---------|------|----------|
-| `unreal-engine` | UE 에디터 자동화(액터/에셋/레벨/머티리얼/AI 제어 등) | **`McpAutomationBridge` 플러그인**이 에디터 안에서 HTTP 서버(`localhost:3000`)를 띄움. Claude는 `mcp-remote`로 접속. |
+| `unreal-engine` | UE 에디터 자동화(액터/에셋/레벨/머티리얼/AI 제어 등) | **`McpAutomationBridge`(0.1.4) 플러그인**이 에디터 안에서 WebSocket 서버(`:8090`/`:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`**(`npx`)가 거기에 붙어 Claude에 MCP를 중계. |
 | `unreal-rag` | 프로젝트 C++ 코드베이스 의미 검색(RAG) | **`ue_rag_mcp.py`** 가 ChromaDB + HuggingFace 임베딩으로 `Source/` 인덱싱 |
 
 ---
@@ -100,13 +100,16 @@ auto-memory 갱신 → `.claude/settings.local.json` 패치까지 한 번에
 
 ## 2. unreal-engine MCP — 셋업
 
-이 서버는 별도 설치가 필요 없습니다. 프로젝트의 `Plugins/McpAutomationBridge/`
-플러그인이 자동으로 활성화되어 에디터를 켜면 `localhost:3000/mcp`에서 응답합니다.
+`Plugins/McpAutomationBridge/`(0.1.4) 플러그인이 에디터 안에서 **WebSocket 서버**(기본
+`:8090`, `:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`** 가 거기에 붙어
+Claude에 MCP(stdio)를 중계합니다. Node 서버는 `npx` 로 자동 실행되어 사전 설치는 불필요합니다
+(Node.js 18+ 필요). 설정은 §4-2 참고.
 
 확인 방법:
-1. 프로젝트를 빌드하고 에디터 실행
+1. 프로젝트를 빌드하고 에디터 실행 (플러그인 첫 로드 시 리빌드를 요구할 수 있음 → 빌드)
 2. `Edit → Plugins`에서 **MCP Automation Bridge** 가 Enabled 인지 확인
-3. 출력 로그에서 `MCP Server listening on http://localhost:3000` 류의 메시지 확인
+3. 출력 로그에서 WebSocket 서버가 `8091`(또는 `8090`) 포트에서 listening 중이라는 메시지 확인
+   (포트/TLS 는 `Project Settings → Plugins → MCP Automation Bridge` 에서 조정)
 
 ---
 
@@ -180,7 +183,8 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
   "mcpServers": {
     "unreal-engine": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:3000/mcp"]
+      "args": ["-y", "unreal-engine-mcp-server"],
+      "env": { "UE_PROJECT_PATH": "E:\\Unreal Project\\TDProject\\TDProject.uproject" }
     },
     "unreal-rag": {
       "command": "python",

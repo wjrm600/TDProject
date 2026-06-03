@@ -60,7 +60,7 @@ Use the Unreal Editor's hot reload feature (Ctrl+Alt+F11) for quick C++ changes 
 ### MCP 서버 셋업 (Claude 연동)
 
 이 프로젝트는 두 개의 MCP 서버를 사용합니다:
-- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge`, `localhost:3000`)
+- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.1.4 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계)
 - `unreal-rag` — C++ 코드 RAG 검색 (`Mcp_Tools/ue_rag_mcp.py`)
 
 새 컴퓨터에서 똑같은 환경을 재현하려면 **`Mcp_Tools/README.md`** 를 따라 진행하세요.
