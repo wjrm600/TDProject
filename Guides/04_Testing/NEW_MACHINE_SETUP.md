@@ -148,7 +148,8 @@ pip install -r Mcp_Tools/requirements.txt
    - `MCP Automation Bridge` → **Enabled** 체크 확인
    - 비활성화 상태면 체크 후 에디터 재시작
 
-> 플러그인이 활성화되면 에디터 실행 중 `http://localhost:3000/mcp` 에 MCP 서버가 자동 기동됩니다.
+> 플러그인(0.1.4)이 활성화되면 에디터 실행 중 **WebSocket 서버**(`127.0.0.1:8091`, 8090 도 함께)가 자동 기동됩니다.
+> Claude 쪽 `unreal-engine` MCP(`.mcp.json` 의 `npx unreal-engine-mcp-server`)가 이 `:8091` 에 붙어 중계합니다 — 그래서 Node.js 18+ 가 필요합니다.
 
 ---
 
@@ -156,11 +157,11 @@ pip install -r Mcp_Tools/requirements.txt
 
 ### unreal-engine MCP 확인 (포트 확인)
 
-**Unreal Editor가 열린 상태에서** 터미널에서 포트 확인:
+**Unreal Editor가 열린 상태에서** 터미널에서 플러그인 WebSocket 포트 확인:
 
 ```powershell
-netstat -ano | findstr ":3000"
-# TCP    127.0.0.1:3000    0.0.0.0:0    LISTENING  <PID>  ← 이렇게 나오면 정상
+netstat -ano | findstr ":8091"
+# TCP    127.0.0.1:8091    0.0.0.0:0    LISTENING  <PID>  ← 이렇게 나오면 정상 (8090 도 함께 열릴 수 있음)
 ```
 
 ### Claude Code에서 MCP 연결 확인
@@ -201,7 +202,8 @@ unreal-rag      connected
 
 - Unreal Editor가 실행 중인지 확인 (`unreal-engine` 서버는 에디터 의존)
 - `McpAutomationBridge` 플러그인 활성화 여부 확인
-- 방화벽에서 포트 3000 차단 여부 확인
+- 방화벽에서 포트 8091(및 8090) 차단 여부 확인
+- `npx unreal-engine-mcp-server` 가 한 번 받아지도록 Node.js 18+ / 인터넷 연결 확인
 
 ### unreal-rag 가 잘못된 폴더를 인덱싱
 
@@ -246,6 +248,6 @@ Remove-Item -Recurse -Force Binaries, Intermediate, Plugins\McpAutomationBridge\
 [ ] pip install -r Mcp_Tools/requirements.txt
 [ ] TDProject.uproject 열기 → Yes (플러그인 컴파일)
 [ ] McpAutomationBridge 플러그인 Enabled 확인
-[ ] netstat으로 포트 3000 LISTENING 확인
+[ ] netstat으로 포트 8091 LISTENING 확인
 [ ] claude 실행 → /mcp → unreal-engine + unreal-rag connected 확인
 ```
