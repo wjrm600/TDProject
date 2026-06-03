@@ -419,6 +419,30 @@
 
 ---
 
+## 2026-06-04 — 콘텐츠 확장: 캐릭터 5종화(캐미·가일) + 아이템 5종화 + 추천 데이터
+
+**작업 내용**
+- **추천 데이터**: DT_Items 각 행에 `RecommendedClasses` 입력 → 상점 ★ 추천 정렬 활성화
+- **캐릭터 3→5**: `BP_Char_Cammy`(캐미)/`BP_Char_Guile`(가일) 추가 (BP_Char_Ken 복제 = 기본 공격형, Mannequin). `DT_CharacterAttributes` 행 추가(캐미: 러시다운 HP120/AS1.6/MS700, 가일: 존잉 HP180/Range600). `TDProj_GM` 로스터 등록
+- **아이템 2→5**: 신속의 신발(이속+100)/재빠른 단검(공속+0.3)/오래된 포신(사거리+150) — `BP_GE_Item_Sword` 복제 후 Modifier 속성·크기 치환(Infinite + AddBase)
+- 추천 매핑: 공격형(롱소드/단검)→켄·캐미, 내구(물약)→베가·가일, 이속(신발)→캐미, 사거리(포신)→가일·베가, 알렉스(브루저)→공격+체력 양쪽
+
+**문제점**
+- DataTable 행 / 구조체 배열을 Python 으로 편집하기 어려움 — `set_editor_property` 가 `EditDefaultsOnly` 구조체 인스턴스에서 "cannot be edited on instances" 로 막힘
+- **BP CDO 편집 후 `save_asset` 기본값(`only_if_is_dirty=True`)이 저장을 스킵** → `TDProj_GM` 로스터가 디스크에 안 써짐(메모리만 5종 → 재시작 시 유실 위험)
+
+**해결 방법**
+- DataTable: `export_data_table_to_json_string` ↔ `fill_data_table_from_json_string` JSON 라운드트립 (기존 필드 보존하며 행 추가/수정)
+- 구조체(`FCharacterRosterEntry`, `FGameplayModifierInfo`): `import_text` 직렬화 경로로 EditDefaultsOnly 우회
+- 저장: BP CDO/구조체 편집 후 `save_asset(path, only_if_is_dirty=False)` 강제 저장 필수
+
+**결과**
+- 캐릭터 5종(알렉스/베가/켄/캐미/가일) + 아이템 5종(롱소드/물약/신발/단검/포신) + 캐릭터별 ★ 추천. 전부 에셋 작업이라 리빌드 불필요, PIE 확인 완료
+- 신규 에셋: `BP_Char_Cammy/Guile`, `BP_GE_Item_Boots/Dagger/Cannon`. 수정: `DT_Items`, `DT_CharacterAttributes`, `TDProj_GM`
+- 후속: 캐미/가일 전용 외형·팀색(아트), 전용 스킬(SKILL_AUTHORING_GUIDE), GAME_VISION 로스터 문서 갱신
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
