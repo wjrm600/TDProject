@@ -16,16 +16,11 @@ USTRUCT()
 struct FAOSLaneDeployPlan
 {
 	GENERATED_BODY()
+	// 배치된 캐릭터 클래스 목록
 	TArray<TSubclassOf<AAOSCharacter>> Classes;
-};
-
-// Slice 0: 라인별 구매 아이템 인벤토리 (DeployPlan 과 동일한 [2][3] 래핑 패턴)
-USTRUCT()
-struct FAOSLaneItemInventory
-{
-	GENERATED_BODY()
-	// DT_Items 의 RowName 목록 — 같은 아이템 중복 구매 시 중복 추가(스택)
-	TArray<FName> ItemRowNames;
+	// 각 배치 슬롯의 UnitId(= 로스터 인덱스) — Classes 와 같은 길이.
+	// 유닛별 아이템 적용(라운드 간 누적)을 위해 "어느 유닛이 스폰됐는지" 식별.
+	TArray<int32> UnitIds;
 };
 
 // 에디터에서 등록하는 캐릭터 Blueprint 정보
@@ -145,9 +140,12 @@ public:
 	const TArray<FCharacterRosterEntry>& GetCharacterRoster() const { return CharacterRoster; }
 
 	// 레인 배치 클래스 목록 설정/조회 (신규 API)
+	// UnitIds: 각 클래스의 UnitId(로스터 인덱스). Classes 와 같은 길이여야 하며,
+	// 비거나 짧으면 부족분은 -1(유닛 없음 = 아이템 미적용)로 채운다.
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void SetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane,
-		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+		const TArray<int32>& UnitIds);
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	const TArray<TSubclassOf<AAOSCharacter>>& GetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane) const;
@@ -155,7 +153,8 @@ public:
 	// 네트워크 경유 버전
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerState, EAOSLane Lane,
-		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+		const TArray<int32>& UnitIds);
 
 	// 구조물 생성 및 관리
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
@@ -179,13 +178,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
 	void AwardGold(EAOSTeam Team, int32 Amount);
 
-	// Slice 0: 라인 아이템 구매 (서버 권한). 골드 검증 → 차감 → 인벤토리 추가. 성공 시 true.
+	// 유닛 아이템 구매 (서버 권한). 골드 검증 → 차감 → 해당 (팀,UnitId) 인벤토리에 추가. 성공 시 true.
+	// 아이템은 유닛(=로스터 항목)에 귀속되어 라운드 간 누적되고, 그 유닛이 배치되면 스폰 시 재적용됨.
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
-	bool ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRowName);
+	bool ServerBuyItemForUnit(EAOSTeam Team, int32 UnitId, FName ItemRowName);
 
-	// Slice 0: 특정 (팀,라인) 이 소유한 아이템 RowName 목록 (상점 UI/디버그용)
+	// 특정 (팀,UnitId) 유닛이 소유한 아이템 RowName 목록 (상점 UI/디버그용)
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
-	TArray<FName> GetLaneItems(EAOSTeam Team, EAOSLane Lane) const;
+	TArray<FName> GetUnitItems(EAOSTeam Team, int32 UnitId) const;
 
 	// Getter
 
@@ -340,8 +340,8 @@ protected:
 	// 라운드 기반 캐릭터 생성
 	void SpawnCharactersForRound();
 
-	// Slice 0: 스폰된 캐릭터에 그 (팀,라인) 이 소유한 아이템 GE 들을 재적용 (라운드 누적)
-	void ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSCharacter* Character);
+	// 스폰된 캐릭터에 그 유닛(팀,UnitId)이 소유한 아이템 GE 들을 재적용 (라운드 누적)
+	void ApplyUnitItemsToCharacter(EAOSTeam Team, int32 UnitId, AAOSCharacter* Character);
 
 private:
 	void SetGameState(EAOSGameState NewState);
@@ -352,7 +352,8 @@ private:
 	// DeployPlan[TeamIndex][LaneIndex].Classes = 배치할 캐릭터 클래스 목록
 	FAOSLaneDeployPlan DeployPlan[2][3];
 
-	// Slice 0: 라인별 구매 아이템 인벤토리 (서버 전용, 라운드 간 누적)
-	// ItemInventory[TeamIndex][LaneIndex].ItemRowNames
-	FAOSLaneItemInventory ItemInventory[2][3];
+	// 유닛별 구매 아이템 인벤토리 (서버 전용, 라운드 간 누적)
+	// UnitItemInventory[TeamIndex][UnitId] = DT_Items RowName 목록 (중복 구매 = 스택)
+	// UnitId = 로스터 인덱스. TMap 이라 배치되지 않은 유닛 id 도 안전하게 보관.
+	TMap<int32, TArray<FName>> UnitItemInventory[2];
 };

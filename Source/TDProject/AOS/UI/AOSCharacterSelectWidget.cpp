@@ -13,6 +13,7 @@
 #include "Components/WrapBoxSlot.h"
 #include "Components/Border.h"
 #include "Components/Image.h"
+#include "AOSShopWidget.h"
 
 // ─────────────────────────────────────────────────────────────
 // UAOSLaneSlotWidget
@@ -62,9 +63,10 @@ void UAOSLaneSlotWidget::BuildSlotUI(UWidgetTree* /*unused*/)
 	ClearButton->OnClicked.AddDynamic(this, &UAOSLaneSlotWidget::OnClearButtonClicked);
 }
 
-void UAOSLaneSlotWidget::SetAssigned(TSubclassOf<AAOSCharacter> InClass, const FText& InName)
+void UAOSLaneSlotWidget::SetAssigned(TSubclassOf<AAOSCharacter> InClass, int32 InRosterIndex, const FText& InName)
 {
 	AssignedClass = InClass;
+	AssignedRosterIndex = InRosterIndex;
 	if (SlotNameText) SlotNameText->SetText(InName);
 	if (ClearButton) ClearButton->SetVisibility(ESlateVisibility::Visible);
 	if (SlotBorder) SlotBorder->SetBrushColor(FLinearColor(0.05f, 0.25f, 0.05f, 0.9f));
@@ -73,6 +75,7 @@ void UAOSLaneSlotWidget::SetAssigned(TSubclassOf<AAOSCharacter> InClass, const F
 void UAOSLaneSlotWidget::ClearAssignment()
 {
 	AssignedClass = nullptr;
+	AssignedRosterIndex = -1;
 	if (SlotNameText) SlotNameText->SetText(FText::FromString(TEXT("[ 비어있음 ]")));
 	if (ClearButton) ClearButton->SetVisibility(ESlateVisibility::Collapsed);
 	if (SlotBorder) SlotBorder->SetBrushColor(FLinearColor(0.1f, 0.1f, 0.15f, 0.9f));
@@ -98,6 +101,7 @@ void UAOSLaneSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry,
 
 	UAOSCharacterDragDropOperation* Op = NewObject<UAOSCharacterDragDropOperation>();
 	Op->CharacterClass = AssignedClass;
+	Op->RosterIndex = AssignedRosterIndex; // 슬롯 간 이동 시 유닛(로스터) 정체성 유지
 	Op->bFromLaneSlot = true;
 	Op->SourceLane = OwnerLane;
 	Op->SourceSlotIndex = SlotIndex;
@@ -330,6 +334,22 @@ void UAOSCharacterSelectWidget::BuildUI()
 	TotalVSlot->SetPadding(FMargin(0, 0, 0, 10));
 	TotalVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
+	// ── 상점 열기 버튼 (클릭 → 상점 팝업) ──
+	ShopButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopButton"));
+	{
+		UTextBlock* ShopBtnLabel = WidgetTree->ConstructWidget<UTextBlock>(
+			UTextBlock::StaticClass(), TEXT("ShopButtonLabel"));
+		ShopBtnLabel->SetText(FText::FromString(TEXT("상점 열기")));
+		FSlateFontInfo ShopBtnFont = ShopBtnLabel->GetFont();
+		ShopBtnFont.Size = 18;
+		ShopBtnLabel->SetFont(ShopBtnFont);
+		ShopButton->AddChild(ShopBtnLabel);
+	}
+	ShopButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnShopButtonClicked);
+	UVerticalBoxSlot* ShopBtnVSlot = VBox->AddChildToVerticalBox(ShopButton);
+	ShopBtnVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+	ShopBtnVSlot->SetPadding(FMargin(0, 4, 0, 8));
+
 	// ── 하단: 캐릭터 카드 그리드 ──
 	CardGrid = WidgetTree->ConstructWidget<UWrapBox>(
 		UWrapBox::StaticClass(), TEXT("CardGrid"));
@@ -366,6 +386,15 @@ void UAOSCharacterSelectWidget::BuildUI()
 	UVerticalBoxSlot* StatusVSlot = VBox->AddChildToVerticalBox(TeamReadyStatusText);
 	StatusVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 	StatusVSlot->SetPadding(FMargin(0, 0, 0, 4));
+
+	// ── 상점 팝업: 전체화면 오버레이로 RootPanel 에 추가 (평소 Collapsed, "상점 열기"로 표시) ──
+	ShopWidget = WidgetTree->ConstructWidget<UAOSShopWidget>(
+		UAOSShopWidget::StaticClass(), TEXT("ShopPopup"));
+	ShopWidget->BuildShopUI();
+	UCanvasPanelSlot* ShopCanvasSlot = RootPanel->AddChildToCanvas(ShopWidget);
+	ShopCanvasSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
+	ShopCanvasSlot->SetOffsets(FMargin(0));
+	ShopCanvasSlot->SetZOrder(50);
 
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] UI 동적 생성 완료"));
 }
@@ -406,6 +435,12 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 		CharacterCardWidgets.Add(Card);
 	}
 
+	// 새 라운드(준비 화면) 진입 시 상점 팝업은 닫힌 상태로 시작
+	if (ShopWidget)
+	{
+		ShopWidget->CloseShop();
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 로스터 초기화 완료 (%d개 캐릭터)"), Roster.Num());
 }
 
@@ -420,6 +455,24 @@ void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIn
 
 	UAOSLaneSlotWidget* TargetSlot = LaneSlotWidgets[FlatIdx];
 	if (!TargetSlot) return;
+
+	// 중복 배치 방지: 같은 유닛(로스터 인덱스)을 두 슬롯에 동시에 둘 수 없음.
+	// (이동인 경우 소스 슬롯과 타겟 슬롯은 검사에서 제외 — 소스는 곧 비워짐)
+	if (Op->RosterIndex >= 0)
+	{
+		const int32 SrcFlat = Op->bFromLaneSlot
+			? (static_cast<int32>(Op->SourceLane) * 2 + Op->SourceSlotIndex) : -1;
+		for (int32 i = 0; i < LaneSlotWidgets.Num(); ++i)
+		{
+			if (i == FlatIdx || i == SrcFlat) continue;
+			const UAOSLaneSlotWidget* S = LaneSlotWidgets[i];
+			if (S && S->GetAssignedRosterIndex() == Op->RosterIndex)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 유닛(로스터 %d) 이미 배치됨 — 중복 배치 거부"), Op->RosterIndex);
+				return;
+			}
+		}
+	}
 
 	bool bTargetWasEmpty = (TargetSlot->GetAssignedClass() == nullptr);
 
@@ -441,12 +494,12 @@ void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIn
 		}
 	}
 
-	// 대상 슬롯에 배정
+	// 대상 슬롯에 배정 (유닛 정체성 = 로스터 인덱스 보존)
 	FText CharName = FText::FromString(TEXT("캐릭터"));
 	if (Op->RosterIndex >= 0 && Op->RosterIndex < CachedRoster.Num())
 		CharName = CachedRoster[Op->RosterIndex].DisplayName;
 
-	TargetSlot->SetAssigned(Op->CharacterClass, CharName);
+	TargetSlot->SetAssigned(Op->CharacterClass, Op->RosterIndex, CharName);
 
 	UpdateCountsFromSlots();
 	RefreshTotalCountDisplay();
@@ -477,6 +530,26 @@ TArray<TSubclassOf<AAOSCharacter>> UAOSCharacterSelectWidget::GetLaneClasses(EAO
 			{
 				if (TSubclassOf<AAOSCharacter> Cls = SlotPtr->GetAssignedClass())
 					Result.Add(Cls);
+			}
+		}
+	}
+	return Result;
+}
+
+TArray<int32> UAOSCharacterSelectWidget::GetLaneUnitIds(EAOSLane Lane) const
+{
+	// GetLaneClasses 와 동일 순서/조건 — 배정된 슬롯의 UnitId(로스터 인덱스)만 평행 수집
+	TArray<int32> Result;
+	int32 L = static_cast<int32>(Lane);
+	for (int32 S = 0; S < 2; ++S)
+	{
+		int32 FlatIdx = L * 2 + S;
+		if (FlatIdx < LaneSlotWidgets.Num())
+		{
+			if (const UAOSLaneSlotWidget* SlotPtr = LaneSlotWidgets[FlatIdx])
+			{
+				if (SlotPtr->GetAssignedClass())
+					Result.Add(SlotPtr->GetAssignedRosterIndex());
 			}
 		}
 	}
@@ -533,6 +606,12 @@ void UAOSCharacterSelectWidget::UpdatePreparationTimer(float RemainingSeconds)
 		? FLinearColor(1.0f, 0.2f, 0.2f, 1.0f)
 		: FLinearColor(1.0f, 0.85f, 0.2f, 1.0f);
 	TimerText->SetColorAndOpacity(FSlateColor(Color));
+
+	// 상점 팝업이 열려 있으면 상점 헤더 타이머도 갱신 (준비창 남은시간 항상 표시)
+	if (ShopWidget && ShopWidget->IsOpen())
+	{
+		ShopWidget->UpdateTimer(RemainingSeconds);
+	}
 }
 
 void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
@@ -560,6 +639,31 @@ void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
 	}
 
 	OnStartRoundClicked.Broadcast();
+}
+
+void UAOSCharacterSelectWidget::OnShopButtonClicked()
+{
+	if (!ShopWidget) return;
+
+	// 현재 배치된 유닛(최대 5) 목록을 구성해 상점 팝업에 전달
+	TArray<FAOSShopUnit> PlacedUnits;
+	for (UAOSLaneSlotWidget* LaneSlot : LaneSlotWidgets)
+	{
+		if (!LaneSlot) continue;
+		TSubclassOf<AAOSCharacter> Cls = LaneSlot->GetAssignedClass();
+		if (!Cls) continue;
+
+		FAOSShopUnit U;
+		U.UnitId = LaneSlot->GetAssignedRosterIndex();
+		U.CharacterClass = Cls;
+		U.DisplayName = (U.UnitId >= 0 && U.UnitId < CachedRoster.Num())
+			? CachedRoster[U.UnitId].DisplayName
+			: FText::FromString(TEXT("유닛"));
+		PlacedUnits.Add(U);
+	}
+
+	ShopWidget->OpenForUnits(PlacedUnits);
+	UE_LOG(LogTemp, Log, TEXT("[CharacterSelect] 상점 열기 (배치 유닛 %d)"), PlacedUnits.Num());
 }
 
 void UAOSCharacterSelectWidget::UpdateTeamReadyStatus(bool bTeam1Ready, bool bTeam2Ready)

@@ -393,6 +393,32 @@
 
 ---
 
+## 2026-06-03 — 상점 재설계: 유닛 귀속 아이템 + 팝업 UI (유닛 선택 → 아이템 페이지)
+
+**작업 내용**
+- 상점을 "준비창 상시 임베드(라인별)" → **"상점 버튼 → 팝업"** 으로, 아이템 귀속을 **라인별 → 유닛별**로 전환
+- 백엔드(AOSGameMode): `ItemInventory[2][3]`(라인) → `UnitItemInventory[2]`(`TMap<UnitId,아이템목록>`, 유닛 귀속·라운드 누적). `ServerBuyLaneItem`→`ServerBuyItemForUnit(Team,UnitId,Row)`, `GetUnitItems`, `ApplyUnitItemsToCharacter`. `DeployPlan` 에 UnitId(=로스터 인덱스) 병렬 저장 → 스폰 시 유닛 아이템 재적용
+- `FAOSItemRow.RecommendedClasses` 추가 (추천 정렬용)
+- PlayerController: `Server_SetLaneDeployClasses` 에 UnitIds 추가, `Server_BuyItemForUnit` RPC, 콘솔 `BuyItem(UnitId)`
+- CharacterSelect: 슬롯이 RosterIndex 저장 + `GetLaneUnitIds`, **중복 배치 방지**(같은 유닛 2슬롯 불가), 슬롯 이동 시 유닛 정체성 유지, "상점 열기" 버튼 + 상점을 전체화면 팝업 오버레이로 추가, 준비 타이머를 팝업 헤더로 포워딩
+- AOSShopWidget 전면 재작성: View1 유닛(최대 5) 선택 → View2 아이템 페이지(`RecommendedClasses` 매칭 시 ★ 추천 먼저) + 뒤로가기/닫기, 헤더에 골드+남은시간 상시 표시
+
+**문제점**
+- "특정 캐릭터에 아이템"인데 캐릭터는 매 라운드 리스폰 → 안정적 유닛 정체성 필요. 기존 배치는 "클래스를 슬롯에"(중복 가능)라 유닛 ID 부재
+- 빌드 실패: `'Slot' 선언이 클래스 멤버를 숨김` — UE가 변수 섀도잉을 에러로 승격(`UWidget::Slot` 가림)
+
+**해결 방법**
+- 유닛 = 로스터 항목(UnitId = 로스터 인덱스). 드래그가 이미 RosterIndex 를 들고 있어 슬롯에 저장 → 배치 RPC/스폰에 전달. 중복 배치 금지로 유닛 distinct 보장. 아이템은 (Team,UnitId)에 귀속되어 배치를 바꿔도 유닛을 따라감
+- 클라는 GameMode 없음 → 카탈로그(DT_Items) 직접 로드 + 구매만 서버 RPC. 유닛 목록은 CharacterSelect 배치 슬롯에서 구성
+- 섀도잉: 지역변수 `Slot`→`LaneSlot`
+
+**결과**
+- 준비창 "상점 열기" → 팝업 → 유닛 선택 → 추천 먼저 정렬 아이템 구매 → 뒤로/닫기, 남은시간 상시 표시. 산 아이템이 유닛에 누적돼 다음 라운드 강화 (빌드+PIE 확인 완료)
+- 신규 UI 클래스: `UAOSShopWidget` / `UAOSShopUnitButton` / `UAOSShopItemButton`
+- 후속: DT_Items 의 `RecommendedClasses` 데이터 입력(agent-design-balance), 쿡 빌드용 카탈로그 하드참조
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

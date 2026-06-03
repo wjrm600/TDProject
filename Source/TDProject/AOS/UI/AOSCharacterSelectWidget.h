@@ -17,6 +17,7 @@ class UBorder;
 class UImage;
 class UAOSCharacterSelectWidget;
 class UAOSCharacterDragDropOperation;
+class UAOSShopWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnStartRoundClicked);
 
@@ -45,9 +46,10 @@ public:
 	UButton* ClearButton;
 
 	void BuildSlotUI(UWidgetTree* WT);
-	void SetAssigned(TSubclassOf<AAOSCharacter> InClass, const FText& InName);
+	void SetAssigned(TSubclassOf<AAOSCharacter> InClass, int32 InRosterIndex, const FText& InName);
 	void ClearAssignment();
 	TSubclassOf<AAOSCharacter> GetAssignedClass() const { return AssignedClass; }
+	int32 GetAssignedRosterIndex() const { return AssignedRosterIndex; }
 
 	virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent,
 		UDragDropOperation* InOperation) override;
@@ -62,6 +64,7 @@ public:
 
 private:
 	TSubclassOf<AAOSCharacter> AssignedClass;
+	int32 AssignedRosterIndex = -1; // 배정된 유닛의 로스터 인덱스 (= UnitId)
 
 	UFUNCTION()
 	void OnClearButtonClicked();
@@ -132,6 +135,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	TArray<TSubclassOf<AAOSCharacter>> GetLaneClasses(EAOSLane Lane) const;
 
+	// 레인별 배정 UnitId(로스터 인덱스) 배열 — GetLaneClasses 와 평행 (유닛 귀속 아이템용)
+	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
+	TArray<int32> GetLaneUnitIds(EAOSLane Lane) const;
+
 	// 하위 호환: 라인별 배치 수 반환
 	UFUNCTION(BlueprintCallable, Category = "AOS|UI")
 	int32 GetLaneCount(EAOSLane Lane) const;
@@ -167,6 +174,10 @@ protected:
 	UPROPERTY()
 	UWrapBox* CardGrid;
 
+	// Slice 0 상점 패널 (라인별 아이템 구매) — 준비 화면에 임베드
+	UPROPERTY()
+	UAOSShopWidget* ShopWidget = nullptr;
+
 	UPROPERTY()
 	UTextBlock* TotalCountText;
 
@@ -182,6 +193,10 @@ protected:
 	// "라운드 준비" 버튼 내부의 텍스트 — 클릭 시 "준비 완료 ✓"로 변경
 	UPROPERTY()
 	UTextBlock* StartRoundButtonText;
+
+	// 상점 열기 버튼 (클릭 시 ShopWidget 팝업 표시)
+	UPROPERTY()
+	UButton* ShopButton = nullptr;
 
 	// 양 팀 준비 상태 표시 텍스트 ("팀1: 준비완료 / 팀2: 대기중")
 	UPROPERTY()
@@ -200,6 +215,10 @@ protected:
 
 	UFUNCTION()
 	void OnStartRoundButtonClicked();
+
+	// 상점 버튼 클릭 → 배치된 유닛 목록으로 상점 팝업 열기
+	UFUNCTION()
+	void OnShopButtonClicked();
 
 private:
 	void BuildUI();

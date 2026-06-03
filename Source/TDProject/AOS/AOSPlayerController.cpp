@@ -234,7 +234,8 @@ void AAOSPlayerController::Tick(float DeltaTime)
 						for (EAOSLane Lane : Lanes)
 						{
 							TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
-							Server_SetLaneDeployClasses(Lane, Classes);
+							TArray<int32> UnitIds = CharacterSelectWidget->GetLaneUnitIds(Lane);
+							Server_SetLaneDeployClasses(Lane, Classes, UnitIds);
 							Server_SetLaneDeployCount(Lane, Classes.Num());
 						}
 						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 준비 타이머 만료 임박 — 배치 자동 전송 (Total:%d)"),
@@ -724,7 +725,8 @@ void AAOSPlayerController::OnStartRoundClicked()
 		for (EAOSLane Lane : Lanes)
 		{
 			TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
-			Server_SetLaneDeployClasses(Lane, Classes);
+			TArray<int32> UnitIds = CharacterSelectWidget->GetLaneUnitIds(Lane);
+			Server_SetLaneDeployClasses(Lane, Classes, UnitIds);
 			Server_SetLaneDeployCount(Lane, Classes.Num()); // 하위 호환
 		}
 
@@ -760,20 +762,22 @@ void AAOSPlayerController::Server_SetLaneDeployCount_Implementation(EAOSLane Lan
 
 // Server RPC 구현 - 라인별 배치 클래스 목록 설정
 bool AAOSPlayerController::Server_SetLaneDeployClasses_Validate(EAOSLane Lane,
-	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+	const TArray<int32>& UnitIds)
 {
 	return Classes.Num() <= 2;
 }
 
 void AAOSPlayerController::Server_SetLaneDeployClasses_Implementation(EAOSLane Lane,
-	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+	const TArray<int32>& UnitIds)
 {
 	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
 	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
 
 	if (GM && PS)
 	{
-		GM->ServerSetLaneDeployClassesForPlayer(PS, Lane, Classes);
+		GM->ServerSetLaneDeployClassesForPlayer(PS, Lane, Classes, UnitIds);
 	}
 	else
 	{
@@ -821,8 +825,8 @@ void AAOSPlayerController::Server_RequestStartRound_Implementation()
 	}
 }
 
-// Slice 0: Server RPC 구현 - 라인 아이템 구매 (서버가 자기 팀 골드로 검증)
-void AAOSPlayerController::Server_BuyLaneItem_Implementation(EAOSLane Lane, FName ItemRowName)
+// Server RPC 구현 - 유닛 아이템 구매 (서버가 자기 팀 골드로 검증)
+void AAOSPlayerController::Server_BuyItemForUnit_Implementation(int32 UnitId, FName ItemRowName)
 {
 	AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr;
 	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
@@ -832,16 +836,15 @@ void AAOSPlayerController::Server_BuyLaneItem_Implementation(EAOSLane Lane, FNam
 	}
 
 	// 클라가 임의 팀을 지정 못 하도록 서버가 PlayerState 의 팀으로 강제
-	GM->ServerBuyLaneItem(PS->GetTeam(), Lane, ItemRowName);
+	GM->ServerBuyItemForUnit(PS->GetTeam(), UnitId, ItemRowName);
 }
 
-// Slice 0: 테스트용 콘솔 명령 — 로컬에서 입력 → Server RPC 로 전달
-void AAOSPlayerController::BuyItem(int32 LaneIndex, FName ItemRowName)
+// 테스트용 콘솔 명령 — 로컬에서 입력 → Server RPC 로 전달 (UnitId = 로스터 인덱스)
+void AAOSPlayerController::BuyItem(int32 UnitId, FName ItemRowName)
 {
-	const EAOSLane Lane = static_cast<EAOSLane>(FMath::Clamp(LaneIndex, 0, 2));
-	Server_BuyLaneItem(Lane, ItemRowName);
-	UE_LOG(LogTemp, Log, TEXT("[PlayerController] BuyItem 콘솔 명령 → 서버 요청 (Lane=%d, Item=%s)"),
-		LaneIndex, *ItemRowName.ToString());
+	Server_BuyItemForUnit(UnitId, ItemRowName);
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] BuyItem 콘솔 명령 → 서버 요청 (UnitId=%d, Item=%s)"),
+		UnitId, *ItemRowName.ToString());
 }
 
 // 로비 화면 표시

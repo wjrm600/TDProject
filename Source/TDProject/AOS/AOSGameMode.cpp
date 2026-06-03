@@ -402,24 +402,42 @@ void AAOSGameMode::InitializeDefaultDeployPlan()
 			(CharacterRoster.Num() > 0 && CharacterRoster[0].CharacterClass == DefaultClass) ? TEXT("Roster") : TEXT("CharacterClass 폴백"));
 	}
 
+	// DefaultClass 의 로스터 인덱스 = 기본 배치 유닛 id (없으면 -1 = 아이템 미적용)
+	int32 DefaultUnitId = -1;
+	for (int32 i = 0; i < CharacterRoster.Num(); ++i)
+	{
+		if (CharacterRoster[i].CharacterClass && CharacterRoster[i].CharacterClass == DefaultClass)
+		{
+			DefaultUnitId = i;
+			break;
+		}
+	}
+
 	for (int32 T = 0; T < 2; ++T)
 	{
 		for (int32 L = 0; L < 3; ++L)
+		{
 			DeployPlan[T][L].Classes.Empty();
+			DeployPlan[T][L].UnitIds.Empty();
+		}
 
 		if (DefaultClass)
 		{
 			// 기본: Top 2, Mid 2, Bottom 1
 			DeployPlan[T][0].Classes = { DefaultClass, DefaultClass };
+			DeployPlan[T][0].UnitIds = { DefaultUnitId, DefaultUnitId };
 			DeployPlan[T][1].Classes = { DefaultClass, DefaultClass };
+			DeployPlan[T][1].UnitIds = { DefaultUnitId, DefaultUnitId };
 			DeployPlan[T][2].Classes = { DefaultClass };
+			DeployPlan[T][2].UnitIds = { DefaultUnitId };
 		}
 	}
 }
 
 // 레인 배치 클래스 목록 설정 (신규 API)
 void AAOSGameMode::SetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane,
-	const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+	const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+	const TArray<int32>& UnitIds)
 {
 	if (!HasAuthority()) return;
 	int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
@@ -427,8 +445,15 @@ void AAOSGameMode::SetLaneDeployClasses(EAOSTeam Team, EAOSLane Lane,
 	if (L < 0 || L >= 3) return;
 
 	DeployPlan[T][L].Classes.Empty();
-	for (int32 i = 0; i < FMath::Min(Classes.Num(), MaxCharactersPerLane); ++i)
-		if (Classes[i]) DeployPlan[T][L].Classes.Add(Classes[i]);
+	DeployPlan[T][L].UnitIds.Empty();
+	const int32 Count = FMath::Min(Classes.Num(), MaxCharactersPerLane);
+	for (int32 i = 0; i < Count; ++i)
+	{
+		if (!Classes[i]) continue;
+		DeployPlan[T][L].Classes.Add(Classes[i]);
+		// UnitIds 가 부족/누락이면 -1 (유닛 미식별 → 아이템 미적용)
+		DeployPlan[T][L].UnitIds.Add(UnitIds.IsValidIndex(i) ? UnitIds[i] : -1);
+	}
 }
 
 const TArray<TSubclassOf<AAOSCharacter>>& AAOSGameMode::GetLaneDeployClasses(
@@ -441,7 +466,8 @@ const TArray<TSubclassOf<AAOSCharacter>>& AAOSGameMode::GetLaneDeployClasses(
 }
 
 void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerState,
-	EAOSLane Lane, const TArray<TSubclassOf<AAOSCharacter>>& Classes)
+	EAOSLane Lane, const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+	const TArray<int32>& UnitIds)
 {
 	if (!HasAuthority() || !PlayerState) return;
 	if (AOSGameState != EAOSGameState::RoundPreparation) return;
@@ -456,7 +482,7 @@ void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerSt
 			Others += DeployPlan[T][OtherL].Classes.Num();
 	if (Others + NewCount > 5) return;
 
-	SetLaneDeployClasses(PlayerState->GetTeam(), Lane, Classes);
+	SetLaneDeployClasses(PlayerState->GetTeam(), Lane, Classes, UnitIds);
 	PlayerState->ServerSetDeployCount(Lane, NewCount);
 }
 
@@ -537,6 +563,7 @@ void AAOSGameMode::SpawnCharactersForRound()
 			int32 T = (CurrentTeam == EAOSTeam::Team1) ? 0 : 1;
 			int32 L = static_cast<int32>(CurrentLane);
 			const TArray<TSubclassOf<AAOSCharacter>>& PlannedClasses = DeployPlan[T][L].Classes;
+			const TArray<int32>& PlannedUnitIds = DeployPlan[T][L].UnitIds;
 
 			if (PlannedClasses.Num() == 0) continue;
 
@@ -582,8 +609,9 @@ void AAOSGameMode::SpawnCharactersForRound()
 					else
 						Team2Characters.Add(NewCharacter);
 
-					// Slice 0: 이 라인이 구매한 아이템 GE 를 재적용 (라운드 리셋돼도 누적)
-					ApplyLaneItemsToCharacter(CurrentTeam, CurrentLane, NewCharacter);
+					// 이 유닛이 구매한 아이템 GE 를 재적용 (라운드 리셋돼도 유닛에 누적)
+					const int32 SpawnedUnitId = PlannedUnitIds.IsValidIndex(i) ? PlannedUnitIds[i] : -1;
+					ApplyUnitItemsToCharacter(CurrentTeam, SpawnedUnitId, NewCharacter);
 				}
 			}
 
@@ -810,7 +838,7 @@ void AAOSGameMode::OnStructureDestroyedAwardGold(AAOSStructure* DestroyedStructu
 // Slice 0: 아이템 구매 / 소유 / 적용
 // ============================================================
 
-bool AAOSGameMode::ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRowName)
+bool AAOSGameMode::ServerBuyItemForUnit(EAOSTeam Team, int32 UnitId, FName ItemRowName)
 {
 	if (!HasAuthority())
 	{
@@ -823,14 +851,20 @@ bool AAOSGameMode::ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRow
 		return false;
 	}
 
-	// 라운드 준비 단계에서만 구매 허용 (전투 중 구매 방지)
+	if (UnitId < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Economy] 유효하지 않은 UnitId(%d) — 구매 거부"), UnitId);
+		return false;
+	}
+
+	// 라운드 준비/정산 단계에서만 구매 허용 (전투 중 구매 방지)
 	if (AOSGameState != EAOSGameState::RoundPreparation && AOSGameState != EAOSGameState::Settlement)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Economy] 준비/정산 단계가 아님 — 구매 거부 (현재 상태=%d)"), (int32)AOSGameState);
 		return false;
 	}
 
-	const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(ItemRowName, TEXT("ServerBuyLaneItem"));
+	const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(ItemRowName, TEXT("ServerBuyItemForUnit"));
 	if (!Row)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Economy] 아이템 Row '%s' 없음"), *ItemRowName.ToString());
@@ -852,42 +886,40 @@ bool AAOSGameMode::ServerBuyLaneItem(EAOSTeam Team, EAOSLane Lane, FName ItemRow
 		return false;
 	}
 
-	// 차감 + 인벤토리 추가
+	// 차감 + 유닛 인벤토리 추가 (라운드 간 누적, 유닛 귀속)
 	AwardGold(Team, -Row->Cost);
 
 	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
-	const int32 L = static_cast<int32>(Lane);
-	ItemInventory[T][L].ItemRowNames.Add(ItemRowName);
+	TArray<FName>& UnitInv = UnitItemInventory[T].FindOrAdd(UnitId);
+	UnitInv.Add(ItemRowName);
 
-	UE_LOG(LogTemp, Log, TEXT("[Economy] %s %s 라인 '%s' 구매 완료 (-%d골드). 라인 보유 아이템 %d개"),
+	UE_LOG(LogTemp, Log, TEXT("[Economy] %s 유닛#%d '%s' 구매 완료 (-%d골드). 유닛 보유 아이템 %d개"),
 		Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
-		L == 0 ? TEXT("Top") : L == 1 ? TEXT("Mid") : TEXT("Bottom"),
-		*ItemRowName.ToString(), Row->Cost, ItemInventory[T][L].ItemRowNames.Num());
+		UnitId, *ItemRowName.ToString(), Row->Cost, UnitInv.Num());
 
 	return true;
 }
 
-TArray<FName> AAOSGameMode::GetLaneItems(EAOSTeam Team, EAOSLane Lane) const
+TArray<FName> AAOSGameMode::GetUnitItems(EAOSTeam Team, int32 UnitId) const
 {
 	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
-	const int32 L = static_cast<int32>(Lane);
-	return ItemInventory[T][L].ItemRowNames;
+	return UnitItemInventory[T].FindRef(UnitId);
 }
 
-void AAOSGameMode::ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSCharacter* Character)
+void AAOSGameMode::ApplyUnitItemsToCharacter(EAOSTeam Team, int32 UnitId, AAOSCharacter* Character)
 {
-	if (!HasAuthority() || !Character || !ItemTable)
+	if (!HasAuthority() || !Character || !ItemTable || UnitId < 0)
 	{
 		return;
 	}
 
 	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
-	const int32 L = static_cast<int32>(Lane);
-	const TArray<FName>& Owned = ItemInventory[T][L].ItemRowNames;
-	if (Owned.Num() == 0)
+	const TArray<FName>* OwnedPtr = UnitItemInventory[T].Find(UnitId);
+	if (!OwnedPtr || OwnedPtr->Num() == 0)
 	{
 		return;
 	}
+	const TArray<FName>& Owned = *OwnedPtr;
 
 	IAbilitySystemInterface* AsiChar = Cast<IAbilitySystemInterface>(Character);
 	UAbilitySystemComponent* ASC = AsiChar ? AsiChar->GetAbilitySystemComponent() : nullptr;
@@ -899,7 +931,7 @@ void AAOSGameMode::ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSC
 	int32 Applied = 0;
 	for (const FName& RowName : Owned)
 	{
-		const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(RowName, TEXT("ApplyLaneItems"));
+		const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(RowName, TEXT("ApplyUnitItems"));
 		if (!Row || !Row->StatEffect)
 		{
 			continue;
@@ -917,9 +949,8 @@ void AAOSGameMode::ApplyLaneItemsToCharacter(EAOSTeam Team, EAOSLane Lane, AAOSC
 
 	if (Applied > 0)
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("[Economy] %s %s 라인 캐릭터에 아이템 %d개 적용"),
-			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
-			L == 0 ? TEXT("Top") : L == 1 ? TEXT("Mid") : TEXT("Bottom"), Applied);
+		UE_LOG(LogTemp, Verbose, TEXT("[Economy] %s 유닛#%d 캐릭터에 아이템 %d개 적용"),
+			Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"), UnitId, Applied);
 	}
 }
 

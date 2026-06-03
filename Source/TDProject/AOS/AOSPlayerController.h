@@ -87,9 +87,11 @@ public:
 	void Server_SetLaneDeployCount(EAOSLane Lane, int32 Count);
 
 	// 라인별 배치 클래스 목록 설정 (드래그앤드롭 UI 용)
+	// UnitIds: 각 클래스의 UnitId(로스터 인덱스) — Classes 와 같은 길이. 유닛 귀속 아이템 적용에 사용.
 	UFUNCTION(Server, Reliable, WithValidation, Category = "AOS|Network")
 	void Server_SetLaneDeployClasses(EAOSLane Lane,
-		const TArray<TSubclassOf<AAOSCharacter>>& Classes);
+		const TArray<TSubclassOf<AAOSCharacter>>& Classes,
+		const TArray<int32>& UnitIds);
 
 	// 준비 상태 토글 (로비/라운드 준비 시 사용)
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
@@ -99,13 +101,13 @@ public:
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_RequestStartRound();
 
-	// Slice 0: 라인 아이템 구매 요청 (클라 → 서버). 상점 UI 가 호출. 서버가 골드 검증.
+	// 유닛 아이템 구매 요청 (클라 → 서버). 상점 UI 가 호출. 서버가 골드/단계 검증.
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
-	void Server_BuyLaneItem(EAOSLane Lane, FName ItemRowName);
+	void Server_BuyItemForUnit(int32 UnitId, FName ItemRowName);
 
-	// Slice 0: 테스트용 콘솔 명령 — 예) "BuyItem 0 Sword" (LaneIndex: 0=Top,1=Mid,2=Bottom)
+	// 테스트용 콘솔 명령 — 예) "BuyItem 0 Sword" (UnitId = 로스터 인덱스)
 	UFUNCTION(Exec)
-	void BuyItem(int32 LaneIndex, FName ItemRowName);
+	void BuyItem(int32 UnitId, FName ItemRowName);
 
 	// 서버 → 클라이언트: 캐릭터 로스터 전달
 	UFUNCTION(Client, Reliable, Category = "AOS|Network")
