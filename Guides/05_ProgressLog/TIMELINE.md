@@ -538,6 +538,28 @@
 
 ---
 
+## 2026-06-04 — AI 스폰 직후 아군 오사(friendly fire) 수정 (StartLogic 타이밍 race)
+
+**작업 내용**
+- `AAOSAIController`: `StateTreeComponent->StartLogic()` 호출 위치를 **`OnPossess` → `StartDeployment()`** 로 이동
+- 원인 확정용 임시 진단 로그(데미지 단일 훅에서 출처 vs victim 팀)는 확인 후 제거
+
+**문제점**
+- 게임 시작 직후 **자기 진영 근처에서 같은 팀 캐릭터끼리 기본공격**(데미지=공격자 AP). 두번째로 스폰되는 **Team2 에서만** 발생
+- 원인: `OnPossess` 는 SpawnActor 중 auto-possess 로 `SetTeam` 보다 **먼저** 실행 → 여기서 StartLogic 하면 StateTree 가 `Team=기본값(Team1)` 으로 첫 평가 → 이미 Team2 로 설정된 동료를 적으로 오인·타겟 락
+- (Team1 은 먼저 스폰돼 기본값==실제값이라 무사 — 이 **비대칭**이 진단 단서)
+
+**해결 방법**
+- 막 추가한 플로팅 데미지 숫자 덕에 "보이지 않던" 오사가 표면화 → `AOSAttributeSet::PostGameplayEffectExecute` 에서 `Data.EffectSpec.GetContext().GetSourceObject()` 팀 vs victim 팀 로그로 friendly-fire 100% 확정 (4건 모두 Team2↔Team2, 스폰 근처)
+- 근본 수정: StartLogic 을 팀·라인·웨이포인트가 모두 확정된 `StartDeployment()` 로 이동 (possess 이후라 schema context actor binding 도 정상)
+
+**결과**
+- 스폰 직후 아군 오사 완전 제거, 중앙 교전은 정상 유지. 핫 리로드 + PIE 확인 완료
+- 영향: `Source/TDProject/AOS/AOSAIController.cpp` (OnPossess/StartDeployment)
+- 문서: `CLAUDE.md` Phase 6 핵심클래스 설명 + 트러블슈팅 **#5** 신규
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

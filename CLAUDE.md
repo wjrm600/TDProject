@@ -189,10 +189,11 @@ AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
 - **`UStateTreeAIComponent`** (`Components/StateTreeAIComponent.h`)
   - `AAOSAIController` 가 `CreateDefaultSubobject` 로 부착
   - **`bStartLogicAutomatically = false`** (생성자에서 `SetStartLogicAutomatically(false)`) →
-    BeginPlay 자동 시작 끔. AIController 의 `OnPossess` 가 ControlledCharacter 캐시 직후
-    수동으로 `StartLogic()` 호출. (BeginPlay 시점엔 GetPawn()=null 이라 schema 의
-    context actor binding 이 실패 — 자동 시작 시 `Could not find context actor of type
-    AOSCharacter. StateTree will not update.` 에러)
+    BeginPlay 자동 시작 끔. `StartLogic()` 은 **`AAOSAIController::StartDeployment()` 에서 수동 호출**
+    (`SetTeam → DeployToLane → StartDeployment` 순서라 팀이 확정된 뒤 시작).
+    (BeginPlay 시점엔 GetPawn()=null 이라 schema 의 context actor binding 실패 — 자동 시작 시
+    `Could not find context actor of type AOSCharacter. StateTree will not update.` 에러.
+    ⚠️ 과거 `OnPossess` 에서 시작했으나 SetTeam 보다 빨라 **아군 오사** 발생 → 이동. 트러블슈팅 #5 참고)
   - StateTreeAIComponentSchema 사용 — AAIController 접근 보장
   - BP_AOSAIController 의 컴포넌트 디테일 → `StateTreeRef` 슬롯에 ST 자산 지정
 
@@ -319,8 +320,8 @@ ST 자산 만들고 AI 가 동작 안 할 때 점검 체크리스트 — 이 3�
   [AI Controller] Possessed ... — IsRunning=false
   ```
 - 원인: BeginPlay 시점엔 AIController->GetPawn() = null → schema 가 ContextActorClass(AOSCharacter) 매칭 실패
-- 수정: 생성자에서 `StateTreeComponent->SetStartLogicAutomatically(false)` + OnPossess 에서
-  ControlledCharacter 캐시 직후 `StateTreeComponent->StartLogic()` 수동 호출
+- 수정: 생성자에서 `StateTreeComponent->SetStartLogicAutomatically(false)` + **`StartDeployment()` 에서**
+  `StateTreeComponent->StartLogic()` 수동 호출 (과거엔 OnPossess 였으나 #5 의 아군 오사 때문에 이동)
 - BP 갱신 권장: `BP_AOSAIController → StateTreeComponent → AI → Start Logic Automatically` 도 false 확인 (BP CDO override 가능)
 
 **3. Running task 가 있는 state 는 자동 재선택 안 됨 (적 만나도 안 싸움)**
@@ -337,6 +338,20 @@ ST 자산 만들고 AI 가 동작 안 할 때 점검 체크리스트 — 이 3�
 - 원인: `TObjectPtr<AAOSAIController>` 로 선언 → schema 가 등록한 base `AAIController` 와 mismatch
 - 수정: `TObjectPtr<AAIController>` (base) 로 선언, cpp 에서 `Cast<AAOSAIController>` 사용
   (engine 의 `FStateTreeMoveToTaskInstanceData` 와 동일 패턴)
+
+**5. StartLogic 을 OnPossess 에서 호출 → 스폰 직후 아군 오사 (friendly fire)**
+- 증상: 게임 시작 직후 **자기 진영 근처에서 같은 팀 캐릭터끼리 기본공격** (데미지 숫자 = 공격자 AP).
+  특히 **두번째로 스폰되는 팀(Team2)에서만** 발생, 중앙 교전 전 자기 스폰 근처에서.
+- 원인: `OnPossess` 는 SpawnActor 중 auto-possess 로 `SetTeam` 보다 **먼저** 실행됨.
+  여기서 `StartLogic()` 하면 StateTree 가 `Team=기본값(Team1)` 으로 첫 평가 →
+  이미 Team2 로 설정된 동료를 적으로 오인하고 타겟 락 → 아군 공격.
+  (Team1 은 먼저 스폰돼 기본값==실제값이라 무사, Team2 만 피해 — 이 **비대칭**이 진단 단서)
+- 수정: `StartLogic()` 을 **`OnPossess` → `StartDeployment()` 로 이동**. StartDeployment 는
+  `SetTeam → DeployToLane` 이후라 팀·라인·웨이포인트가 모두 확정된 뒤 시작 → 오인 불가.
+  (StartDeployment 시점에도 pawn 은 possess 된 상태라 schema context binding 정상)
+- 진단 팁: 데미지 단일 훅 `AOSAttributeSet::PostGameplayEffectExecute` 에서
+  `Data.EffectSpec.GetContext().GetSourceObject()` 의 팀 vs victim 팀을 로그로 찍으면
+  friendly-fire 여부가 즉시 드러남.
 
 ### Hot Reload 비호환
 

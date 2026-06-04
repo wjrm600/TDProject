@@ -98,27 +98,23 @@ void AAOSAIController::OnPossess(APawn* InPawn)
 		return;
 	}
 
-	// Phase 6: StateTree 수동 시작 — Pawn 이 possess 된 상태에서 schema 가 context actor 를 찾을 수 있음
-	if (StateTreeComponent)
-	{
-		if (!StateTreeComponent->IsRunning())
-		{
-			StateTreeComponent->StartLogic();
-			UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed %s — StateTreeComponent::StartLogic() 호출, IsRunning=%s"),
-				*InPawn->GetName(),
-				StateTreeComponent->IsRunning() ? TEXT("true") : TEXT("false"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Possessed %s — StateTreeComponent 이미 실행 중"),
-				*InPawn->GetName());
-		}
-	}
-	else
+	// Phase 6 + 아군오사(FF) 수정: StateTree 시작(StartLogic)을 OnPossess 에서
+	// StartDeployment 로 이동했다.
+	//   OnPossess 는 SpawnActor 중 auto-possess 로 호출되어 SetTeam 보다 먼저 실행됨.
+	//   여기서 StartLogic 을 하면 StateTree 가 팀 기본값(Team1) 상태로 첫 평가를 수행 →
+	//   두번째로 스폰되는 Team2 캐릭터가 이미 Team2 로 설정된 동료를 적으로 오인하고
+	//   타겟을 락 → 스폰 직후 자기 진영에서 아군끼리 기본공격(데미지=공격자 AP).
+	//   StartDeployment 는 SetTeam → DeployToLane 이후에 호출되므로 팀이 확정된 뒤 안전하게 시작.
+	if (!StateTreeComponent)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[AI Controller] Possessed %s — StateTreeComponent is NULL!"),
 			*InPawn->GetName());
+		return;
 	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[AI Controller] Possessed %s — ControlledCharacter 캐시됨 (StartLogic 은 StartDeployment 에서 호출)"),
+		*InPawn->GetName());
 }
 
 void AAOSAIController::BeginPlay()
@@ -221,6 +217,17 @@ void AAOSAIController::StartDeployment(EAOSLane Lane)
 
 	UE_LOG(LogTemp, Warning, TEXT("[AI Controller] Deployment started on lane: %d, Waypoints: %d"),
 		static_cast<int32>(Lane), WaypointQueue.Num());
+
+	// 아군오사(FF) 수정: 팀(SetTeam)·라인·웨이포인트가 모두 설정된 지금 StateTree 시작.
+	// (OnPossess 가 아니라 여기서 시작해야 팀 기본값으로 인한 아군 오인공격이 없음.
+	//  이 시점엔 pawn 이 possess 된 상태라 schema 의 context actor(AOSCharacter) binding 도 정상.)
+	if (StateTreeComponent && !StateTreeComponent->IsRunning())
+	{
+		StateTreeComponent->StartLogic();
+		UE_LOG(LogTemp, Warning,
+			TEXT("[AI Controller] StartDeployment → StateTree StartLogic() 호출, IsRunning=%s"),
+			StateTreeComponent->IsRunning() ? TEXT("true") : TEXT("false"));
+	}
 }
 
 FVector AAOSAIController::GetNextTargetLocation()
