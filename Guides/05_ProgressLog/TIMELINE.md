@@ -487,6 +487,30 @@
 
 ---
 
+## 2026-06-04 — Slice 1 가독성: 플로팅 데미지 숫자
+
+**작업 내용**
+- 피격 시 머리 위로 떠오르며 페이드아웃하는 데미지 숫자 (캐릭터·타워·CC·스킬 데미지 전부 자동)
+- 신규 `AOS/UI/AOSDamageNumberWidget` — C++ 빌드 위젯(BP 자산 불필요). 월드 한 점에서 상승 + 페이드, ~1.1s 후 자동 제거
+- **단일 훅**: `AOSAttributeSet::PostGameplayEffectExecute` 데미지 차감 직후 victim 액터로 `Multicast_ShowDamageNumber(float)` 방송 → 모든 데미지 경로가 `GE_Damage` 를 지나므로 한 곳만 후킹하면 전부 커버
+- `AOSCharacter`/`AOSStructure` 에 멀티캐스트 추가 (HitReact RPC 패턴, 단 **Unreliable**=비주얼이라 유실 허용). 피격 측 팀 색상 틴트(Team1=레드/Team2=블루), 큰 피해일수록 폰트 ↑
+
+**문제점 / 난관**
+- 순수 C++ `UUserWidget` 은 `TickFrequency=Auto` 에서 BP Tick/애니메이션이 없으면 `NativeTick` 이 호출되지 않음 → 떠오름/페이드 미동작 함정
+- DS 에는 렌더 파이프라인/뷰포트 없음 → 위젯 생성 금지 필요
+
+**해결 방법**
+- 떠오름/페이드를 **월드 타이머(1/60s)** 로 구동 (프레임률 독립, Auto 틱 게이팅 회피). `NativeDestruct`·수명 만료 시 타이머 정리
+- `SpawnDamageNumber` 가 `NM_DedicatedServer` 스킵 + 로컬 PC 가드 → 클라/리슨호스트에만 표시
+- 화면 투영은 `UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition`(DPI 보정 뷰포트 로컬), UMG 트리(RootWidget) 빌드 후 `AddToViewport` 순서 준수
+
+**결과**
+- 전투 피해가 한눈에 보임 (관전 가독성 = 디자인 기둥 2). 풀 리빌드 + PIE 확인 완료
+- 표시 데미지 = 방어막(W) 감산 후 **실제 깎인 HP**. 동시 타격多 시 타격당 위젯 1개 생성(추후 풀링 여지)
+- 후속 Slice 1: 미니맵
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

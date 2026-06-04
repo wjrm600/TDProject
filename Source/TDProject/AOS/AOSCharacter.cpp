@@ -11,6 +11,7 @@
 #include "GAS/Effects/GE_HitReact_State.h"
 #include "GAS/Effects/GE_Rooted.h"
 #include "UI/AOSHealthBarWidget.h"
+#include "UI/AOSDamageNumberWidget.h"
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -344,6 +345,22 @@ void AAOSCharacter::Multicast_PlayHitReact_Implementation()
 	{
 		AnimInst->Montage_Play(HitReactMontage);
 	}
+}
+
+void AAOSCharacter::Multicast_ShowDamageNumber_Implementation(float DamageAmount)
+{
+	// DS 는 렌더 없음 → skip (SpawnDamageNumber 내부에서도 가드하지만 조기 반환).
+	if (GetNetMode() == NM_DedicatedServer || DamageAmount <= 0.f) return;
+
+	const float HalfH = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 88.f;
+	const FVector SpawnLoc = GetActorLocation() + FVector(0.f, 0.f, HalfH + 30.f);
+
+	// 피격당한 쪽 팀 색상으로 틴트 (HP 바와 동일 규칙: Team1=Red, Team2=Blue, 가독성 위해 밝게)
+	const FLinearColor Color = (Team == EAOSTeam::Team1)
+		? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f)
+		: FLinearColor(0.55f, 0.75f, 1.0f, 1.0f);
+
+	UAOSDamageNumberWidget::SpawnDamageNumber(this, DamageAmount, SpawnLoc, Color);
 }
 
 void AAOSCharacter::ApplyHitReactStateGE()

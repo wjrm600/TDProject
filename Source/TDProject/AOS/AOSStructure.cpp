@@ -7,6 +7,7 @@
 #include "GAS/Data/AOSAttributeInitData.h"
 #include "GAS/Effects/GE_Damage.h"
 #include "UI/AOSHealthBarWidget.h"
+#include "UI/AOSDamageNumberWidget.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/WidgetComponent.h"
@@ -260,6 +261,22 @@ void AAOSStructure::Multicast_OnDestroyed_Implementation()
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Structure] %s 파괴 — 메시 숨김 (SetActorHiddenInGame)"), *GetName());
+}
+
+void AAOSStructure::Multicast_ShowDamageNumber_Implementation(float DamageAmount)
+{
+	if (GetNetMode() == NM_DedicatedServer || DamageAmount <= 0.f) return;
+
+	// 구조물은 높이가 제각각(타워/CC) → 바운드 상단 기준으로 머리 위 위치 산출
+	FVector Origin, Extent;
+	GetActorBounds(/*bOnlyCollidingComponents*/ false, Origin, Extent);
+	const FVector SpawnLoc = Origin + FVector(0.f, 0.f, Extent.Z + 40.f);
+
+	const FLinearColor Color = (OwnerTeam == EAOSTeam::Team1)
+		? FLinearColor(1.0f, 0.5f, 0.5f, 1.0f)
+		: FLinearColor(0.55f, 0.75f, 1.0f, 1.0f);
+
+	UAOSDamageNumberWidget::SpawnDamageNumber(this, DamageAmount, SpawnLoc, Color);
 }
 
 void AAOSStructure::EndPlay(const EEndPlayReason::Type EndPlayReason)

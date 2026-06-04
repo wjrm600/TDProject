@@ -134,6 +134,11 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_PlayHitReact();
 
+	// Slice 1: 플로팅 데미지 숫자 (서버 → 모든 클라, 시각 전용).
+	// Unreliable — 비주얼이라 패킷 유실 허용(놓친 숫자 1개는 무해).
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_ShowDamageNumber(float DamageAmount);
+
 	// 사망 몽타주 종료 시점에 호출 — 메시를 ragdoll 시뮬레이션으로 전환
 	// PhysicsAsset 가 없는 경우 fallback 으로 메시 hide.
 	UFUNCTION(BlueprintCallable, Category = "AOS|Animation")

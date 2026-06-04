@@ -205,4 +205,10 @@ private:
 	// Phase 3B: 파괴 시각 효과 멀티캐스트 (서버 → 모든 클라이언트)
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_OnDestroyed();
+
+public:
+	// Slice 1: 플로팅 데미지 숫자 (서버 → 모든 클라, 시각 전용).
+	// AttributeSet::PostGameplayEffectExecute(서버)가 호출하므로 public.
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_ShowDamageNumber(float DamageAmount);
 };

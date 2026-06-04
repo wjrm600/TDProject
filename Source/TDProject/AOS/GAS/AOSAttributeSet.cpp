@@ -77,6 +77,17 @@ void UAOSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 
 			AActor* Owner = GetOwningActor();
 
+			// Slice 1: 플로팅 데미지 숫자 — 서버에서 victim 액터로 멀티캐스트(시각 전용).
+			// 킬 블로우 포함 모든 피해에 대해 표시(사망 분기 위에서 1회 호출).
+			if (AAOSCharacter* DmgChar = Cast<AAOSCharacter>(Owner))
+			{
+				DmgChar->Multicast_ShowDamageNumber(LocalDamage);
+			}
+			else if (AAOSStructure* DmgStruct = Cast<AAOSStructure>(Owner))
+			{
+				DmgStruct->Multicast_ShowDamageNumber(LocalDamage);
+			}
+
 			// 사망 처리: Health 가 처음 0 으로 떨어지는 순간만 1회 발동
 			if (NewHealth <= 0.f && OldHealth > 0.f)
 			{
