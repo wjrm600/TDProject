@@ -511,6 +511,33 @@
 
 ---
 
+## 2026-06-04 — Slice 1 가독성: 미니맵 (카메라 정렬 + 뷰박스 + 클릭 이동)
+
+**작업 내용**
+- 화면 우하단 고정 미니맵 (렌더 방식 ②: 정적 배경 슬롯 + 아이콘 오버레이, C++ 위젯이라 BP 자산 불필요)
+- 신규 `AOS/UI/AOSMinimapWidget` — 구조물(타워/CC, 파괴 전까지) + 생존 캐릭터를 팀 색상 점으로, 월드 경계는 배치 구조물 위치에서 자동 산출(클라가 복제 액터로 직접). 갱신 20Hz 월드 타이머
+- **방향 일치**: 카메라 yaw 로 회전 정렬 — 카메라가 쓰는 축(screen-right=(−sinθ,cosθ)/screen-up=(cosθ,sinθ))과 동일하게 매핑 → 화면 뷰(레드 좌하단/블루 우상단)와 방향 자동 일치. `ExtraYawDeg` 미세조정 노브
+- **카메라 뷰 박스**: 뷰포트 4모서리를 지면(z=0) 역투영 → 미니맵 좌표 매핑 → 흰 사각형 테두리(가시 영역의 축정렬 바운딩 근사)
+- **클릭/드래그/터치 이동**: 미니맵 좌표 → 월드 역변환 → `MoveCameraToGroundPoint` 로 카메라 재중심. 마우스 드래그 스크럽 + 모바일 터치 지원
+- `AOSPlayerController`: 재중심 계산을 `MoveCameraToGroundPoint(GroundLocation)` 로 추출(FocusCameraOnOwnCommandCenter 와 공유) + `GetCameraYaw()` 추가. `OnGameStateChanged` 에서 RoundRunning 만 표시
+
+**문제점 / 난관**
+- 순수 C++ `UUserWidget` Auto 틱 게이팅 → 갱신은 월드 타이머로 구동
+- 미니맵이 화면 전체를 막으면 게임 클릭(유닛 선택) 차단 → 루트/콘텐츠는 hit-test 통과, 프레임만 클릭 캐치
+- 초기 버전은 고정 flip 으로 방향이 카메라 뷰와 불일치
+
+**해결 방법**
+- 카메라 yaw 회전으로 화면축과 동일 정렬(고정 flip 제거) → 어떤 yaw 에도 자동 일치
+- `SelfHitTestInvisible`(루트/캔버스) + `HitTestInvisible`(콘텐츠) + `Visible`(프레임) 조합 → 미니맵 밖 클릭은 게임으로 통과
+- 클릭 좌표 정합 위해 프레임 패딩 0 → 아이콘 캔버스 로컬 = MinimapSize
+
+**결과**
+- 라운드 전황을 한눈에 파악 + 미니맵으로 카메라 즉시 이동 (관전 가독성 = 디자인 기둥 2). 풀 리빌드 + PIE 확인 완료
+- Slice 1(가독성) 3종(라운드 결과 요약 / 데미지 숫자 / 미니맵) 완료
+- 배경 정적 이미지는 `BackgroundTexture` 슬롯으로 후속 아트 추가 가능
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

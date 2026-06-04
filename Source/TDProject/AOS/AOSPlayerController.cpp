@@ -8,6 +8,7 @@
 #include "UI/AOSSettlementWidget.h"
 #include "UI/AOSCharacterSelectWidget.h"
 #include "UI/AOSLobbyWidget.h"
+#include "UI/AOSMinimapWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -418,23 +419,39 @@ void AAOSPlayerController::FocusCameraOnOwnCommandCenter()
 	}
 
 	// 현재 카메라 높이(줌)·회전을 유지한 채, 지면(z=0) 교차점이 CC 위치가 되도록 XY 재계산
+	const FVector CCLoc = OwnCC->GetActorLocation();
+	MoveCameraToGroundPoint(CCLoc);
+
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 카메라 → 팀%d CC 포커스 (CC=%s)"),
+		static_cast<int32>(MyTeam), *CCLoc.ToString());
+}
+
+// 지면(z=0) 한 점이 화면 중앙(카메라 포커스)에 오도록 RTS 카메라 XY 이동.
+// 회전·줌(높이)은 유지. 클라이언트 로컬 카메라 전용(복제 불필요).
+// FocusCameraOnOwnCommandCenter / 미니맵 클릭 이동이 공유.
+void AAOSPlayerController::MoveCameraToGroundPoint(const FVector& GroundLocation)
+{
+	if (!RTSCamera)
+	{
+		return;
+	}
+
 	const FVector CamLoc = RTSCamera->GetActorLocation();
 	const FRotator CamRot = RTSCamera->GetActorRotation();
 	const FVector Fwd = CamRot.Vector(); // 단위 전방 벡터 (아래를 향하므로 Z<0)
-	const FVector CCLoc = OwnCC->GetActorLocation();
 
 	FVector NewLoc = CamLoc;
 	if (!FMath::IsNearlyZero(Fwd.Z))
 	{
 		const float T = -CamLoc.Z / Fwd.Z;      // 카메라에서 지면까지의 광선 거리
-		NewLoc.X = CCLoc.X - T * Fwd.X;
-		NewLoc.Y = CCLoc.Y - T * Fwd.Y;
+		NewLoc.X = GroundLocation.X - T * Fwd.X;
+		NewLoc.Y = GroundLocation.Y - T * Fwd.Y;
 	}
 	else
 	{
-		// 비정상(거의 수평) — CC 바로 위로 폴백
-		NewLoc.X = CCLoc.X;
-		NewLoc.Y = CCLoc.Y;
+		// 비정상(거의 수평) — 대상 바로 위로 폴백
+		NewLoc.X = GroundLocation.X;
+		NewLoc.Y = GroundLocation.Y;
 	}
 
 	// 맵 경계 클램프 (Tick 이동과 동일 규칙)
@@ -442,15 +459,67 @@ void AAOSPlayerController::FocusCameraOnOwnCommandCenter()
 	NewLoc.Y = FMath::Clamp(NewLoc.Y, -MapBoundaryY, MapBoundaryY);
 
 	RTSCamera->SetActorLocation(NewLoc);
+}
 
-	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 카메라 → 팀%d CC 포커스 (CC=%s, cam=(%.0f, %.0f, %.0f))"),
-		static_cast<int32>(MyTeam), *CCLoc.ToString(), NewLoc.X, NewLoc.Y, NewLoc.Z);
+// 미니맵 연동: 현재 카메라 yaw (RTSCamera 우선, 없으면 멤버 폴백)
+float AAOSPlayerController::GetCameraYaw() const
+{
+	if (RTSCamera)
+	{
+		return RTSCamera->GetActorRotation().Yaw;
+	}
+	return CameraYaw;
+}
+
+// Slice 1: 미니맵 표시 (로컬 컨트롤러 전용). RoundRunning 진입 시 호출.
+void AAOSPlayerController::ShowMinimap()
+{
+	if (!IsLocalPlayerController()) return;
+
+	if (!MinimapWidget)
+	{
+		UClass* WidgetClass = MinimapWidgetClass;
+		if (!WidgetClass)
+		{
+			// 디자이너 BP 가 있으면 사용, 없으면 C++ 클래스로 폴백 (무설정 동작)
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_Minimap.WBP_Minimap_C"));
+		}
+		if (!WidgetClass)
+		{
+			WidgetClass = UAOSMinimapWidget::StaticClass();
+		}
+		if (WidgetClass)
+		{
+			MinimapWidget = CreateWidget<UAOSMinimapWidget>(this, WidgetClass);
+		}
+	}
+
+	if (MinimapWidget)
+	{
+		// UMG 트리(RootWidget) 빌드 후 뷰포트 추가 (AddToViewport 가 슬레이트를 빌드하므로 순서 중요)
+		MinimapWidget->ShowMinimap();
+		if (!MinimapWidget->IsInViewport())
+		{
+			MinimapWidget->AddToViewport(5);
+		}
+	}
+}
+
+void AAOSPlayerController::HideMinimap()
+{
+	if (MinimapWidget)
+	{
+		MinimapWidget->HideMinimap();
+	}
 }
 
 // 게임 상태 변경 핸들러
 void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 게임 상태 변경: %d"), static_cast<int32>(NewState));
+
+	// Slice 1: 미니맵은 RoundRunning 에서만 — 기본적으로 숨기고 해당 케이스에서 다시 표시
+	HideMinimap();
 
 	switch (NewState)
 	{
@@ -488,6 +557,8 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 		bShowMouseCursor = true;
 		// 라운드 시작 → 각 클라이언트 카메라를 자기 팀 CC 로 포커스
 		FocusCameraOnOwnCommandCenter();
+		// Slice 1: 전투 중 미니맵 표시
+		ShowMinimap();
 		break;
 
 	case EAOSGameState::Settlement:

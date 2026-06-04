@@ -11,6 +11,7 @@ class UAOSMainMenuWidget;
 class UAOSSettlementWidget;
 class UAOSCharacterSelectWidget;
 class UAOSLobbyWidget;
+class UAOSMinimapWidget;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -55,6 +56,15 @@ public:
 	// (현재 회전·줌은 유지하고 XY 위치만 이동하여 CC 가 화면 중앙에 오도록)
 	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
 	void FocusCameraOnOwnCommandCenter();
+
+	// 지면(z=0) 한 점이 화면 중앙에 오도록 RTS 카메라 XY 이동 (회전·줌 유지). 로컬 전용.
+	// 미니맵 클릭 이동 + FocusCameraOnOwnCommandCenter 가 공유.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	void MoveCameraToGroundPoint(const FVector& GroundLocation);
+
+	// 미니맵 방향 정렬용: 현재 카메라 yaw (RTSCamera 우선)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Camera")
+	float GetCameraYaw() const;
 
 	// 캐릭터 배치 관련
 	UFUNCTION(BlueprintCallable, Category = "AOS|Deployment")
@@ -127,6 +137,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> LobbyWidgetClass;
 
+	// 미니맵 위젯 클래스 (미설정 시 C++ UAOSMinimapWidget 폴백 — 무설정 동작)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> MinimapWidgetClass;
+
 	// UI 위젯 인스턴스 (런타임)
 	UPROPERTY()
 	UAOSMainMenuWidget* MainMenuWidget;
@@ -139,6 +153,9 @@ protected:
 
 	UPROPERTY()
 	UAOSLobbyWidget* LobbyWidget = nullptr;
+
+	UPROPERTY()
+	UAOSMinimapWidget* MinimapWidget = nullptr;
 
 	// 게임 상태 변경 핸들러
 	UFUNCTION()
@@ -153,6 +170,10 @@ protected:
 	void HideCharacterSelect();
 	void ShowLobby();
 	void HideLobby();
+
+	// Slice 1: 미니맵 표시/숨김 (라운드 진행 중에만 표시). 로컬 컨트롤러 전용.
+	void ShowMinimap();
+	void HideMinimap();
 
 	UFUNCTION()
 	void OnStartRoundClicked();
