@@ -184,6 +184,10 @@ protected:
 	UPROPERTY()
 	UTextBlock* TitleText;
 
+	// Slice 1: 지난 라운드 결과(라인 승패) 요약 — 첫 라운드엔 숨김
+	UPROPERTY()
+	UTextBlock* RoundResultText;
+
 	UPROPERTY()
 	UTextBlock* TimerText;
 
@@ -226,4 +230,7 @@ private:
 	void RefreshLaneSlotDisplay(EAOSLane Lane, int32 SlotIndex);
 	void RefreshTotalCountDisplay();
 	int32 GetTotalAssignedCount() const;
+
+	// Slice 1: GameState 의 직전 라운드 결과를 읽어 로컬 팀 관점 승/패 요약 표시
+	void UpdateRoundResult();
 };

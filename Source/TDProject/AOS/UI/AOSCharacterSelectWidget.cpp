@@ -14,6 +14,8 @@
 #include "Components/Border.h"
 #include "Components/Image.h"
 #include "AOSShopWidget.h"
+#include "AOSGameState.h"
+#include "AOSPlayerState.h"
 
 // ─────────────────────────────────────────────────────────────
 // UAOSLaneSlotWidget
@@ -260,6 +262,19 @@ void UAOSCharacterSelectWidget::BuildUI()
 	TitleVSlot->SetPadding(FMargin(0, 0, 0, 16));
 	TitleVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
+	// Slice 1: 지난 라운드 결과 요약 (첫 라운드엔 숨김 — UpdateRoundResult 가 가시성 제어)
+	RoundResultText = WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("RoundResultText"));
+	RoundResultText->SetText(FText::GetEmpty());
+	FSlateFontInfo RRFont = RoundResultText->GetFont();
+	RRFont.Size = 18;
+	RoundResultText->SetFont(RRFont);
+	RoundResultText->SetJustification(ETextJustify::Center);
+	RoundResultText->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* RRVSlot = VBox->AddChildToVerticalBox(RoundResultText);
+	RRVSlot->SetPadding(FMargin(0, 0, 0, 12));
+	RRVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
+
 	// 준비 타이머 텍스트
 	TimerText = WidgetTree->ConstructWidget<UTextBlock>(
 		UTextBlock::StaticClass(), TEXT("TimerText"));
@@ -440,6 +455,9 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 	{
 		ShopWidget->CloseShop();
 	}
+
+	// Slice 1: 지난 라운드 결과 요약 갱신
+	UpdateRoundResult();
 
 	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 로스터 초기화 완료 (%d개 캐릭터)"), Roster.Num());
 }
@@ -749,4 +767,64 @@ int32 UAOSCharacterSelectWidget::GetTotalAssignedCount() const
 		if (LaneSlot && LaneSlot->GetAssignedClass()) ++Total;
 	}
 	return Total;
+}
+
+void UAOSCharacterSelectWidget::UpdateRoundResult()
+{
+	if (!RoundResultText) return;
+
+	AAOSGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr;
+	const FAOSRoundResult R = GS ? GS->GetLastRoundResult() : FAOSRoundResult();
+
+	// 첫 라운드 전(미유효)이거나 데이터 부족 → 패널 숨김
+	if (!GS || !R.bValid || R.LaneWinners.Num() < 3)
+	{
+		RoundResultText->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	// 로컬 플레이어 팀 (1=Team1, 2=Team2)
+	int32 MyTeamNum = 1;
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (AAOSPlayerState* PS = PC->GetPlayerState<AAOSPlayerState>())
+		{
+			MyTeamNum = (PS->GetTeam() == EAOSTeam::Team1) ? 1 : 2;
+		}
+	}
+
+	const TCHAR* LaneNames[3] = { TEXT("Top"), TEXT("Mid"), TEXT("Bottom") };
+	int32 WinCount = 0;
+	FString Parts;
+	for (int32 L = 0; L < 3; ++L)
+	{
+		const int32 W = R.LaneWinners[L];
+		FString Outcome;
+		if (W == 0)
+		{
+			Outcome = TEXT("무");
+		}
+		else if (W == MyTeamNum)
+		{
+			const int32 Surv = R.LaneWinnerSurvivors.IsValidIndex(L) ? R.LaneWinnerSurvivors[L] : 0;
+			Outcome = FString::Printf(TEXT("승(생존 %d)"), Surv);
+			++WinCount;
+		}
+		else
+		{
+			Outcome = TEXT("패");
+		}
+		if (!Parts.IsEmpty()) Parts += TEXT("    ");
+		Parts += FString::Printf(TEXT("%s %s"), LaneNames[L], *Outcome);
+	}
+
+	RoundResultText->SetText(FText::FromString(FString::Printf(
+		TEXT("지난 라운드 %d 결과:    %s    (%d/3 라인 승)"), R.RoundNumber, *Parts, WinCount)));
+
+	// 다수 라인 승=녹색, 1라인=노랑, 0라인=빨강 (한눈에 읽히도록)
+	const FLinearColor Color = (WinCount >= 2) ? FLinearColor(0.4f, 1.0f, 0.4f, 1.0f)
+		: (WinCount == 1) ? FLinearColor(1.0f, 0.85f, 0.2f, 1.0f)
+		: FLinearColor(1.0f, 0.45f, 0.45f, 1.0f);
+	RoundResultText->SetColorAndOpacity(FSlateColor(Color));
+	RoundResultText->SetVisibility(ESlateVisibility::Visible);
 }

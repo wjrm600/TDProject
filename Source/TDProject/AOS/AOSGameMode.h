@@ -348,6 +348,19 @@ private:
 	void UpdateGameTime(float DeltaTime);
 	void CheckVictoryConditions();
 
+	// --- Slice 1: 라인 승패 추적 (라운드 결과 요약용) ---
+	// 라운드 시작 시 스폰된 캐릭터로 LaneAlive 초기화, 사망 시 차감,
+	// 한 팀의 라인 생존이 0이 되는 순간 그 라인 확정(먼저 0된 팀 패배).
+	void InitLaneTracking();
+	void RecordLaneDeath(EAOSTeam Team, EAOSLane Lane);
+	void CheckLaneDecided(int32 LaneIdx);
+	void PushRoundResultToGameState();
+
+	int32 LaneAlive[2][3];          // [팀0=Team1,1=Team2][라인 Top/Mid/Bottom] 생존 수
+	int32 LaneWinner[3];            // 0=무승부/미정, 1=Team1, 2=Team2
+	int32 LaneWinnerSurvivors[3];   // 확정 시점 승자 잔존 수
+	bool  bLaneDecided[3];          // 라인 확정 여부
+
 	// 배치 계획 저장 (TMap<EAOSTeam, TMap<>> 은 UHT 미지원이므로 배열로 관리)
 	// DeployPlan[TeamIndex][LaneIndex].Classes = 배치할 캐릭터 클래스 목록
 	FAOSLaneDeployPlan DeployPlan[2][3];

@@ -20,6 +20,32 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTeamReadyChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerCountChanged, int32, Count);
 // Slice 0: 팀 골드 변경 알림 (UI 바인딩용). 두 팀 중 어느 팀이 얼마가 됐는지.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTeamGoldChanged, EAOSTeam, Team, int32, NewGold);
+// Slice 1: 라운드 결과(라인 승패) 갱신 알림 — 준비 화면 결과 패널이 구독.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoundResultChanged);
+
+// Slice 1: 직전 라운드의 라인별 승패 요약 (GameMode 가 EndRound 에서 채워 복제).
+// 인덱스 0=Top, 1=Mid, 2=Bottom.
+USTRUCT(BlueprintType)
+struct FAOSRoundResult
+{
+	GENERATED_BODY()
+
+	// 라인별 승자: 0=무승부/미정, 1=Team1, 2=Team2
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Round")
+	TArray<int32> LaneWinners;
+
+	// 라인별 승자가 확정된 시점의 승자 잔존 캐릭터 수 (마진 = "왜" 근거)
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Round")
+	TArray<int32> LaneWinnerSurvivors;
+
+	// 이 결과가 속한(종료된) 라운드 번호
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Round")
+	int32 RoundNumber = 0;
+
+	// 유효 결과 여부 (첫 라운드 전엔 false → 패널 숨김)
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Round")
+	bool bValid = false;
+};
 
 UCLASS()
 class TDPROJECT_API AAOSGameState : public AGameStateBase
@@ -66,6 +92,10 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_Gold, BlueprintReadOnly, Category = "AOS|Economy")
 	int32 Team2Gold = 0;
 
+	// Slice 1: 직전 라운드 결과 (라인 승패 요약) — 준비 화면 패널이 표시
+	UPROPERTY(ReplicatedUsing = OnRep_RoundResult, BlueprintReadOnly, Category = "AOS|Game")
+	FAOSRoundResult LastRoundResult;
+
 	// 서버 전용: 상태 업데이트 (AOSGameMode에서 호출)
 	void ServerSetCurrentState(EAOSGameState NewState);
 	void ServerSetCurrentRound(int32 NewRound);
@@ -80,6 +110,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
 	int32 GetGold(EAOSTeam Team) const;
+
+	// Slice 1: 라운드 결과 — 서버 전용 설정 + 조회
+	void ServerSetRoundResult(const FAOSRoundResult& Result);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	FAOSRoundResult GetLastRoundResult() const { return LastRoundResult; }
 
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -110,12 +146,18 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Economy")
 	FOnTeamGoldChanged OnTeamGoldChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
+	FOnRoundResultChanged OnRoundResultChanged;
+
 protected:
 	UFUNCTION()
 	void OnRep_CurrentState();
 
 	UFUNCTION()
 	void OnRep_Gold();
+
+	UFUNCTION()
+	void OnRep_RoundResult();
 
 	UFUNCTION()
 	void OnRep_CurrentRound();

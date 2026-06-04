@@ -466,6 +466,27 @@
 
 ---
 
+## 2026-06-04 — Slice 1(가독성): 라운드 결과 요약 (라인 승패 판정 + 준비화면 패널)
+
+**작업 내용**
+- 비전의 '빈칸'이던 **라인 승패 판정** 구현. `AOSGameMode`: `LaneAlive[2][3]` 추적 — `InitLaneTracking`(스폰) → `RecordLaneDeath`(`OnCharacterDestroyed`) → `CheckLaneDecided`. 한 팀의 라인 생존이 0 되는 순간 확정(먼저 0=패, 상대=승, 그 시점 승자 잔존수=마진). 한 팀이 0명 배치한 라인은 즉시 상대 승. `EndRound` 에서 `PushRoundResultToGameState`
+- **복제**: `AOSGameState` 신규 USTRUCT `FAOSRoundResult`(라인별 승자[3]·승자잔존[3]·라운드번호·bValid) + `LastRoundResult`(`ReplicatedUsing=OnRep_RoundResult`) + `OnRoundResultChanged` 델리게이트 + `ServerSetRoundResult`
+- **UI**: `AOSCharacterSelectWidget` 준비화면 타이틀 아래 "지난 라운드 결과" 패널 — 로컬 팀 관점 라인별 승/패 + 생존 마진, 다수승=녹/1=노랑/0=빨강, 첫 라운드 숨김. `InitializeWithRoster` 에서 GameState 읽어 갱신
+
+**문제점 / 설계 판단**
+- 라운드는 "양 팀 캐릭터 전멸 시 종료"라 종료 시점엔 전원 사망 → 라인 승패는 "어느 팀이 그 라인에서 **먼저** 전멸했나"로 판정 (배치 라인 기준, 싸운 위치 무관 — 비전 정의 그대로)
+- 표시 위치: 별도 화면 대신 **준비 화면 패널**(다음 라운드 재배치 직전 노출) — 비전의 "결과 보고 → 적응" 루프에 부합
+
+**해결 방법**
+- per-(팀,라인) 생존 카운트 + 선점(먼저 0) 확정 로직으로 "전멸 순서" 포착. GameState 복제 + 로컬 팀 관점 변환은 UI 에서 처리
+
+**결과**
+- 매 라운드 종료 후 다음 준비 화면에 라인별 승패+마진 표시 (관전 인과 가독성 = 디자인 기둥 2). 빌드+PIE 확인 완료
+- `LaneWinner` 데이터는 비전의 **조건부 재배치(2라인↑ 패배 시만)** 토대로 재사용 예정
+- 후속 Slice 1: 데미지 숫자, 미니맵
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

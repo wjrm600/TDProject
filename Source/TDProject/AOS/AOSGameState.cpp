@@ -20,6 +20,7 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, bIsDraw);
 	DOREPLIFETIME(AAOSGameState, Team1Gold);
 	DOREPLIFETIME(AAOSGameState, Team2Gold);
+	DOREPLIFETIME(AAOSGameState, LastRoundResult);
 }
 
 void AAOSGameState::ServerSetCurrentState(EAOSGameState NewState)
@@ -191,6 +192,26 @@ void AAOSGameState::ServerSetGold(EAOSTeam Team, int32 NewGold)
 int32 AAOSGameState::GetGold(EAOSTeam Team) const
 {
 	return (Team == EAOSTeam::Team1) ? Team1Gold : Team2Gold;
+}
+
+// ============================================================
+// Slice 1: 라운드 결과 (라인 승패 요약)
+// ============================================================
+
+void AAOSGameState::ServerSetRoundResult(const FAOSRoundResult& Result)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	LastRoundResult = Result;
+	// 서버(리스너 호스트)에서도 즉시 브로드캐스트 — 클라는 OnRep_RoundResult 가 처리
+	OnRoundResultChanged.Broadcast();
+}
+
+void AAOSGameState::OnRep_RoundResult()
+{
+	OnRoundResultChanged.Broadcast();
 }
 
 void AAOSGameState::OnRep_Gold()

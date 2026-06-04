@@ -238,6 +238,7 @@ void AAOSGameMode::StartRound()
 	}
 
 	// 정상 라운드 시작
+	InitLaneTracking();
 	SetGameState(EAOSGameState::RoundRunning);
 }
 
@@ -267,6 +268,9 @@ void AAOSGameMode::EndRound()
 
 	// 라운드 종료 델리게이트 브로드캐스트
 	OnRoundEnded.Broadcast(CurrentRound);
+
+	// Slice 1: 이번 라운드의 라인 승패 결과를 GameState 에 push (다음 준비 화면 패널이 표시)
+	PushRoundResultToGameState();
 
 	// 커맨드 센터 파괴 여부 확인
 	bool bTeam1CCDestroyed = false;
@@ -776,6 +780,12 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] Team2 캐릭터 사망. 남은: %d"), Team2Characters.Num());
 	}
 
+	// Slice 1: 라인 승패 추적 (라운드 진행 중에만 — 정산/정리 중 사망은 무시)
+	if (AOSGameState == EAOSGameState::RoundRunning)
+	{
+		RecordLaneDeath(CharacterTeam, DestroyedCharacter->GetLane());
+	}
+
 	// Slice 0: 처치한 팀(= 죽은 캐릭터의 반대 팀)에 골드 지급.
 	// killer 추적 없이 단순화 — 팀 대 팀 구도라 반대 팀이 처치자.
 	const EAOSTeam KillerTeam = (CharacterTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
@@ -1121,6 +1131,101 @@ void AAOSGameMode::CheckVictoryConditions()
 			}
 		}
 	}
+}
+
+// ============================================================
+// Slice 1: 라인 승패 추적 → 라운드 결과 요약
+// ============================================================
+
+void AAOSGameMode::InitLaneTracking()
+{
+	for (int32 L = 0; L < 3; ++L)
+	{
+		LaneAlive[0][L] = 0;
+		LaneAlive[1][L] = 0;
+		LaneWinner[L] = 0;
+		LaneWinnerSurvivors[L] = 0;
+		bLaneDecided[L] = false;
+	}
+
+	for (AAOSCharacter* C : Team1Characters)
+	{
+		if (!C) continue;
+		const int32 L = static_cast<int32>(C->GetLane());
+		if (L >= 0 && L < 3) ++LaneAlive[0][L];
+	}
+	for (AAOSCharacter* C : Team2Characters)
+	{
+		if (!C) continue;
+		const int32 L = static_cast<int32>(C->GetLane());
+		if (L >= 0 && L < 3) ++LaneAlive[1][L];
+	}
+
+	// 한 팀이 0명으로 시작한 라인은 즉시 확정
+	for (int32 L = 0; L < 3; ++L)
+	{
+		CheckLaneDecided(L);
+	}
+}
+
+void AAOSGameMode::RecordLaneDeath(EAOSTeam Team, EAOSLane Lane)
+{
+	const int32 T = (Team == EAOSTeam::Team1) ? 0 : 1;
+	const int32 L = static_cast<int32>(Lane);
+	if (L < 0 || L >= 3) return;
+	LaneAlive[T][L] = FMath::Max(0, LaneAlive[T][L] - 1);
+	CheckLaneDecided(L);
+}
+
+void AAOSGameMode::CheckLaneDecided(int32 LaneIdx)
+{
+	if (LaneIdx < 0 || LaneIdx >= 3 || bLaneDecided[LaneIdx]) return;
+
+	const int32 A1 = LaneAlive[0][LaneIdx];
+	const int32 A2 = LaneAlive[1][LaneIdx];
+	if (A1 > 0 && A2 > 0) return; // 양 팀 모두 생존 → 미확정
+
+	bLaneDecided[LaneIdx] = true;
+	if (A1 == 0 && A2 == 0)
+	{
+		LaneWinner[LaneIdx] = 0;           // 무승부 (동시 전멸 또는 양 팀 미배치)
+		LaneWinnerSurvivors[LaneIdx] = 0;
+	}
+	else if (A1 == 0)
+	{
+		LaneWinner[LaneIdx] = 2;           // Team2 승 (Team1 이 먼저 전멸)
+		LaneWinnerSurvivors[LaneIdx] = A2;
+	}
+	else // A2 == 0
+	{
+		LaneWinner[LaneIdx] = 1;           // Team1 승
+		LaneWinnerSurvivors[LaneIdx] = A1;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Round] 라인 %d 확정: 승자=%d (잔존 %d)"),
+		LaneIdx, LaneWinner[LaneIdx], LaneWinnerSurvivors[LaneIdx]);
+}
+
+void AAOSGameMode::PushRoundResultToGameState()
+{
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS) return;
+
+	// 미확정 라인은 무승부로 마감 (안전망)
+	for (int32 L = 0; L < 3; ++L)
+	{
+		if (!bLaneDecided[L]) { LaneWinner[L] = 0; LaneWinnerSurvivors[L] = 0; }
+	}
+
+	FAOSRoundResult Result;
+	Result.RoundNumber = CurrentRound;
+	Result.bValid = true;
+	for (int32 L = 0; L < 3; ++L)
+	{
+		Result.LaneWinners.Add(LaneWinner[L]);
+		Result.LaneWinnerSurvivors.Add(LaneWinnerSurvivors[L]);
+	}
+	AOSGS->ServerSetRoundResult(Result);
 }
 
 // Phase 3A: 서버에서 플레이어 준비 상태 업데이트 + GameState 리플리케이션
