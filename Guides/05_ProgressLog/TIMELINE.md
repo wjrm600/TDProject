@@ -560,6 +560,30 @@
 
 ---
 
+## 2026-06-06 — AI 에셋 생성 파이프라인 (ComfyUI ControlNet) + 미니맵 SF 테두리
+
+**작업 내용**
+- **로컬 무료 생성 파이프라인** 구축: ComfyUI(`:8188`) + SDXL 계열 체크포인트(DreamShaper XL Lightning / Illustrious XL / Animagine XL) + scribble ControlNet. GTX 3080 에서 장당 수 초~십수 초.
+- **스크립트** (`Mcp_Tools/Asset_Pipeline/`): `gen_icon.py`(text2img), `gen_img2img.py`, `gen_controlnet.py`(스케치→완성), `make_minimap_frame.py`(절차 프레임). 임포트는 기존 `import_ui_assets.py` / `manage_asset` MCP.
+- **미니맵 테두리**: `UAOSMinimapWidget` 에 `FrameTexture`/`FrameImage` 오버레이(`/Game/AOS/UI/Assets/T_MinimapFrame` 자동 로드) + **content inset**(`WorldToLocal`/`LocalToWorldGround` 10%) + 절차생성 청록 베젤 텍스처(muted + 그라데이션).
+
+**문제점**
+- text2img/img2img 로는 "정확한 구도 + 솔리드 렌더" 동시 불가 (img2img: 구도 잠금↔채움 denoise 딜레마, 흰배경/외곽선 잔존).
+- MCP `manage_asset import` 의 `save:true` 가 신규 텍스처를 디스크에 flush 안 함 → **에디터에서 수동 Save All 필요** (커밋 전 필수).
+
+**해결 방법**
+- **정석 워크플로 확정**: 거친 손스케치 → (정사각 패딩 + 색반전) → ControlNet(denoise 1.0, 선=구조 강제) → 완성. 모든 스킬/UI 에셋 재사용 → `SKILL_ICON_RECIPE.md`.
+- 미니맵 프레임은 장식 변수 큰 AI 대신 **PIL 절차생성**(두께/색/그라데이션 정확 제어).
+- inset 으로 아이콘/뷰박스를 프레임 안쪽으로 → 클릭 역변환도 동일 inset 유지(좌표 정합).
+
+**결과**
+- **생성 → 임포트 → C++ UI 적용 → 인게임** 전 과정을 실제 에디터에서 검증 (미니맵에 SF 청록 베젤 테두리 적용 완료).
+- 영향: `Source/TDProject/AOS/UI/AOSMinimapWidget.h/.cpp`, `Content/AOS/UI/Assets/T_MinimapFrame`, `Mcp_Tools/Asset_Pipeline/*`
+- Alex 스킬 아이콘(Q/W/E/R)도 동일 워크플로로 생성했으나 최종 픽/임포트는 보류(후속).
+- 관련 가이드: `Mcp_Tools/Asset_Pipeline/README.md`, `SKILL_ICON_RECIPE.md`
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

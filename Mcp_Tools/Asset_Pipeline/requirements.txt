@@ -1,0 +1,8 @@
+# gen_icon.py 외부 의존성 (일반 시스템 Python 에 설치)
+# ComfyUI 통신은 표준 라이브러리(urllib)만 사용 → 추가 패키지는 배경 제거(rembg)뿐.
+#
+#   pip install -r requirements.txt
+#
+# 첫 실행 시 rembg 가 u2net 모델(~170MB)을 자동 다운로드합니다.
+rembg[cpu]
+pillow

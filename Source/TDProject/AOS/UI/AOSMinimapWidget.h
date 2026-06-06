@@ -81,6 +81,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "AOS|Minimap")
 	TObjectPtr<UTexture2D> BackgroundTexture = nullptr;
 
+	// 장식 테두리 텍스처 (가운데 투명). 미설정 시 /Game/AOS/UI/Assets/T_MinimapFrame 자동 로드.
+	UPROPERTY(EditAnywhere, Category = "AOS|Minimap")
+	TObjectPtr<UTexture2D> FrameTexture = nullptr;
+
 	UPROPERTY(EditAnywhere, Category = "AOS|Minimap")
 	FLinearColor BackgroundColor = FLinearColor(0.02f, 0.02f, 0.04f, 0.6f);
 
@@ -119,6 +123,9 @@ protected:
 
 	UPROPERTY()
 	UImage* BackgroundImage = nullptr;
+
+	UPROPERTY()
+	UImage* FrameImage = nullptr;
 
 	UPROPERTY()
 	UCanvasPanel* IconCanvas = nullptr;

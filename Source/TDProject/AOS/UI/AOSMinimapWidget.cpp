@@ -80,6 +80,24 @@ void UAOSMinimapWidget::BuildUI()
 		OS->SetHorizontalAlignment(HAlign_Fill);
 		OS->SetVerticalAlignment(VAlign_Fill);
 	}
+
+	// 장식 테두리 — 콘텐츠 맨 위에 "가운데 투명 프레임"을 덧댐 (클릭/아이콘 로직 불변).
+	// FrameTexture 미설정 시 알려진 경로에서 자동 로드 → 텍스처만 임포트하면 적용됨.
+	UTexture2D* FrameTex = FrameTexture;
+	if (!FrameTex)
+	{
+		FrameTex = LoadObject<UTexture2D>(nullptr, TEXT("/Game/AOS/UI/Assets/T_MinimapFrame.T_MinimapFrame"));
+	}
+	if (FrameTex)
+	{
+		FrameImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("MiniFrameDeco"));
+		FrameImage->SetBrushFromTexture(FrameTex, false);
+		if (UOverlaySlot* OS = ContentOverlay->AddChildToOverlay(FrameImage))
+		{
+			OS->SetHorizontalAlignment(HAlign_Fill);
+			OS->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
 }
 
 void UAOSMinimapWidget::ShowMinimap()
@@ -177,13 +195,22 @@ FVector2D UAOSMinimapWidget::WorldToLocal(const FVector& World) const
 	LV = FMath::Clamp(LV, 0.f, 1.f);
 
 	// 화면 up(LV 큰 값)이 미니맵 위 → 로컬 Y 는 아래로 증가하므로 (1-LV)
-	return FVector2D(LU * MinimapSize.X, (1.f - LV) * MinimapSize.Y);
+	// 콘텐츠를 프레임 안쪽으로 inset → 아이콘/뷰박스가 테두리에 안 닿아 프레임이 감싸는 느낌.
+	const float InsetRatio = 0.10f; // ⚠ LocalToWorldGround 의 값과 반드시 동일하게 유지
+	const float InX = MinimapSize.X * InsetRatio;
+	const float InY = MinimapSize.Y * InsetRatio;
+	return FVector2D(InX + LU * (MinimapSize.X - 2.f * InX),
+	                 InY + (1.f - LV) * (MinimapSize.Y - 2.f * InY));
 }
 
 FVector UAOSMinimapWidget::LocalToWorldGround(const FVector2D& Local) const
 {
-	const float LU = FMath::Clamp(Local.X / MinimapSize.X, 0.f, 1.f);
-	const float LVDown = FMath::Clamp(Local.Y / MinimapSize.Y, 0.f, 1.f);
+	// WorldToLocal 의 inset 역변환 (InsetRatio 동일하게 유지)
+	const float InsetRatio = 0.10f;
+	const float InX = MinimapSize.X * InsetRatio;
+	const float InY = MinimapSize.Y * InsetRatio;
+	const float LU = FMath::Clamp((Local.X - InX) / (MinimapSize.X - 2.f * InX), 0.f, 1.f);
+	const float LVDown = FMath::Clamp((Local.Y - InY) / (MinimapSize.Y - 2.f * InY), 0.f, 1.f);
 	const float LV = 1.f - LVDown;
 
 	const float R = FMath::Lerp(RightMin, RightMax, LU);
