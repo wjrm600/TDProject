@@ -1155,9 +1155,16 @@ Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → Roun
 - `OnGameStateChanged` 의 **BanPick 케이스** → 다른 위젯 hide + `ShowBanPick()` + `FInputModeGameAndUI`. 진입 전 항상 `HideBanPick()`.
 - `Server_DraftSelect(int32 UnitId)` (Server, Reliable) → 서버가 `PlayerState` 팀 강제 → `GameMode->ServerApplyDraftSelection`.
 - `Client_ReceiveCharacterRoster` 가 CharacterSelect 뿐 아니라 **`BanPickWidget->InitializeWithRoster`** 도 호출 (BanPick 진입 시 로스터 주입).
-- **`UAOSBanPickWidget`** (순수 C++ `UUserWidget`): `RootBorder → VerticalBox[StatusText, CardGrid(UWrapBox), HBox(Team1/2Text)]`. `InitializeWithRoster` 가 `UBorder` 카드(HitTestInvisible) + `UImage` 초상화/이름 생성. `NativeOnMouseButtonDown` 이 카드 지오메트리 hit-test → `Server_DraftSelect`. `RefreshCards` 틴트(밴=암적, T1픽=적, T2픽=청, 내 턴 아님=회색), `RefreshStatus`("팀N 밴/픽 차례 (Ns)" + 밴/픽 목록). `NativeConstruct` 에서 GameState `OnDraftChanged` 구독.
+- **`UAOSBanPickWidget`** (순수 C++ `UUserWidget`, **League of Legends 챔피언 선택 스타일**): `RootOverlay[BackdropImage(전체화면) + MainVBox]`. MainVBox = **상단바**(좌 플레이어명+밴슬롯 / 중앙 "PICK & BAN"+타이머 / 우 플레이어명+밴슬롯) + **중앙행**(좌 팀1 픽슬롯5 / 중앙 "CHAMPION SELECT" 그리드+상태+확정버튼 / 우 팀2 픽슬롯5).
+  - **2단계 선택**: 카드 클릭 = `PendingIndex` 미리보기(골드 테두리, `NativeOnMouseButtonDown` 지오메트리 hit-test) → **확정 버튼(`UButton::OnClicked`→`OnConfirmClicked`)** 에서만 `Server_DraftSelect` 전송. 확정 버튼은 내 턴 + 유효 미리보기 시만 활성.
+  - 카드/픽/밴은 `UImage`. 초상화는 로스터 `Portrait`, 없으면 **인덱스별 컬러 타일**(`PlaceholderColor`, 황금비 hue 분산). 각 그리드 카드는 **`USizeBox(72×72)`** 로 감싸 초상화 유무와 무관하게 동일 크기/클릭영역.
+  - 백드롭 `/Game/AOS/UI/Assets/T_BanPick_Backdrop` 자동로드(`StaticLoadObject`+솔리드 폴백). 초상화 `/Game/AOS/UI/Assets/T_Portrait_{Alex,Vega,Ken,Cammy,Guile}` → 로스터 0~4 `Portrait`. 플레이어명 = `PlayerState::GetPlayerName`(자기+상대, GameState PlayerArray).
+  - `RefreshCards`(틴트: 밴=암적, T1픽=적, T2픽=청, 내 턴 아님=회색) / `RefreshSlots`(픽·밴 슬롯) / `RefreshStatus`(제목·타이머·확정버튼 활성). `NativeConstruct` 에서 GameState `OnDraftChanged` 구독, `NativeTick` 이 타이머 표시 갱신.
 
 > ⚠️ **위젯 실현 순서(미니맵 교훈 재발)**: `ShowBanPick` 에서 **`InitializeWithRoster`(WidgetTree->RootWidget 구축)를 `AddToViewport` 보다 먼저** 호출해야 함. 순서가 뒤바뀌면 빈 RootWidget 이 Slate 로 실현되어 **벤픽 화면이 안 뜸** (실제로 이 버그가 발생했고 순서 교정으로 해결).
+> ⚠️ **타이머 갱신이 미리보기를 풀어버림**: `ServerSetDraftTurnTime` 가 매 초 `OnDraftChanged` 브로드캐스트 → 위젯 `OnDraftChanged` 가 무조건 `PendingIndex` 를 초기화하면 1초마다 미리보기가 풀려 확정 불가. → **미리보기 유닛이 가용하지 않을 때만**(밴/픽 확정 직후) 초기화.
+> ⚠️ **컬러 브러시 카드 크기**: `UImage::SetDesiredSizeOverride` 는 텍스처 없는 컬러 브러시에서 불안정(폭 붕괴) → 카드를 `USizeBox(WidthOverride/HeightOverride)` 로 감싸 크기 강제.
+> ⚠️ **로스터 Portrait 기본값**: BP_Char_* 복제로 추가된 로스터 엔트리의 `Portrait` 가 Mannequin 기본 `T_UE_Logo_M`(빨간 "U")로 채워짐 → 플레이스홀더는 `Portrait=None` 으로 비워야 컬러 타일이 렌더됨. (에디터 Python `update_roster_portraits.py`: 클래스 로드 후 **`get_default_object`로 CDO** 획득 필요, `load_object(None, 경로)` 로 텍스처 로드, EditDefaultsOnly 막히면 부분 `import_text` 폴백.)
 
 ### RoundPreparation 픽 필터 (소유: `UI/AOSCharacterSelectWidget.cpp`)
 

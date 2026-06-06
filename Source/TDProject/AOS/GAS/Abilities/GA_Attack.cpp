@@ -22,7 +22,10 @@ UGA_Attack::UGA_Attack()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
 
 	const FGameplayTag AbilityTag = FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
-	AbilityTags.AddTag(AbilityTag);
+	// UE 5.x 마이그레이션: AbilityTags 는 deprecated → GetAssetTags()/SetAssetTags() (생성자, GA_SkillBase 패턴).
+	FGameplayTagContainer AssetTags = GetAssetTags();
+	AssetTags.AddTag(AbilityTag);
+	SetAssetTags(AssetTags);
 	ActivationOwnedTags.AddTag(AbilityTag);
 
 	// 트리거: GameplayEvent("Ability.Attack.Basic")

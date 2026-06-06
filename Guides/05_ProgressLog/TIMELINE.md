@@ -614,6 +614,37 @@
 
 ---
 
+## 2026-06-07 — 벤픽 UI를 LoL 챔피언 선택 스타일로 리디자인 + 리소스 생성
+
+**작업 내용**
+- `UAOSBanPickWidget` 전면 재구성(순수 C++): 상단바(플레이어명+제목+타이머) + 좌우 팀 패널(밴 슬롯 + 픽 슬롯 5) + 중앙 챔피언 그리드 + 확정 버튼
+- **2단계 선택**(LoL식): 카드 클릭=미리보기(골드 테두리) → **확정 버튼**에서만 서버 RPC 전송. 서버 드래프트 로직 무변경(클라 `PendingIndex` 상태만 추가)
+- 요청 반영: 플레이어 이름 팀당 1개 상단 표시(캐릭터엔 이름만), 소환사주문·룬·스킨·역할탭 제외
+- **리소스 생성**(`agent-asset-gen`, ComfyUI+PIL): 절차 다크 백드롭 `T_BanPick_Backdrop` + 5종 AI 초상화 `T_Portrait_{Alex,Vega,Ken,Cammy,Guile}` → 로스터 0~4 할당, 5~19 Portrait 비워 **인덱스별 컬러 타일**
+- 겸사겸사 `GA_Attack` 의 deprecated `AbilityTags` → `GetAssetTags()/SetAssetTags()` 마이그레이션(GA_SkillBase 패턴)
+
+**문제점 / 난관**
+- `'Slot' 선언이 클래스 멤버(UWidget::Slot) 숨김` 에러 — 지역변수명 충돌(상점 때와 동일)
+- 카드 클릭 시 **1초 뒤 미리보기 풀림** — 턴 타이머가 매 초 `OnDraftChanged` 브로드캐스트 → 위젯이 무조건 `PendingIndex` 초기화
+- 초상화 **없는 카드가 얇게 붕괴**해 클릭 불가 — `SetDesiredSizeOverride` 가 컬러 브러시에 불안정
+- 로스터 Portrait 스크립트 2연속 에러: (1) `load_object` 가 클래스 반환 → `get_editor_property` 실패(CDO 필요), (2) `load_object` 첫 인자(outer)에 클래스 전달
+- MCP 가 `TArray<구조체>` 편집·`execute_python` 미지원 → 로스터 할당은 에디터 Python 수동 실행. 또 전 로스터 Portrait 가 Mannequin 기본 `T_UE_Logo_M`(빨간 "U")로 차 있었음
+
+**해결 방법**
+- 지역변수 `Slot`→`PickSlot` rename
+- `OnDraftChanged`: **미리보기 유닛이 가용하지 않을 때만** `PendingIndex` 초기화(타이머 갱신엔 무영향)
+- 그리드 카드를 **`USizeBox(72×72)`** 로 감싸 초상화 유무 무관 동일 크기/클릭영역
+- 스크립트: `get_default_object(클래스)`로 CDO 획득 + `load_object(None, 경로)` + EditDefaultsOnly 막히면 부분 `import_text` 폴백. `update_roster_portraits.py` 를 에디터에서 1회 실행
+
+**결과 / 영향**
+- LoL 스타일 벤픽 화면 + 2단계 선택 + 초상화/백드롭/컬러타일 전부 동작(2-client DS PIE 확인)
+- 위젯 레이아웃/사이징 수정은 cpp-only → **Live Coding 으로 반복**(초기 UPROPERTY/UFUNCTION 추가만 풀 리빌드)
+- 영향: `UI/AOSBanPickWidget.h/.cpp`, `GA_Attack.cpp`, `Content/AOS/UI/Assets/T_BanPick_Backdrop`+`T_Portrait_*`(신규 6), `Content/TDProj_GM`(로스터 Portrait), `Mcp_Tools/Asset_Pipeline/{make_banpick_backdrop,update_roster_portraits}.py`(신규)
+- 후속: 백드롭/초상화 아트 고도화, 플레이스홀더 15종 고유화
+- 관련: `CLAUDE.md` "Ban/Pick Draft System" 섹션
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
