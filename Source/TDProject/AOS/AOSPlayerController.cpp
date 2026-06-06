@@ -9,6 +9,7 @@
 #include "UI/AOSCharacterSelectWidget.h"
 #include "UI/AOSLobbyWidget.h"
 #include "UI/AOSMinimapWidget.h"
+#include "UI/AOSBanPickWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -520,6 +521,8 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 
 	// Slice 1: 미니맵은 RoundRunning 에서만 — 기본적으로 숨기고 해당 케이스에서 다시 표시
 	HideMinimap();
+	// 벤픽 위젯도 기본 숨김 (BanPick 케이스에서만 표시)
+	HideBanPick();
 
 	switch (NewState)
 	{
@@ -544,6 +547,16 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 		HideMainMenu();
 		HideSettlement();
 		ShowCharacterSelect();
+		SetInputMode(FInputModeGameAndUI());
+		bShowMouseCursor = true;
+		break;
+
+	case EAOSGameState::BanPick:
+		HideLobby();
+		HideMainMenu();
+		HideSettlement();
+		HideCharacterSelect();
+		ShowBanPick();
 		SetInputMode(FInputModeGameAndUI());
 		bShowMouseCursor = true;
 		break;
@@ -775,6 +788,10 @@ void AAOSPlayerController::Client_ReceiveCharacterRoster_Implementation(
 	{
 		CharacterSelectWidget->InitializeWithRoster(CachedCharacterRoster);
 	}
+	if (IsValid(BanPickWidget))
+	{
+		BanPickWidget->InitializeWithRoster(CachedCharacterRoster);
+	}
 }
 
 // 캐릭터 선택 UI 숨김
@@ -784,6 +801,62 @@ void AAOSPlayerController::HideCharacterSelect()
 	{
 		CharacterSelectWidget->SetVisibility(ESlateVisibility::Collapsed);
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 캐릭터 선택 UI 숨김"));
+	}
+}
+
+// 벤픽 UI 표시 (로컬 컨트롤러 전용 — ShowCharacterSelect 패턴)
+void AAOSPlayerController::ShowBanPick()
+{
+	if (!IsLocalPlayerController()) return;
+
+	if (!BanPickWidget)
+	{
+		UClass* WidgetClass = BanPickWidgetClass;
+		if (!WidgetClass)
+		{
+			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_BanPick.WBP_BanPick_C"));
+		}
+		if (!WidgetClass)
+		{
+			WidgetClass = UAOSBanPickWidget::StaticClass();
+		}
+		if (WidgetClass)
+		{
+			BanPickWidget = CreateWidget<UAOSBanPickWidget>(this, WidgetClass);
+		}
+	}
+
+	if (BanPickWidget)
+	{
+		// ⚠ WidgetTree->RootWidget 을 먼저 채운 뒤 AddToViewport — 빈 위젯 실현 방지(미니맵 교훈)
+		BanPickWidget->InitializeWithRoster(CachedCharacterRoster);
+		if (!BanPickWidget->IsInViewport())
+		{
+			BanPickWidget->AddToViewport(20);
+		}
+		BanPickWidget->SetVisibility(ESlateVisibility::Visible);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 벤픽 UI 표시 (로스터: %d개)"), CachedCharacterRoster.Num());
+	}
+}
+
+void AAOSPlayerController::HideBanPick()
+{
+	if (BanPickWidget && BanPickWidget->GetVisibility() != ESlateVisibility::Collapsed)
+	{
+		BanPickWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 벤픽 UI 숨김"));
+	}
+}
+
+// 벤픽: 클라 → 서버 밴/픽 선택 (서버가 PlayerState 팀으로 강제)
+void AAOSPlayerController::Server_DraftSelect_Implementation(int32 UnitId)
+{
+	if (!HasAuthority()) return;
+	AAOSPlayerState* PS = GetPlayerState<AAOSPlayerState>();
+	if (!PS) return;
+	if (AAOSGameMode* GM = GetWorld()->GetAuthGameMode<AAOSGameMode>())
+	{
+		GM->ServerApplyDraftSelection(PS->GetTeam(), UnitId);
 	}
 }
 

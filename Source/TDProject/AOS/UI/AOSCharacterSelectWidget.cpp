@@ -435,9 +435,34 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 
 	if (!CardGrid) return;
 
+	// 벤픽 픽 필터: 드래프트가 진행됐으면(로컬 팀 픽 집합 비어있지 않음) 픽된 캐릭터만 표시.
+	// (픽 집합이 비어있으면 = 벤픽 미수행 → 전체 표시: 하위 호환)
+	TSet<int32> AllowedUnits;
+	bool bFilterByPick = false;
+	{
+		EAOSTeam LocalTeam = EAOSTeam::Team1;
+		if (APlayerController* PC = GetOwningPlayer())
+		{
+			if (AAOSPlayerState* PS = PC->GetPlayerState<AAOSPlayerState>())
+			{
+				LocalTeam = PS->GetTeam();
+			}
+		}
+		if (AAOSGameState* AOSGS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr)
+		{
+			const TArray<int32>& Picked = AOSGS->GetPickedUnits(LocalTeam);
+			if (Picked.Num() > 0)
+			{
+				bFilterByPick = true;
+				for (int32 U : Picked) { AllowedUnits.Add(U); }
+			}
+		}
+	}
+
 	// 로스터 카드 생성
 	for (int32 i = 0; i < Roster.Num(); ++i)
 	{
+		if (bFilterByPick && !AllowedUnits.Contains(i)) { continue; } // 픽 안 된 캐릭터 → 표시 안 함
 		UAOSCharacterCardWidget* Card = WidgetTree->ConstructWidget<UAOSCharacterCardWidget>(
 			UAOSCharacterCardWidget::StaticClass(),
 			*FString::Printf(TEXT("CharCard_%d"), i));

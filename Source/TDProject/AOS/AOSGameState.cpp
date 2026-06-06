@@ -21,6 +21,14 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, Team1Gold);
 	DOREPLIFETIME(AAOSGameState, Team2Gold);
 	DOREPLIFETIME(AAOSGameState, LastRoundResult);
+
+	// 벤픽 드래프트
+	DOREPLIFETIME(AAOSGameState, Team1PickedUnitIds);
+	DOREPLIFETIME(AAOSGameState, Team2PickedUnitIds);
+	DOREPLIFETIME(AAOSGameState, Team1BannedUnitIds);
+	DOREPLIFETIME(AAOSGameState, Team2BannedUnitIds);
+	DOREPLIFETIME(AAOSGameState, CurrentDraftStep);
+	DOREPLIFETIME(AAOSGameState, DraftTurnTimeRemaining);
 }
 
 void AAOSGameState::ServerSetCurrentState(EAOSGameState NewState)
@@ -220,4 +228,115 @@ void AAOSGameState::OnRep_Gold()
 	// 단순화를 위해 두 팀 모두 알림 (구독자가 Team 파라미터로 필터).
 	OnTeamGoldChanged.Broadcast(EAOSTeam::Team1, Team1Gold);
 	OnTeamGoldChanged.Broadcast(EAOSTeam::Team2, Team2Gold);
+}
+
+// ============================================================
+// 벤픽 드래프트
+// ============================================================
+
+const TArray<FAOSDraftStep>& AAOSGameState::GetDraftSequence()
+{
+	// 밴 4(교대) + 픽 10(스네이크 1-2-2-1-1-2-2-1-1-2) = 14스텝. 팀당 밴2·픽5.
+	static const TArray<FAOSDraftStep> Seq = []()
+	{
+		const EAOSTeam T1 = EAOSTeam::Team1;
+		const EAOSTeam T2 = EAOSTeam::Team2;
+		TArray<FAOSDraftStep> S;
+		S.Add(FAOSDraftStep{ T1, true });  S.Add(FAOSDraftStep{ T2, true });
+		S.Add(FAOSDraftStep{ T1, true });  S.Add(FAOSDraftStep{ T2, true });
+		S.Add(FAOSDraftStep{ T1, false }); S.Add(FAOSDraftStep{ T2, false });
+		S.Add(FAOSDraftStep{ T2, false }); S.Add(FAOSDraftStep{ T1, false });
+		S.Add(FAOSDraftStep{ T1, false }); S.Add(FAOSDraftStep{ T2, false });
+		S.Add(FAOSDraftStep{ T2, false }); S.Add(FAOSDraftStep{ T1, false });
+		S.Add(FAOSDraftStep{ T1, false }); S.Add(FAOSDraftStep{ T2, false });
+		return S;
+	}();
+	return Seq;
+}
+
+void AAOSGameState::ServerResetDraft()
+{
+	if (!HasAuthority()) return;
+	Team1PickedUnitIds.Reset();
+	Team2PickedUnitIds.Reset();
+	Team1BannedUnitIds.Reset();
+	Team2BannedUnitIds.Reset();
+	CurrentDraftStep = 0;
+	OnDraftChanged.Broadcast();
+}
+
+void AAOSGameState::ServerRecordBan(EAOSTeam Team, int32 UnitId)
+{
+	if (!HasAuthority()) return;
+	((Team == EAOSTeam::Team1) ? Team1BannedUnitIds : Team2BannedUnitIds).AddUnique(UnitId);
+	OnDraftChanged.Broadcast();
+}
+
+void AAOSGameState::ServerRecordPick(EAOSTeam Team, int32 UnitId)
+{
+	if (!HasAuthority()) return;
+	((Team == EAOSTeam::Team1) ? Team1PickedUnitIds : Team2PickedUnitIds).AddUnique(UnitId);
+	OnDraftChanged.Broadcast();
+}
+
+void AAOSGameState::ServerSetDraftStep(int32 Step)
+{
+	if (!HasAuthority()) return;
+	CurrentDraftStep = Step;
+	OnDraftChanged.Broadcast();
+}
+
+void AAOSGameState::ServerSetDraftTurnTime(float Time)
+{
+	if (!HasAuthority()) return;
+	DraftTurnTimeRemaining = Time;
+	// 리슨서버 호스트 즉시 갱신 (원격 클라는 DraftTurnTimeRemaining 의 OnRep_Draft 가 처리)
+	OnDraftChanged.Broadcast();
+}
+
+void AAOSGameState::OnRep_Draft()
+{
+	OnDraftChanged.Broadcast();
+}
+
+const TArray<int32>& AAOSGameState::GetPickedUnits(EAOSTeam Team) const
+{
+	return (Team == EAOSTeam::Team1) ? Team1PickedUnitIds : Team2PickedUnitIds;
+}
+
+bool AAOSGameState::IsUnitPickedByTeam(int32 UnitId, EAOSTeam Team) const
+{
+	return GetPickedUnits(Team).Contains(UnitId);
+}
+
+bool AAOSGameState::IsUnitPicked(int32 UnitId) const
+{
+	return Team1PickedUnitIds.Contains(UnitId) || Team2PickedUnitIds.Contains(UnitId);
+}
+
+bool AAOSGameState::IsUnitBanned(int32 UnitId) const
+{
+	return Team1BannedUnitIds.Contains(UnitId) || Team2BannedUnitIds.Contains(UnitId);
+}
+
+bool AAOSGameState::IsUnitAvailableForDraft(int32 UnitId) const
+{
+	return UnitId >= 0 && !IsUnitPicked(UnitId) && !IsUnitBanned(UnitId);
+}
+
+bool AAOSGameState::IsDraftComplete() const
+{
+	return CurrentDraftStep >= GetDraftSequence().Num();
+}
+
+EAOSTeam AAOSGameState::GetActiveDraftTeam() const
+{
+	const TArray<FAOSDraftStep>& Seq = GetDraftSequence();
+	return Seq.IsValidIndex(CurrentDraftStep) ? Seq[CurrentDraftStep].Team : EAOSTeam::Team1;
+}
+
+bool AAOSGameState::IsCurrentStepBan() const
+{
+	const TArray<FAOSDraftStep>& Seq = GetDraftSequence();
+	return Seq.IsValidIndex(CurrentDraftStep) ? Seq[CurrentDraftStep].bBan : false;
 }

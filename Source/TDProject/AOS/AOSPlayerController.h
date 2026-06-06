@@ -12,6 +12,7 @@ class UAOSSettlementWidget;
 class UAOSCharacterSelectWidget;
 class UAOSLobbyWidget;
 class UAOSMinimapWidget;
+class UAOSBanPickWidget;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -123,6 +124,10 @@ public:
 	UFUNCTION(Client, Reliable, Category = "AOS|Network")
 	void Client_ReceiveCharacterRoster(const TArray<FCharacterRosterEntry>& Roster);
 
+	// 벤픽: 클라 → 서버 밴/픽 선택 (서버가 PlayerState 팀으로 강제)
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_DraftSelect(int32 UnitId);
+
 protected:
 	// UI 위젯 클래스 (에디터에서 설정)
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
@@ -133,6 +138,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> CharacterSelectWidgetClass;
+
+	// 벤픽 위젯 클래스 (미설정 시 C++ UAOSBanPickWidget 폴백)
+	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
+	TSubclassOf<UUserWidget> BanPickWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")
 	TSubclassOf<UUserWidget> LobbyWidgetClass;
@@ -152,6 +161,9 @@ protected:
 	UAOSCharacterSelectWidget* CharacterSelectWidget = nullptr;
 
 	UPROPERTY()
+	UAOSBanPickWidget* BanPickWidget = nullptr;
+
+	UPROPERTY()
 	UAOSLobbyWidget* LobbyWidget = nullptr;
 
 	UPROPERTY()
@@ -168,6 +180,8 @@ protected:
 	void HideSettlement();
 	void ShowCharacterSelect();
 	void HideCharacterSelect();
+	void ShowBanPick();
+	void HideBanPick();
 	void ShowLobby();
 	void HideLobby();
 

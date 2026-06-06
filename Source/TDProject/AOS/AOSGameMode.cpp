@@ -157,6 +157,20 @@ void AAOSGameMode::Tick(float DeltaTime)
 			}
 		}
 	}
+	else if (AOSGameState == EAOSGameState::BanPick)
+	{
+		// 벤픽 턴 카운트다운 — 1초마다 GameState 리플리케이션 (위젯 표시용)
+		int32 PrevSecond = FMath::CeilToInt(DraftTurnTimeRemaining);
+		DraftTurnTimeRemaining = FMath::Max(0.0f, DraftTurnTimeRemaining - DeltaTime);
+		int32 CurrSecond = FMath::CeilToInt(DraftTurnTimeRemaining);
+		if (PrevSecond != CurrSecond)
+		{
+			if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+			{
+				AOSGS->ServerSetDraftTurnTime(DraftTurnTimeRemaining);
+			}
+		}
+	}
 	else if (AOSGameState == EAOSGameState::RoundRunning)
 	{
 		UpdateGameTime(DeltaTime);
@@ -476,8 +490,24 @@ void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerSt
 	if (!HasAuthority() || !PlayerState) return;
 	if (AOSGameState != EAOSGameState::RoundPreparation) return;
 
-	int32 T = (PlayerState->GetTeam() == EAOSTeam::Team1) ? 0 : 1;
-	int32 NewCount = FMath::Min(Classes.Num(), MaxCharactersPerLane);
+	const EAOSTeam DeployTeam = PlayerState->GetTeam();
+	int32 T = (DeployTeam == EAOSTeam::Team1) ? 0 : 1;
+
+	// 벤픽 픽 필터: 해당 팀이 픽한 유닛만 배치 허용 (UI 가 막지만 서버에서 강제)
+	const AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	TArray<TSubclassOf<AAOSCharacter>> FilteredClasses;
+	TArray<int32> FilteredUnitIds;
+	for (int32 i = 0; i < Classes.Num(); ++i)
+	{
+		const int32 Uid = UnitIds.IsValidIndex(i) ? UnitIds[i] : -1;
+		if (Classes[i] && Uid >= 0 && AOSGS && AOSGS->IsUnitPickedByTeam(Uid, DeployTeam))
+		{
+			FilteredClasses.Add(Classes[i]);
+			FilteredUnitIds.Add(Uid);
+		}
+	}
+
+	int32 NewCount = FMath::Min(FilteredClasses.Num(), MaxCharactersPerLane);
 
 	// 총합 5명 초과 방지
 	int32 Others = 0;
@@ -486,7 +516,7 @@ void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerSt
 			Others += DeployPlan[T][OtherL].Classes.Num();
 	if (Others + NewCount > 5) return;
 
-	SetLaneDeployClasses(PlayerState->GetTeam(), Lane, Classes, UnitIds);
+	SetLaneDeployClasses(DeployTeam, Lane, FilteredClasses, FilteredUnitIds);
 	PlayerState->ServerSetDeployCount(Lane, NewCount);
 }
 
@@ -1089,6 +1119,98 @@ void AAOSGameMode::TransitionToRoundPreparation()
 		CurrentRound + 1, AllSpawnPoints.Num());
 }
 
+// ============================================================
+// 벤픽 드래프트 (Lobby → BanPick → RoundPreparation)
+// ============================================================
+
+void AAOSGameMode::TransitionToBanPick()
+{
+	if (!HasAuthority()) return;
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS) return;
+
+	AOSGS->ServerResetDraft();
+	SetGameState(EAOSGameState::BanPick);
+
+	// 모든 PlayerController 에 로스터 RPC 전송 (원격 클라 포함 — TransitionToRoundPreparation 패턴)
+	const TArray<FCharacterRosterEntry>& Roster = GetCharacterRoster();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (AAOSPlayerController* PC = Cast<AAOSPlayerController>(It->Get()))
+		{
+			PC->Client_ReceiveCharacterRoster(Roster);
+		}
+	}
+
+	StartDraftTurnTimer();
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] BanPick 상태로 전이 — 드래프트 시작 (로스터 %d종, 시퀀스 %d스텝)"),
+		Roster.Num(), AAOSGameState::GetDraftSequence().Num());
+}
+
+void AAOSGameMode::StartDraftTurnTimer()
+{
+	DraftTurnTimeRemaining = DraftTurnDuration;
+	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
+	{
+		AOSGS->ServerSetDraftTurnTime(DraftTurnTimeRemaining);
+	}
+	GetWorldTimerManager().SetTimer(DraftTurnTimerHandle, this, &AAOSGameMode::OnDraftTurnTimeout, DraftTurnDuration, false);
+}
+
+void AAOSGameMode::OnDraftTurnTimeout()
+{
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS || AOSGameState != EAOSGameState::BanPick || AOSGS->IsDraftComplete()) return;
+
+	// 시간 초과 → 활성 팀에 가용 유닛 중 랜덤 자동 선택
+	const int32 RosterNum = GetCharacterRoster().Num();
+	TArray<int32> Available;
+	for (int32 i = 0; i < RosterNum; ++i)
+	{
+		if (AOSGS->IsUnitAvailableForDraft(i)) Available.Add(i);
+	}
+	const int32 Choice = (Available.Num() > 0) ? Available[FMath::RandRange(0, Available.Num() - 1)] : -1;
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 벤픽 턴 타임아웃 → 자동선택 유닛#%d (팀%d)"),
+		Choice, (int32)AOSGS->GetActiveDraftTeam());
+	ServerApplyDraftSelection(AOSGS->GetActiveDraftTeam(), Choice);
+}
+
+void AAOSGameMode::ServerApplyDraftSelection(EAOSTeam Team, int32 UnitId)
+{
+	if (!HasAuthority()) return;
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS || AOSGameState != EAOSGameState::BanPick || AOSGS->IsDraftComplete()) return;
+
+	// 활성 팀의 선택만 유효
+	if (Team != AOSGS->GetActiveDraftTeam()) return;
+
+	// 유효 유닛이면 밴/픽 기록 (UnitId<0 = 자동선택 실패 → 기록 없이 스텝만 진행)
+	const bool bValidUnit = (UnitId >= 0) && (UnitId < GetCharacterRoster().Num())
+		&& AOSGS->IsUnitAvailableForDraft(UnitId);
+	if (UnitId >= 0 && !bValidUnit) return;  // 이미 밴/픽된 잘못된 선택 → 거부
+
+	if (bValidUnit)
+	{
+		if (AOSGS->IsCurrentStepBan())
+			AOSGS->ServerRecordBan(Team, UnitId);
+		else
+			AOSGS->ServerRecordPick(Team, UnitId);
+	}
+
+	AOSGS->ServerSetDraftStep(AOSGS->CurrentDraftStep + 1);
+
+	if (AOSGS->IsDraftComplete())
+	{
+		GetWorldTimerManager().ClearTimer(DraftTurnTimerHandle);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 드래프트 완료 → RoundPreparation"));
+		TransitionToRoundPreparation();
+	}
+	else
+	{
+		StartDraftTurnTimer();
+	}
+}
+
 void AAOSGameMode::UpdateGameTime(float DeltaTime)
 {
 	RemainingGameTime -= DeltaTime;
@@ -1261,8 +1383,8 @@ void AAOSGameMode::ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bRead
 		}
 		else if (AOSGameState == EAOSGameState::Lobby)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 준비 완료 → RoundPreparation"));
-			TransitionToRoundPreparation();
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 양쪽 준비 완료 → BanPick(드래프트)"));
+			TransitionToBanPick();
 		}
 		else if (AOSGameState == EAOSGameState::RoundPreparation)
 		{

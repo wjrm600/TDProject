@@ -61,7 +61,9 @@ enum class EAOSGameState : uint8
 	Lobby UMETA(DisplayName = "Lobby"),
 	RoundPreparation UMETA(DisplayName = "Round Preparation"),
 	RoundRunning UMETA(DisplayName = "Round Running"),
-	Settlement UMETA(DisplayName = "Settlement")
+	Settlement UMETA(DisplayName = "Settlement"),
+	// 벤픽 드래프트 단계 (Lobby 직후, RoundPreparation 직전). enum 값 시프트 방지를 위해 끝에 append.
+	BanPick UMETA(DisplayName = "Ban Pick")
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
@@ -224,6 +226,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void TransitionToRoundPreparation();
 
+	// 벤픽 드래프트 단계로 전이 (Lobby 직후). 드래프트 초기화 + 로스터 전송 + 첫 턴 타이머.
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	void TransitionToBanPick();
+
+	// 활성 팀의 밴/픽 선택 적용 + 스텝 진행 (PC RPC 또는 턴 타임아웃이 호출). 완료 시 RoundPreparation.
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	void ServerApplyDraftSelection(EAOSTeam Team, int32 UnitId);
+
 	// Draw 라운드 처리 — 5초 타이머 후 다음 라운드 준비로 전환
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void HandleDrawRound();
@@ -264,6 +274,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Settings")
 	float GameDuration = 600.0f; // 10분
 
+	// 벤픽: 턴당 제한 시간(초). 만료 시 활성 팀에 가용 유닛 자동 선택.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|BanPick")
+	float DraftTurnDuration = 30.0f;
+
 	// Slice 0: 골드 보상 수치 (design-balance 튜닝 대상)
 	// 적 캐릭터 처치 시 처치한 팀에 지급
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
@@ -299,6 +313,10 @@ protected:
 
 	// Draw 라운드 자동 전환 타이머 (5초 후 다음 라운드 준비)
 	FTimerHandle DrawTransitionHandle;
+
+	// 벤픽 턴 타이머 + 남은 시간 (Tick 으로 1초마다 GameState 리플리케이션)
+	FTimerHandle DraftTurnTimerHandle;
+	float DraftTurnTimeRemaining = 30.0f;
 
 	// 라운드 준비 남은 시간 (UI 표시용)
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
@@ -345,6 +363,10 @@ protected:
 
 private:
 	void SetGameState(EAOSGameState NewState);
+
+	// 벤픽 턴 타이머 시작/만료
+	void StartDraftTurnTimer();
+	void OnDraftTurnTimeout();
 	void UpdateGameTime(float DeltaTime);
 	void CheckVictoryConditions();
 

@@ -1091,17 +1091,85 @@ Content/AOS/Anim/
 - **구매 경로**: ShopItemButton → `AAOSPlayerController::Server_BuyItemForUnit(UnitId,Row)` RPC → 서버가 PlayerState 팀 강제 → `GameMode::ServerBuyItemForUnit`. (클라는 `DT_Items` 직접 로드, 구매만 서버.)
 - 콘솔 테스트: `BuyItem <UnitId> <RowName>` (Exec).
 
-### 캐릭터 로스터 (현재 5종)
+### 캐릭터 로스터 (현재 20종)
 
-`TDProj_GM` (BP GameMode) `CharacterRoster`: **알렉스 / 베가 / 켄 / 캐미 / 가일**. 모두 `BP_Character` 자식 + Mannequin(`SK_Mannequin_UE4_WithWeapon`) + `ABP_AOSCharacter`.
+`TDProj_GM` (BP GameMode) `CharacterRoster`: **고유 5종**(알렉스 / 베가 / 켄 / 캐미 / 가일) + **플레이스홀더 15종**(`BP_Char_Unit6..20`). 모두 `BP_Character` 자식 + Mannequin(`SK_Mannequin_UE4_WithWeapon`) + `ABP_AOSCharacter`.
+- 로스터 인덱스 = **UnitId** (벤픽·배치·아이템 귀속의 키). 0~4=고유, 5~19=플레이스홀더.
 - 스탯: `AttributeInitRowName` → `DT_CharacterAttributes` 행.
 - 스킬: **알렉스만 풀스킬**(Q/W/E/R, BP_GA_Alex_*). 나머지는 기본 공격(GA_Attack)만 — 새 캐릭터는 **BP_Char_Ken 복제 = 기본형**이 표준.
+- 플레이스홀더 15종은 벤픽이 의미를 가지려면 ≥14 필요(밴4+픽10)해서 추가. 고유 스탯/스킬/초상화 차별화는 후속 작업.
 
 ### MCP 로 에셋 데이터 편집 (함정 주의)
 
 - **DataTable 행 추가·수정**: `DataTableFunctionLibrary.export_data_table_to_json_string` ↔ `fill_data_table_from_json_string` **JSON 라운드트립**(기존 필드 보존). `export_to_json` 은 없음.
 - **EditDefaultsOnly 구조체**(FCharacterRosterEntry, FGameplayModifierInfo 등): `set_editor_property` 가 "cannot be edited on instances" 로 막힘 → **`struct.import_text("(Field=Value,...)")`** 직렬화 우회. 클래스/텍스처 참조: `/Script/Engine.BlueprintGeneratedClass'/Game/...'`.
 - **BP CDO 편집 후 저장**: `set_editor_property` 가 패키지를 dirty 로 안 만들 수 있음 → **`save_asset(path, only_if_is_dirty=False)` 강제 저장 필수** (안 하면 디스크 미반영 → 재시작 시 유실). 구조체 필드 접근은 **snake_case**(`character_class`).
+
+## Ban/Pick Draft System (벤픽 드래프트)
+
+매칭(Lobby)과 1라운드 사이에 **MOBA 식 밴/픽 드래프트** 단계. 양 팀이 교대로 캐릭터를 밴/픽하고, 이후 모든 라운드의 준비 단계는 **픽된 캐릭터만** 배치 가능.
+
+### 상태 흐름
+
+```
+Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → RoundRunning → ...
+   Settlement → RoundPreparation (BanPick 재진입 없음, 픽 풀은 매치 내내 유지)
+```
+
+- `EAOSGameState::BanPick` 은 **enum 끝에 append**(값 5) — 중간 삽입 시 기존 직렬화/BP 데이터 값 시프트 방지 (흐름 순서 ≠ enum 순서는 무방).
+- `ServerSetPlayerReady` 의 Lobby 양팀 ready 분기 → `TransitionToRoundPreparation` 대신 **`TransitionToBanPick`** 호출.
+- 드래프트 1회/매치. `Settlement → RoundPreparation` 경로는 불변 (픽 풀 유지).
+
+### 드래프트 시퀀스 (서버 고정 14스텝)
+
+`AAOSGameState::GetDraftSequence()` 의 `static const TArray<FAOSDraftStep>` (`FAOSDraftStep{ EAOSTeam Team; bool bBan; }`):
+
+```
+밴 4 (교대):       T1, T2, T1, T2
+픽 10 (스네이크):  T1, T2, T2, T1, T1, T2, T2, T1, T1, T2
+```
+
+팀당 **밴2 + 픽5**. **전체 고유** — 한 UnitId 는 밴/픽 즉시 풀에서 제거되어 한 팀만 보유. 턴 타이머(`DraftTurnDuration` 기본 30s) 만료 시 가용 유닛 중 **랜덤 자동 선택**.
+
+### GameMode (소유: `AOSGameMode.h/.cpp`, 서버 권한)
+
+| 함수/멤버 | 역할 |
+|-----------|------|
+| `TransitionToBanPick()` | `ServerResetDraft` → `SetGameState(BanPick)` → 전 PC 에 로스터 RPC → `StartDraftTurnTimer` |
+| `ServerApplyDraftSelection(EAOSTeam, int32 UnitId)` | 턴/가용 검증 → `ServerRecordBan`/`ServerRecordPick` → `ServerSetDraftStep(+1)` → 완료 시 `TransitionToRoundPreparation`, 아니면 타이머 재시작. **PC RPC 가 호출** |
+| `StartDraftTurnTimer()` / `OnDraftTurnTimeout()` | 턴 타이머 핸들, 만료 시 가용 유닛 랜덤 자동선택(`ServerApplyDraftSelection`) |
+| `DraftTurnDuration` (EditAnywhere, `AOS|BanPick`) | 턴당 제한시간(기본 30s). `DraftTurnTimeRemaining` 은 Tick 에서 1초마다 `ServerSetDraftTurnTime` |
+| `ServerSetLaneDeployClassesForPlayer` (**배치 필터**) | 각 UnitId 가 배치 팀의 픽 집합(`AOSGS->IsUnitPickedByTeam`)에 없으면 **거부** → "픽한 캐릭터만 사용" 서버 강제 |
+
+### GameState 리플리케이션 (소유: `AOSGameState.h/.cpp`)
+
+기존 `ReplicatedUsing=OnRep_X` + `ServerSetX` + `FOnXChanged` 패턴 답습. 6개 신규 Replicated 프로퍼티(모두 `ReplicatedUsing=OnRep_Draft`):
+
+- `Team1/2PickedUnitIds`, `Team1/2BannedUnitIds` (`TArray<int32>`), `CurrentDraftStep`(int32), `DraftTurnTimeRemaining`(float)
+- 서버 setter: `ServerResetDraft / ServerRecordBan / ServerRecordPick / ServerSetDraftStep / ServerSetDraftTurnTime` (각각 `OnDraftChanged` 브로드캐스트 — 리슨 호스트 즉시 갱신)
+- 시퀀스/스텝 기반 getter: `GetPickedUnits / IsUnitPickedByTeam / IsUnitPicked / IsUnitBanned / IsUnitAvailableForDraft / IsDraftComplete / GetActiveDraftTeam / IsCurrentStepBan`
+- `OnRep_Draft()` → `FOnDraftChanged OnDraftChanged` 브로드캐스트 (벤픽 위젯 구독)
+
+### PlayerController + 위젯 (소유: `AOSPlayerController.h/.cpp` + `UI/AOSBanPickWidget.h/.cpp`)
+
+- `OnGameStateChanged` 의 **BanPick 케이스** → 다른 위젯 hide + `ShowBanPick()` + `FInputModeGameAndUI`. 진입 전 항상 `HideBanPick()`.
+- `Server_DraftSelect(int32 UnitId)` (Server, Reliable) → 서버가 `PlayerState` 팀 강제 → `GameMode->ServerApplyDraftSelection`.
+- `Client_ReceiveCharacterRoster` 가 CharacterSelect 뿐 아니라 **`BanPickWidget->InitializeWithRoster`** 도 호출 (BanPick 진입 시 로스터 주입).
+- **`UAOSBanPickWidget`** (순수 C++ `UUserWidget`): `RootBorder → VerticalBox[StatusText, CardGrid(UWrapBox), HBox(Team1/2Text)]`. `InitializeWithRoster` 가 `UBorder` 카드(HitTestInvisible) + `UImage` 초상화/이름 생성. `NativeOnMouseButtonDown` 이 카드 지오메트리 hit-test → `Server_DraftSelect`. `RefreshCards` 틴트(밴=암적, T1픽=적, T2픽=청, 내 턴 아님=회색), `RefreshStatus`("팀N 밴/픽 차례 (Ns)" + 밴/픽 목록). `NativeConstruct` 에서 GameState `OnDraftChanged` 구독.
+
+> ⚠️ **위젯 실현 순서(미니맵 교훈 재발)**: `ShowBanPick` 에서 **`InitializeWithRoster`(WidgetTree->RootWidget 구축)를 `AddToViewport` 보다 먼저** 호출해야 함. 순서가 뒤바뀌면 빈 RootWidget 이 Slate 로 실현되어 **벤픽 화면이 안 뜸** (실제로 이 버그가 발생했고 순서 교정으로 해결).
+
+### RoundPreparation 픽 필터 (소유: `UI/AOSCharacterSelectWidget.cpp`)
+
+`InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
+
+### DS 규칙 준수
+
+모든 드래프트 상태 변경은 `HasAuthority()` 서버, 위젯/입력은 `IsLocalPlayerController()` 가드, 클라는 GameState 리플리케이션(`OnRep_Draft`)으로만 드래프트 상태 수신. 클라는 `DT_Items` 처럼 로스터를 직접 안 읽고 **`Client_ReceiveCharacterRoster` RPC** 로 받음.
+
+### Hot Reload 비호환
+
+`EAOSGameState::BanPick` enum 추가 + 신규 USTRUCT(`FAOSDraftStep`) + 신규 UCLASS(`UAOSBanPickWidget`) → **풀 리빌드 필수**.
 
 ## Memory Management Patterns
 

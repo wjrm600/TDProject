@@ -584,6 +584,36 @@
 
 ---
 
+## 2026-06-07 — 벤픽(Ban/Pick) 드래프트 단계 추가
+
+**작업 내용**
+- 매칭(Lobby)과 1라운드 사이에 MOBA 식 **밴/픽 드래프트 단계** 신설. 픽된 캐릭터만 이후 모든 라운드 준비에서 배치 가능
+- `EAOSGameState::BanPick` 을 enum **끝에 append**(값 시프트 방지). Lobby 양팀 ready → `TransitionToRoundPreparation` 대신 `TransitionToBanPick`
+- 서버 고정 **14스텝 시퀀스**(`FAOSDraftStep{Team, bBan}`): 밴4(T1·T2·T1·T2) + 픽10 스네이크(T1·T2·T2·T1·T1·T2·T2·T1·T1·T2) = 팀당 밴2·픽5. **전체 고유**(밴/픽 즉시 풀에서 제거)
+- `AOSGameMode`: `TransitionToBanPick` / `ServerApplyDraftSelection`(턴·가용 검증→기록→step++→완료 시 RoundPreparation) / 턴 타이머(`DraftTurnDuration` 30s, 만료 시 랜덤 자동선택) / **배치 필터**(`ServerSetLaneDeployClassesForPlayer` 가 픽 안 된 UnitId 거부 = 서버 강제)
+- `AOSGameState`: 6개 Replicated(Team1/2 Picked·Banned UnitIds, CurrentDraftStep, DraftTurnTimeRemaining — 모두 `OnRep_Draft`) + ServerSet/Record + getter 8종 + `FOnDraftChanged` 델리게이트
+- `AOSPlayerController`: `OnGameStateChanged` BanPick 케이스, `Server_DraftSelect` RPC(서버가 PlayerState 팀 강제), 로스터 RPC 가 벤픽 위젯에도 주입
+- 신규 **`UAOSBanPickWidget`**(순수 C++): 카드 그리드 + 밴/픽 슬롯 + 턴/타이머, 지오메트리 hit-test 클릭, `OnDraftChanged` 구독 갱신
+- `AOSCharacterSelectWidget`: 준비화면 **픽 필터**(`GetPickedUnits` 에 없으면 카드 숨김, 픽 비면 전체 표시=하위호환)
+- 로스터 **5→20종 확장**(`BP_Char_Unit6..20`, BP_Char_Ken 복제 기본형) — 벤픽이 의미를 가지려면 ≥14(밴4+픽10) 필요
+
+**문제점 / 난관**
+- enum 중간 삽입 시 기존 직렬화/BP 데이터 값 시프트 위험 → 끝에 append 로 회피
+- **벤픽 화면이 안 뜸** — `ShowBanPick` 이 `InitializeWithRoster`(WidgetTree 구축)보다 `AddToViewport` 를 **먼저** 호출 → 빈 RootWidget 이 Slate 로 실현 (미니맵에서 겪은 위젯 실현 순서 함정 재발)
+
+**해결 방법**
+- `ShowBanPick` 의 호출 순서를 `InitializeWithRoster` → `AddToViewport` 로 교정 (cpp-only, Live Coding 가능)
+- DS 규칙 준수: 드래프트 상태 변경은 `HasAuthority()` 서버, 위젯/입력은 `IsLocalPlayerController()`, 클라는 `OnRep_Draft` 리플리케이션으로만 수신
+
+**결과 / 영향**
+- 2-client DS PIE **기본 흐름 확인**: Lobby→BanPick(양 클라 표시)→14스텝 교대 드래프트(전체 고유)→RoundPreparation 픽 필터→라운드 진행. 세세한 수정은 후속 예정
+- 영향: `AOSGameMode.h/.cpp`, `AOSGameState.h/.cpp`, `AOSPlayerController.h/.cpp`, `UI/AOSBanPickWidget.h/.cpp`(신규), `UI/AOSCharacterSelectWidget.cpp`, `Content/TDProj_GM`, `Content/Characters/BP_Char_Unit6..20`
+- 신규 enum/USTRUCT(`FAOSDraftStep`)/UCLASS(`UAOSBanPickWidget`) → **풀 리빌드 필요**
+- 후속: 플레이스홀더 15종 고유 스탯/스킬/초상화 차별화, 벤픽 UI 아트 스타일링
+- 관련: `CLAUDE.md` "Ban/Pick Draft System (벤픽 드래프트)" 섹션
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

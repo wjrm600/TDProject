@@ -22,6 +22,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerCountChanged, int32, Count)
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTeamGoldChanged, EAOSTeam, Team, int32, NewGold);
 // Slice 1: 라운드 결과(라인 승패) 갱신 알림 — 준비 화면 결과 패널이 구독.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoundResultChanged);
+// 벤픽: 드래프트 상태(밴/픽/스텝) 갱신 알림 — 벤픽 위젯이 구독.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDraftChanged);
+
+// 벤픽 드래프트 시퀀스의 한 스텝 (어느 팀이 밴/픽 하는가). 정적 시퀀스용 — 비리플리케이션.
+struct FAOSDraftStep
+{
+	EAOSTeam Team = EAOSTeam::Team1;
+	bool bBan = false;
+};
 
 // Slice 1: 직전 라운드의 라인별 승패 요약 (GameMode 가 EndRound 에서 채워 복제).
 // 인덱스 0=Top, 1=Mid, 2=Bottom.
@@ -96,6 +105,28 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_RoundResult, BlueprintReadOnly, Category = "AOS|Game")
 	FAOSRoundResult LastRoundResult;
 
+	// ── 벤픽 드래프트 (밴2+픽5, 스네이크, 전체 고유) ──
+	// 픽/밴된 유닛(=로스터 인덱스). 전체 고유라 중복 없음. 모두 OnRep_Draft 로 위젯 갱신.
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	TArray<int32> Team1PickedUnitIds;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	TArray<int32> Team2PickedUnitIds;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	TArray<int32> Team1BannedUnitIds;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	TArray<int32> Team2BannedUnitIds;
+
+	// 현재 드래프트 스텝 (0..N-1 진행, N(=시퀀스 길이)이면 완료)
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	int32 CurrentDraftStep = 0;
+
+	// 현재 턴 남은 시간. ReplicatedUsing=OnRep_Draft → 매초 갱신 시 위젯 OnDraftChanged 로 타이머 표시 갱신.
+	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
+	float DraftTurnTimeRemaining = 0.f;
+
 	// 서버 전용: 상태 업데이트 (AOSGameMode에서 호출)
 	void ServerSetCurrentState(EAOSGameState NewState);
 	void ServerSetCurrentRound(int32 NewRound);
@@ -116,6 +147,34 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	FAOSRoundResult GetLastRoundResult() const { return LastRoundResult; }
+
+	// ── 벤픽 드래프트 — 서버 전용 변경 (GameMode 가 호출) ──
+	void ServerResetDraft();
+	void ServerRecordBan(EAOSTeam Team, int32 UnitId);
+	void ServerRecordPick(EAOSTeam Team, int32 UnitId);
+	void ServerSetDraftStep(int32 Step);
+	void ServerSetDraftTurnTime(float Time);
+
+	// 드래프트 시퀀스 (정적, 서버/클라 공유 — 턴/밴or픽 판정 단일 진실)
+	static const TArray<FAOSDraftStep>& GetDraftSequence();
+
+	// 조회/헬퍼 (위젯·GameMode 공용)
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	const TArray<int32>& GetPickedUnits(EAOSTeam Team) const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsUnitPickedByTeam(int32 UnitId, EAOSTeam Team) const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsUnitPicked(int32 UnitId) const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsUnitBanned(int32 UnitId) const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsUnitAvailableForDraft(int32 UnitId) const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsDraftComplete() const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	EAOSTeam GetActiveDraftTeam() const;
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	bool IsCurrentStepBan() const;
 
 	// Getter
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
@@ -149,6 +208,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
 	FOnRoundResultChanged OnRoundResultChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "AOS|BanPick")
+	FOnDraftChanged OnDraftChanged;
+
 protected:
 	UFUNCTION()
 	void OnRep_CurrentState();
@@ -158,6 +220,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_RoundResult();
+
+	UFUNCTION()
+	void OnRep_Draft();
 
 	UFUNCTION()
 	void OnRep_CurrentRound();
