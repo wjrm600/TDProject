@@ -17,6 +17,7 @@
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
 #include "Components/SizeBoxSlot.h"
+#include "Components/Spacer.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
@@ -28,6 +29,16 @@ namespace
 {
 	// 위젯이 자동로드할 텍스처 경로 (asset-gen 이 이 경로에 생성). 없으면 솔리드 폴백.
 	const TCHAR* kBackdropPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_Backdrop.T_BanPick_Backdrop");
+	// 카드 장식 프레임(9-slice). 없으면 컬러 림 폴백.
+	const TCHAR* kCardFramePath = TEXT("/Game/AOS/UI/Assets/T_BanPick_CardFrame.T_BanPick_CardFrame");
+
+	// 팀 패널/구분선 색 (깊이감)
+	FLinearColor PanelColor(EAOSTeam Team)
+	{
+		return (Team == EAOSTeam::Team1)
+			? FLinearColor(0.18f, 0.05f, 0.06f, 0.45f)   // 팀1 = 어두운 레드 반투명
+			: FLinearColor(0.05f, 0.09f, 0.18f, 0.45f);  // 팀2 = 어두운 블루 반투명
+	}
 
 	FSlateFontInfo MakeFont(int32 Size)
 	{
@@ -155,7 +166,21 @@ void UAOSBanPickWidget::BuildUI()
 	if (UVerticalBoxSlot* VS = MainVB->AddChildToVerticalBox(TopBar))
 	{
 		VS->SetHorizontalAlignment(HAlign_Fill);
-		VS->SetPadding(FMargin(0.f, 0.f, 0.f, 10.f));
+		VS->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
+	}
+
+	// 상단바/본문 구분선 (옅은 골드 라인)
+	{
+		USizeBox* DivBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BPDivBox"));
+		DivBox->SetHeightOverride(2.f);
+		UBorder* DivLine = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPDivLine"));
+		DivLine->SetBrushColor(FLinearColor(0.55f, 0.48f, 0.30f, 0.55f));
+		DivBox->SetContent(DivLine);
+		if (UVerticalBoxSlot* VS = MainVB->AddChildToVerticalBox(DivBox))
+		{
+			VS->SetHorizontalAlignment(HAlign_Fill);
+			VS->SetPadding(FMargin(40.f, 0.f, 40.f, 12.f));
+		}
 	}
 
 	// 좌: 팀1 플레이어명 + 밴 행
@@ -179,16 +204,26 @@ void UAOSBanPickWidget::BuildUI()
 		UVerticalBox* C = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPTitle"));
 		TitleText->SetText(FText::FromString(TEXT("PICK & BAN")));
-		TitleText->SetFont(MakeFont(30));
+		{
+			FSlateFontInfo TitleFont = MakeFont(34);
+			TitleFont.OutlineSettings.OutlineSize = 1;
+			TitleFont.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
+			TitleText->SetFont(TitleFont);
+		}
 		TitleText->SetJustification(ETextJustify::Center);
-		TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.92f, 0.86f, 0.66f, 1.f))); // 골드
+		TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.88f, 0.62f, 1.f))); // 골드
 		if (UVerticalBoxSlot* S = C->AddChildToVerticalBox(TitleText))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
 		}
 		TimerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPTimer"));
 		TimerText->SetText(FText::FromString(TEXT("--")));
-		TimerText->SetFont(MakeFont(38));
+		{
+			FSlateFontInfo TimerFont = MakeFont(40);
+			TimerFont.OutlineSettings.OutlineSize = 1;
+			TimerFont.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
+			TimerText->SetFont(TimerFont);
+		}
 		TimerText->SetJustification(ETextJustify::Center);
 		if (UVerticalBoxSlot* S = C->AddChildToVerticalBox(TimerText))
 		{
@@ -233,11 +268,17 @@ void UAOSBanPickWidget::BuildUI()
 		VS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	}
 
-	// 좌 팀1 픽 컬럼
-	if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(BuildPickColumn(EAOSTeam::Team1)))
+	// 좌 팀1 픽 컬럼 (반투명 팀 패널로 감싸 깊이감)
 	{
-		HS->SetVerticalAlignment(VAlign_Top);
-		HS->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
+		UBorder* T1Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT1Panel"));
+		T1Panel->SetBrushColor(PanelColor(EAOSTeam::Team1));
+		T1Panel->SetPadding(FMargin(10.f));
+		T1Panel->SetContent(BuildPickColumn(EAOSTeam::Team1));
+		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T1Panel))
+		{
+			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
+			HS->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
+		}
 	}
 
 	// 중앙 패널
@@ -255,12 +296,29 @@ void UAOSBanPickWidget::BuildUI()
 			S->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
 		}
 
+		// 그리드 위 신축 여백 (수직 중앙 정렬용)
+		{
+			USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+			if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(TopSpacer))
+			{
+				S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			}
+		}
+
 		CardGrid = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("BPGrid"));
 		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(CardGrid))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
-			S->SetVerticalAlignment(VAlign_Fill);
-			S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+
+		// 그리드 아래 신축 여백
+		{
+			USpacer* BotSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
+			if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(BotSpacer))
+			{
+				S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			}
 		}
 
 		StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPStatus"));
@@ -276,6 +334,7 @@ void UAOSBanPickWidget::BuildUI()
 		// 확정 버튼
 		ConfirmButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("BPConfirm"));
 		ConfirmButton->OnClicked.AddDynamic(this, &UAOSBanPickWidget::OnConfirmClicked);
+		ConfirmButton->SetBackgroundColor(FLinearColor(0.30f, 0.30f, 0.33f, 1.f)); // 기본(차례 아님)
 		ConfirmText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPConfirmText"));
 		ConfirmText->SetText(FText::FromString(TEXT("확정  (CONFIRM)")));
 		ConfirmText->SetFont(MakeFont(18));
@@ -295,11 +354,17 @@ void UAOSBanPickWidget::BuildUI()
 		}
 	}
 
-	// 우 팀2 픽 컬럼
-	if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(BuildPickColumn(EAOSTeam::Team2)))
+	// 우 팀2 픽 컬럼 (반투명 팀 패널)
 	{
-		HS->SetVerticalAlignment(VAlign_Top);
-		HS->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
+		UBorder* T2Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT2Panel"));
+		T2Panel->SetBrushColor(PanelColor(EAOSTeam::Team2));
+		T2Panel->SetPadding(FMargin(10.f));
+		T2Panel->SetContent(BuildPickColumn(EAOSTeam::Team2));
+		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T2Panel))
+		{
+			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
+			HS->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
+		}
 	}
 }
 
@@ -343,34 +408,48 @@ UVerticalBox* UAOSBanPickWidget::BuildPickColumn(EAOSTeam Team)
 	for (int32 i = 0; i < PicksPerTeam; ++i)
 	{
 		UBorder* PickSlot = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		PickSlot->SetBrushColor(FLinearColor(TC.R * 0.18f, TC.G * 0.18f, TC.B * 0.18f, 0.85f)); // 빈 슬롯 = 팀색 어둡게
+		PickSlot->SetBrushColor(FLinearColor(TC.R * 0.45f, TC.G * 0.45f, TC.B * 0.45f, 0.95f)); // 슬롯 팀색 프레임
 		PickSlot->SetPadding(FMargin(4.f));
 
-		UHorizontalBox* HB = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-		PickSlot->SetContent(HB);
+		UOverlay* Ov = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+		PickSlot->SetContent(Ov);
 
+		// 초상화: 슬롯 전체 채움 (빈 칸도 색으로 꽉 참 — 작은 사각형 떠보임 해소)
 		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-		Img->SetBrush(FSlateColorBrush(FLinearColor(0.10f, 0.10f, 0.13f, 1.f)));
-		Img->SetDesiredSizeOverride(FVector2D(52.f, 52.f));
-		if (UHorizontalBoxSlot* HS = HB->AddChildToHorizontalBox(Img))
+		Img->SetBrush(FSlateColorBrush(FLinearColor(0.08f, 0.08f, 0.11f, 1.f)));
+		if (UOverlaySlot* OS = Ov->AddChildToOverlay(Img))
 		{
-			HS->SetVerticalAlignment(VAlign_Center);
+			OS->SetHorizontalAlignment(HAlign_Fill);
+			OS->SetVerticalAlignment(VAlign_Fill);
 		}
 
+		// 이름: 하단 중앙 (초상화 위에 외곽선으로 가독성)
 		UTextBlock* Name = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Name->SetText(FText::FromString(TEXT("")));
-		Name->SetFont(MakeFont(14));
-		if (UHorizontalBoxSlot* HS = HB->AddChildToHorizontalBox(Name))
 		{
-			HS->SetVerticalAlignment(VAlign_Center);
-			HS->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f));
-			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			FSlateFontInfo NF = MakeFont(15);
+			NF.OutlineSettings.OutlineSize = 1;
+			NF.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.9f);
+			Name->SetFont(NF);
+		}
+		Name->SetJustification(ETextJustify::Center);
+		if (UOverlaySlot* OS = Ov->AddChildToOverlay(Name))
+		{
+			OS->SetHorizontalAlignment(HAlign_Center);
+			OS->SetVerticalAlignment(VAlign_Bottom);
+			OS->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
 		}
 
-		if (UVerticalBoxSlot* VS = Col->AddChildToVerticalBox(PickSlot))
+		// 폭 고정 SizeBox 로 감싸 패널 collapse 방지 (초상화가 폭 없는 컬러 브러시일 때 대비), 높이는 Fill 균등 분배
+		USizeBox* SlotBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		SlotBox->SetWidthOverride(108.f);
+		SlotBox->SetContent(PickSlot);
+		if (UVerticalBoxSlot* VS = Col->AddChildToVerticalBox(SlotBox))
 		{
-			VS->SetHorizontalAlignment(HAlign_Fill);
-			VS->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+			VS->SetHorizontalAlignment(HAlign_Center);
+			VS->SetVerticalAlignment(VAlign_Fill);
+			VS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));  // 5칸 균등 분배(패널 높이 채움)
+			VS->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
 		}
 
 		Borders.Add(PickSlot);
@@ -398,14 +477,30 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
 			*FString::Printf(TEXT("BPCard_%d"), i));
 		Card->SetVisibility(ESlateVisibility::HitTestInvisible); // 클릭은 루트가 히트테스트로 처리
-		Card->SetPadding(FMargin(3.f));
-		Card->SetBrushColor(FLinearColor(0.10f, 0.10f, 0.13f, 1.f));
+
+		// 장식 프레임: 텍스처 있으면 9-slice(Box), 없으면 금속 컬러 림 폴백.
+		// 어느 쪽이든 RefreshCards 가 SetBrushColor 로 상태별 틴트(골드/팀색).
+		if (UTexture2D* FrameTex = TryLoadTexture(kCardFramePath))
+		{
+			FSlateBrush FB;
+			FB.SetResourceObject(FrameTex);
+			FB.DrawAs = ESlateBrushDrawType::Box;
+			FB.ImageSize = FVector2D(96.f, 96.f);       // Box 9-slice 코너 렌더 기준(없으면 프레임 깨짐)
+			FB.Margin = FMargin(0.25f);                 // 9-slice 테두리 비율(asset-gen 프레임에 맞춰 조정)
+			Card->SetBrush(FB);
+			Card->SetPadding(FMargin(14.f));            // 프레임 안쪽으로 초상화 인셋(프레임 폭에 맞춤)
+		}
+		else
+		{
+			Card->SetBrushColor(FLinearColor(0.55f, 0.50f, 0.38f, 1.f)); // 금속 림 폴백
+			Card->SetPadding(FMargin(5.f));
+		}
 
 		// 고정 크기 박스 — 초상화 유무와 무관하게 동일한 카드/클릭 영역 보장
 		// (SetDesiredSizeOverride 는 컬러 브러시에서 안정적이지 않아 SizeBox 로 강제)
 		USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		CardSize->SetWidthOverride(72.f);
-		CardSize->SetHeightOverride(72.f);
+		CardSize->SetWidthOverride(88.f);
+		CardSize->SetHeightOverride(88.f);
 		Card->SetContent(CardSize);
 
 		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
@@ -571,13 +666,15 @@ void UAOSBanPickWidget::RefreshCards()
 			CardImages[i]->SetColorAndOpacity(Tint);
 		}
 
-		// 보더: 미리보기 선택 카드 강조
+		// 프레임 틴트: 상태별 (텍스처 프레임/컬러 림 공통)
 		if (CardBorders[i])
 		{
-			const bool bPending = (i == PendingIndex);
-			CardBorders[i]->SetBrushColor(bPending
-				? FLinearColor(0.95f, 0.82f, 0.35f, 1.f)        // 미리보기 = 골드 테두리
-				: FLinearColor(0.10f, 0.10f, 0.13f, 1.f));
+			FLinearColor FrameTint(0.60f, 0.56f, 0.45f, 1.f);                      // 기본 = 금속 톤
+			if (i == PendingIndex)                               FrameTint = FLinearColor(1.00f, 0.84f, 0.38f, 1.f); // 미리보기 = 밝은 골드
+			else if (GS->IsUnitBanned(i))                        FrameTint = FLinearColor(0.42f, 0.16f, 0.16f, 1.f); // 밴 = 암적
+			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team1)) FrameTint = FLinearColor(0.95f, 0.35f, 0.35f, 1.f); // T1 픽 = 적
+			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team2)) FrameTint = FLinearColor(0.40f, 0.60f, 1.00f, 1.f); // T2 픽 = 청
+			CardBorders[i]->SetBrushColor(FrameTint);
 		}
 	}
 }
@@ -637,7 +734,6 @@ void UAOSBanPickWidget::RefreshSlots()
 					PickImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.10f, 0.10f, 0.13f, 1.f)));
 				}
 				PickImgs[i]->SetColorAndOpacity(FLinearColor::White);
-				PickImgs[i]->SetDesiredSizeOverride(FVector2D(52.f, 52.f));
 			}
 			if (PickNames[i])
 			{
@@ -665,12 +761,13 @@ void UAOSBanPickWidget::RefreshStatus()
 	const EAOSTeam Local = GetLocalTeam();
 	const bool bMyTurn = !bComplete && (GS->GetActiveDraftTeam() == Local);
 
-	// 타이머
+	// 타이머 (5초 이하 빨강 긴박감)
 	if (TimerText)
 	{
-		TimerText->SetText(bComplete
-			? FText::FromString(TEXT("--"))
-			: FText::FromString(FString::FromInt(FMath::Max(0, FMath::CeilToInt(GS->DraftTurnTimeRemaining)))));
+		const int32 Secs = FMath::Max(0, FMath::CeilToInt(GS->DraftTurnTimeRemaining));
+		TimerText->SetText(bComplete ? FText::FromString(TEXT("--")) : FText::FromString(FString::FromInt(Secs)));
+		TimerText->SetColorAndOpacity(FSlateColor(
+			(!bComplete && Secs <= 5) ? FLinearColor(1.0f, 0.30f, 0.30f, 1.f) : FLinearColor(0.95f, 0.95f, 0.95f, 1.f)));
 	}
 
 	// 상태 텍스트
@@ -698,6 +795,9 @@ void UAOSBanPickWidget::RefreshStatus()
 	{
 		const bool bCanConfirm = bMyTurn && (PendingIndex != INDEX_NONE) && GS->IsUnitAvailableForDraft(PendingIndex);
 		ConfirmButton->SetIsEnabled(bCanConfirm);
+		ConfirmButton->SetBackgroundColor(bCanConfirm
+			? TeamColor(Local)
+			: FLinearColor(0.28f, 0.28f, 0.31f, 1.f));
 	}
 	if (ConfirmText)
 	{
