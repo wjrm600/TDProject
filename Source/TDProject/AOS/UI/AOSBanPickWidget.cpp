@@ -31,13 +31,15 @@ namespace
 	const TCHAR* kBackdropPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_Backdrop.T_BanPick_Backdrop");
 	// 카드 장식 프레임(9-slice). 없으면 컬러 림 폴백.
 	const TCHAR* kCardFramePath = TEXT("/Game/AOS/UI/Assets/T_BanPick_CardFrame.T_BanPick_CardFrame");
+	// 중앙 비네팅 글로우(그리드 뒤). 없으면 skip.
+	const TCHAR* kCenterGlowPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_CenterGlow.T_BanPick_CenterGlow");
 
 	// 팀 패널/구분선 색 (깊이감)
 	FLinearColor PanelColor(EAOSTeam Team)
 	{
 		return (Team == EAOSTeam::Team1)
-			? FLinearColor(0.18f, 0.05f, 0.06f, 0.45f)   // 팀1 = 어두운 레드 반투명
-			: FLinearColor(0.05f, 0.09f, 0.18f, 0.45f);  // 팀2 = 어두운 블루 반투명
+			? FLinearColor(0.45f, 0.10f, 0.12f, 0.55f)   // 팀1 = 레드 (진하게)
+			: FLinearColor(0.10f, 0.18f, 0.45f, 0.55f);  // 팀2 = 블루 (진하게)
 	}
 
 	FSlateFontInfo MakeFont(int32 Size)
@@ -150,6 +152,20 @@ void UAOSBanPickWidget::BuildUI()
 	{
 		OS->SetHorizontalAlignment(HAlign_Fill);
 		OS->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	// [0.5] 중앙 비네팅 글로우 (그리드 뒤 살짝 밝게 — 시선 집중). 텍스처 없으면 skip.
+	if (UTexture2D* GlowTex = TryLoadTexture(kCenterGlowPath))
+	{
+		UImage* CenterGlow = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("BPCenterGlow"));
+		CenterGlow->SetBrushFromTexture(GlowTex, false);
+		CenterGlow->SetVisibility(ESlateVisibility::HitTestInvisible);   // 클릭 통과
+		CenterGlow->SetDesiredSizeOverride(FVector2D(1120.f, 800.f));
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(CenterGlow))
+		{
+			OS->SetHorizontalAlignment(HAlign_Center);
+			OS->SetVerticalAlignment(VAlign_Center);
+		}
 	}
 
 	// [1] 메인 세로 박스
@@ -268,13 +284,17 @@ void UAOSBanPickWidget::BuildUI()
 		VS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	}
 
-	// 좌 팀1 픽 컬럼 (반투명 팀 패널로 감싸 깊이감)
+	// 좌 팀1 픽 컬럼 (레드 진영 글로우 림 + 반투명 팀 패널)
 	{
+		UBorder* T1Glow = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT1Glow"));
+		T1Glow->SetBrushColor(FLinearColor(1.0f, 0.30f, 0.30f, 0.90f));   // 팀1 = 레드 외곽광(밝게)
+		T1Glow->SetPadding(FMargin(5.f));
 		UBorder* T1Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT1Panel"));
 		T1Panel->SetBrushColor(PanelColor(EAOSTeam::Team1));
 		T1Panel->SetPadding(FMargin(10.f));
 		T1Panel->SetContent(BuildPickColumn(EAOSTeam::Team1));
-		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T1Panel))
+		T1Glow->SetContent(T1Panel);
+		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T1Glow))
 		{
 			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
 			HS->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
@@ -311,7 +331,7 @@ void UAOSBanPickWidget::BuildUI()
 		GridFrame->SetBrushColor(FLinearColor(0.50f, 0.42f, 0.24f, 0.55f));   // 골드 림
 		GridFrame->SetPadding(FMargin(2.f));
 		UBorder* GridPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridPanel"));
-		GridPanel->SetBrushColor(FLinearColor(0.04f, 0.05f, 0.09f, 0.60f));   // 어두운 반투명 바탕
+		GridPanel->SetBrushColor(FLinearColor(0.03f, 0.04f, 0.07f, 0.18f));   // 거의 투명 (중앙 골드 글로우 비치게)
 		GridPanel->SetPadding(FMargin(18.f, 16.f, 18.f, 16.f));
 		GridPanel->SetContent(CardGrid);
 		GridFrame->SetContent(GridPanel);
@@ -363,13 +383,17 @@ void UAOSBanPickWidget::BuildUI()
 		}
 	}
 
-	// 우 팀2 픽 컬럼 (반투명 팀 패널)
+	// 우 팀2 픽 컬럼 (블루 진영 글로우 림 + 반투명 팀 패널)
 	{
+		UBorder* T2Glow = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT2Glow"));
+		T2Glow->SetBrushColor(FLinearColor(0.35f, 0.60f, 1.0f, 0.90f));   // 팀2 = 블루 외곽광(밝게)
+		T2Glow->SetPadding(FMargin(5.f));
 		UBorder* T2Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT2Panel"));
 		T2Panel->SetBrushColor(PanelColor(EAOSTeam::Team2));
 		T2Panel->SetPadding(FMargin(10.f));
 		T2Panel->SetContent(BuildPickColumn(EAOSTeam::Team2));
-		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T2Panel))
+		T2Glow->SetContent(T2Panel);
+		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T2Glow))
 		{
 			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
 			HS->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
