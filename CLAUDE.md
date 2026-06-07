@@ -35,8 +35,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 갱신 누락 시 다음 세션의 Claude 가 git log + 코드 diff 로 역으로 재구성하여 추가
 - **사용자가 이미지(스크린샷 등)를 공유하면 관련 타임라인 항목에 함께 임베드**한다.
   - 저장 위치: `Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/`, 파일명은 단계 순(`01_*.png` …)
-  - 타임라인에서 `![설명](images/<주제>/파일.png)` 상대경로로 임베드 (before/after 비교 권장)
-  - ⚠️ 채팅에 붙여넣은 이미지는 에이전트가 직접 디스크로 저장 불가 → 폴더·파일명 안내 후 사용자가 저장하면 임베드+커밋
+  - **표준 워크플로 (사용자 선호)**: 타임라인 항목을 작성하기 **전에**
+    1. 해당 주제의 이미지 폴더를 **먼저 생성**한다 (`Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/`)
+    2. 사용자에게 "이 폴더에 스크린샷을 넣어달라"고 **요청**한다 (파일명·단계 안내)
+    3. 사용자가 넣은 뒤 타임라인에 `![설명](images/<주제>/파일.png)` 상대경로로 임베드 + 커밋 (before/after 비교 권장)
+  - (채팅 첨부 이미지의 원본 바이트는 에이전트가 직접 추출 불가 → 위 "폴더 선생성 + 요청" 방식이 표준)
 
 ## Build Commands
 
