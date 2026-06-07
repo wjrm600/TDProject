@@ -306,7 +306,16 @@ void UAOSBanPickWidget::BuildUI()
 		}
 
 		CardGrid = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("BPGrid"));
-		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(CardGrid))
+		// 챔피언 풀 패널: 얇은 골드 림 + 어두운 반투명 바탕 (그리드 그룹핑 — LoL 중앙 프레임 느낌)
+		UBorder* GridFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridFrame"));
+		GridFrame->SetBrushColor(FLinearColor(0.50f, 0.42f, 0.24f, 0.55f));   // 골드 림
+		GridFrame->SetPadding(FMargin(2.f));
+		UBorder* GridPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridPanel"));
+		GridPanel->SetBrushColor(FLinearColor(0.04f, 0.05f, 0.09f, 0.60f));   // 어두운 반투명 바탕
+		GridPanel->SetPadding(FMargin(18.f, 16.f, 18.f, 16.f));
+		GridPanel->SetContent(CardGrid);
+		GridFrame->SetContent(GridPanel);
+		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(GridFrame))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
 			S->SetVerticalAlignment(VAlign_Center);
@@ -684,68 +693,92 @@ void UAOSBanPickWidget::RefreshSlots()
 	AAOSGameState* GS = GetAOSGameState();
 	if (!GS) return;
 
-	auto FillTeam = [this](const TArray<int32>& Bans, const TArray<int32>& Picks,
-		TArray<UImage*>& BanImgs, TArray<UImage*>& PickImgs, TArray<UTextBlock*>& PickNames)
+	// 현재 차례(활성 팀 + 밴/픽 단계의 다음 슬롯)에 글로우 하이라이트
+	const bool bComplete = GS->IsDraftComplete();
+	const EAOSTeam Active = GS->GetActiveDraftTeam();
+	const bool bBanStep = GS->IsCurrentStepBan();
+	const FLinearColor GlowGold(1.0f, 0.85f, 0.40f, 1.f);
+
+	auto FillTeam = [this, GlowGold](EAOSTeam Team, const TArray<int32>& Bans, const TArray<int32>& Picks,
+		TArray<UImage*>& BanImgs, TArray<UImage*>& PickImgs, TArray<UTextBlock*>& PickNames,
+		TArray<UBorder*>& PickBorders, int32 ActiveBanSlot, int32 ActivePickSlot)
 	{
+		const FLinearColor TC = TeamColor(Team);
+
 		// 밴 슬롯
 		for (int32 i = 0; i < BanImgs.Num(); ++i)
 		{
 			if (!BanImgs[i]) continue;
 			if (Bans.IsValidIndex(i))
 			{
-				if (UTexture2D* P = GetPortrait(Bans[i]))
-				{
-					BanImgs[i]->SetBrushFromTexture(P, false);
-				}
-				else
-				{
-					BanImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.25f, 0.10f, 0.10f, 1.f)));
-				}
+				if (UTexture2D* P = GetPortrait(Bans[i])) BanImgs[i]->SetBrushFromTexture(P, false);
+				else BanImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.25f, 0.10f, 0.10f, 1.f)));
 				BanImgs[i]->SetColorAndOpacity(FLinearColor(0.45f, 0.30f, 0.30f, 1.f)); // 밴 = 어둡게
-				BanImgs[i]->SetDesiredSizeOverride(FVector2D(38.f, 38.f));
+			}
+			else if (i == ActiveBanSlot)
+			{
+				BanImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.28f, 0.14f, 0.14f, 1.f)));
+				BanImgs[i]->SetColorAndOpacity(GlowGold);                          // 활성 밴 = 골드 글로우
 			}
 			else
 			{
 				BanImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.12f, 0.10f, 0.10f, 1.f)));
 				BanImgs[i]->SetColorAndOpacity(FLinearColor::White);
-				BanImgs[i]->SetDesiredSizeOverride(FVector2D(38.f, 38.f));
 			}
+			BanImgs[i]->SetDesiredSizeOverride(FVector2D(38.f, 38.f));
 		}
 
 		// 픽 슬롯
 		for (int32 i = 0; i < PickImgs.Num(); ++i)
 		{
 			const bool bFilled = Picks.IsValidIndex(i);
+			const bool bActive = (i == ActivePickSlot);
+
 			if (PickImgs[i])
 			{
 				if (bFilled)
 				{
-					if (UTexture2D* P = GetPortrait(Picks[i]))
-					{
-						PickImgs[i]->SetBrushFromTexture(P, false);
-					}
-					else
-					{
-						PickImgs[i]->SetBrush(FSlateColorBrush(PlaceholderColor(Picks[i])));  // 컬러 타일
-					}
+					if (UTexture2D* P = GetPortrait(Picks[i])) PickImgs[i]->SetBrushFromTexture(P, false);
+					else PickImgs[i]->SetBrush(FSlateColorBrush(PlaceholderColor(Picks[i])));
+					PickImgs[i]->SetColorAndOpacity(FLinearColor::White);
 				}
 				else
 				{
-					PickImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.10f, 0.10f, 0.13f, 1.f)));
+					PickImgs[i]->SetBrush(FSlateColorBrush(FLinearColor(0.09f, 0.09f, 0.12f, 1.f)));
+					PickImgs[i]->SetColorAndOpacity(bActive
+						? FLinearColor(0.85f, 0.85f, 0.90f, 1.f) : FLinearColor(0.50f, 0.50f, 0.55f, 1.f));
 				}
-				PickImgs[i]->SetColorAndOpacity(FLinearColor::White);
 			}
+			// 이름/상태 (빈 슬롯도 채워보이게)
 			if (PickNames[i])
 			{
-				PickNames[i]->SetText(bFilled
-					? (CachedRoster.IsValidIndex(Picks[i]) ? CachedRoster[Picks[i]].DisplayName : FText::FromString(FString::FromInt(Picks[i])))
-					: FText::GetEmpty());
+				if (bFilled)
+					PickNames[i]->SetText(CachedRoster.IsValidIndex(Picks[i]) ? CachedRoster[Picks[i]].DisplayName : FText::FromString(FString::FromInt(Picks[i])));
+				else if (bActive)
+					PickNames[i]->SetText(FText::FromString(TEXT("픽 중...")));
+				else
+					PickNames[i]->SetText(FText::FromString(FString::Printf(TEXT("픽 %d"), i + 1)));
+			}
+			// 슬롯 프레임 색: 활성=골드 / 채워짐=팀색 진하게 / 빈=팀 기본
+			if (PickBorders.IsValidIndex(i) && PickBorders[i])
+			{
+				FLinearColor BC = bActive ? GlowGold
+					: bFilled ? FLinearColor(TC.R * 0.70f, TC.G * 0.70f, TC.B * 0.70f, 1.f)
+					          : FLinearColor(TC.R * 0.40f, TC.G * 0.40f, TC.B * 0.40f, 0.9f);
+				PickBorders[i]->SetBrushColor(BC);
 			}
 		}
 	};
 
-	FillTeam(GS->Team1BannedUnitIds, GS->Team1PickedUnitIds, Team1BanImages, Team1PickImages, Team1PickNames);
-	FillTeam(GS->Team2BannedUnitIds, GS->Team2PickedUnitIds, Team2BanImages, Team2PickImages, Team2PickNames);
+	auto ActiveBan  = [&](EAOSTeam T, const TArray<int32>& B) { return (!bComplete && Active == T &&  bBanStep) ? B.Num() : -1; };
+	auto ActivePick = [&](EAOSTeam T, const TArray<int32>& P) { return (!bComplete && Active == T && !bBanStep) ? P.Num() : -1; };
+
+	FillTeam(EAOSTeam::Team1, GS->Team1BannedUnitIds, GS->Team1PickedUnitIds,
+		Team1BanImages, Team1PickImages, Team1PickNames, Team1PickBorders,
+		ActiveBan(EAOSTeam::Team1, GS->Team1BannedUnitIds), ActivePick(EAOSTeam::Team1, GS->Team1PickedUnitIds));
+	FillTeam(EAOSTeam::Team2, GS->Team2BannedUnitIds, GS->Team2PickedUnitIds,
+		Team2BanImages, Team2PickImages, Team2PickNames, Team2PickBorders,
+		ActiveBan(EAOSTeam::Team2, GS->Team2BannedUnitIds), ActivePick(EAOSTeam::Team2, GS->Team2PickedUnitIds));
 
 	// 플레이어 이름
 	if (Team1PlayerNameText) Team1PlayerNameText->SetText(FText::FromString(GetPlayerNameForTeam(EAOSTeam::Team1)));
