@@ -654,7 +654,7 @@
 - **픽 슬롯 재구성**: 작은 사각형 떠보임 → `Overlay`(초상화 슬롯 전체 채움 + 하단 이름 외곽선) + 폭 고정 `SizeBox` + 5칸 균등 분배(LoL 픽 슬롯)
 - **구도**: 카드/슬롯 확대 + 그리드 `Spacer` 수직 중앙 정렬 → 하단 빈 공간 제거
 - 상단 골드 구분선, 제목/타이머 외곽선, 타이머 5초 빨강 긴박감, 확정 버튼 팀색
-- 백드롭은 깊이감 있는 다크 톤(1차 asset-gen 생성본). 9-slice 장식 프레임 텍스처는 후속
+- 백드롭은 깊이감 있는 다크 톤(asset-gen). **카드 9-slice 골드 프레임**(`T_BanPick_CardFrame`) 적용 — 처음 256px·25% 테두리는 얇게 렌더 시 코너가 뭉개져서, **64px·12.5% 테두리 PIL 절차생성**으로 교체(다운스케일 2:1 → 얇아도 또렷). 위젯 `Margin=0.125, ImageSize=32 → ~4px`. 두께는 텍스처 재생성 없이 `ImageSize` 숫자만으로 조정
 
 **문제점 / 난관**
 - 텍스처 없는 **컬러 브러시 위젯이 크기/폭 없이 붕괴**(카드·픽슬롯이 얇아짐) → `USizeBox` 로 크기 강제
@@ -667,8 +667,8 @@
 
 **결과 / 영향**
 - 평면 → 입체 프리미엄 드래프트 화면 (2-client DS PIE 단계별 확인)
-- 영향: `UI/AOSBanPickWidget.cpp`(폴리시 전반), `Mcp_Tools/Asset_Pipeline/make_banpick_backdrop_v2.py`
-- 후속: 9-slice 장식 프레임 텍스처 적용+튜닝, 15 플레이스홀더 실제 초상화, 카드 호버/모션
+- 영향: `UI/AOSBanPickWidget.cpp`(폴리시 전반), `Content/AOS/UI/Assets/T_BanPick_CardFrame`(신규 프레임), `Mcp_Tools/Asset_Pipeline/{make_banpick_backdrop_v2,make_banpick_cardframe}.py`
+- 후속: 15 플레이스홀더 실제 초상화, 카드 호버/모션
 **진행 스크린샷** (`images/2026-06-07_banpick_ui/`)
 
 **① 초기 LoL 레이아웃** — 카드가 Mannequin 기본 텍스처(빨간 "U")

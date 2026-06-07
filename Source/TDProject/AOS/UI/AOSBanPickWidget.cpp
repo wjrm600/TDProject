@@ -485,10 +485,10 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 			FSlateBrush FB;
 			FB.SetResourceObject(FrameTex);
 			FB.DrawAs = ESlateBrushDrawType::Box;
-			FB.ImageSize = FVector2D(96.f, 96.f);       // Box 9-slice 코너 렌더 기준(없으면 프레임 깨짐)
-			FB.Margin = FMargin(0.25f);                 // 9-slice 테두리 비율(asset-gen 프레임에 맞춰 조정)
+			FB.ImageSize = FVector2D(32.f, 32.f);       // 렌더 테두리 = Margin*ImageSize ≈ 4px
+			FB.Margin = FMargin(0.125f);                // 새 텍스처 테두리 12.5%(64px 텍스처의 8px) 와 일치
 			Card->SetBrush(FB);
-			Card->SetPadding(FMargin(14.f));            // 프레임 안쪽으로 초상화 인셋(프레임 폭에 맞춤)
+			Card->SetPadding(FMargin(4.f));             // 초상화 인셋 = 프레임 두께와 정렬
 		}
 		else
 		{
@@ -499,8 +499,8 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 		// 고정 크기 박스 — 초상화 유무와 무관하게 동일한 카드/클릭 영역 보장
 		// (SetDesiredSizeOverride 는 컬러 브러시에서 안정적이지 않아 SizeBox 로 강제)
 		USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		CardSize->SetWidthOverride(88.f);
-		CardSize->SetHeightOverride(88.f);
+		CardSize->SetWidthOverride(64.f);
+		CardSize->SetHeightOverride(64.f);
 		Card->SetContent(CardSize);
 
 		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
