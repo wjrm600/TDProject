@@ -33,6 +33,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 동일 작업 세션 내 다수 갱신 지양, **의미 단위**로 묶어 한 항목으로 작성
 - 커밋 해시는 `git log --pretty=format:"%h" -1` 로 확정 후 기재
 - 갱신 누락 시 다음 세션의 Claude 가 git log + 코드 diff 로 역으로 재구성하여 추가
+- **사용자가 이미지(스크린샷 등)를 공유하면 관련 타임라인 항목에 함께 임베드**한다.
+  - 저장 위치: `Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/`, 파일명은 단계 순(`01_*.png` …)
+  - 타임라인에서 `![설명](images/<주제>/파일.png)` 상대경로로 임베드 (before/after 비교 권장)
+  - ⚠️ 채팅에 붙여넣은 이미지는 에이전트가 직접 디스크로 저장 불가 → 폴더·파일명 안내 후 사용자가 저장하면 임베드+커밋
 
 ## Build Commands
 

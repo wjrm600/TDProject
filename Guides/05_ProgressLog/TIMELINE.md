@@ -669,7 +669,22 @@
 - 평면 → 입체 프리미엄 드래프트 화면 (2-client DS PIE 단계별 확인)
 - 영향: `UI/AOSBanPickWidget.cpp`(폴리시 전반), `Mcp_Tools/Asset_Pipeline/make_banpick_backdrop_v2.py`
 - 후속: 9-slice 장식 프레임 텍스처 적용+튜닝, 15 플레이스홀더 실제 초상화, 카드 호버/모션
-- 진행 스크린샷: `Guides/05_ProgressLog/images/2026-06-07_banpick_ui/` (아래 임베드)
+**진행 스크린샷** (`images/2026-06-07_banpick_ui/`)
+
+**① 초기 LoL 레이아웃** — 카드가 Mannequin 기본 텍스처(빨간 "U")
+![초기 LoL 레이아웃](images/2026-06-07_banpick_ui/01_lol_layout.png)
+
+**② 5종 AI 초상화 + 15 컬러 타일 적용**
+![초상화 적용](images/2026-06-07_banpick_ui/02_portraits.png)
+
+**③ 퀄리티 업 직전 (before)** — 평면 배경·프레임 없음 = "너무 심플"
+![before](images/2026-06-07_banpick_ui/03_simple.png)
+
+**④ 프레임·팀 패널·백드롭·구분선 적용**
+![프레임/패널](images/2026-06-07_banpick_ui/04_polished.png)
+
+**⑤ 픽 슬롯 채움 + 구도 정리 (after, 최종)**
+![after](images/2026-06-07_banpick_ui/05_final.png)
 
 ---
 
