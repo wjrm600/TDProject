@@ -745,6 +745,33 @@
 
 ---
 
+## 2026-06-07 — 벤픽 UI 화려함: 드라마틱 AI 배경 (ComfyUI 인라인)
+
+**작업 내용**
+- "화려하게" 요청 → 처음엔 **PIL 기하 장식**(god rays / 골드 아치 / 헤더 배너) 시도했으나 템플릿 느낌·크기 안 맞아 **전부 제거**
+- 핵심 전환: **AI 배경 한 장**이 답 — ComfyUI(DreamShaper XL Lightning)로 **웅장한 고딕 홀 + 빛기둥 + 횃불** 배경 생성, PIL 후처리(어둡게+비네팅)로 UI 가독성 확보 → `T_BanPick_Backdrop` 교체
+- `gen_banpick_backdrop.py` 신규 (ComfyUI HTTP API 인라인 호출 → 16:9 생성 → PIL 후처리)
+
+**문제점 / 난관**
+- `agent-asset-gen` 서브에이전트가 **사용량 한도로 반복 취소** (프레임 때도, 이번 장식 4종 때도)
+- PIL 기하 장식은 "화려"보다 "템플릿" — 아치가 그리드보다 커서 빈 박스, 배너 크기 안 맞음
+
+**해결 방법**
+- **ComfyUI를 인라인 파이썬으로 직접 구동**(`gen_banpick_backdrop.py`) → 에이전트 사용량 제한 우회. 체크포인트 자동감지 + Lightning/일반 SDXL 자동 파라미터
+- 어색한 PIL 장식은 과감히 제거(코드 add→remove 넷 제로), 화려함은 배경에 집중
+
+**결과 / 영향**
+- 평면 다크 배경 → **드라마틱 고딕 홀** 한 장으로 화면 전체가 화려해짐 (깔끔 + 웅장)
+- 영향: `Content/AOS/UI/Assets/T_BanPick_Backdrop`(교체), `Mcp_Tools/Asset_Pipeline/gen_banpick_backdrop.py`(신규)
+- 교훈: **"화려함" = 기하 PIL 장식 N개 < AI 배경 1장**. 서브에이전트 사용량 한도엔 **인라인 ComfyUI**가 대안
+- 미사용 장식 시도분(T_BanPick_Rays/Arc/Banner + make_banpick_* 스크립트)은 커밋 제외(추후 정리)
+
+**진행 스크린샷**
+![배경 적용](images/2026-06-07_banpick_ui/12.png)
+![화려함 최종](images/2026-06-07_banpick_ui/13.png)
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
