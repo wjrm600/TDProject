@@ -310,15 +310,7 @@ void UAOSBanPickWidget::BuildFallbackFrame()
 	{
 		UVerticalBox* BlueBlock = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPBlueBlock"));
 
-		Team2PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Team2PlayerNameText"));
-		Team2PlayerNameText->SetText(FText::FromString(TEXT("TEAM 2")));
-		Team2PlayerNameText->SetFont(MakeFont(16));
-		Team2PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team2)));
-		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PlayerNameText)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
-
-		Team2PickRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team2PickRow"));
-		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PickRow)) S->SetHorizontalAlignment(HAlign_Left);
-
+		// 밴 행을 최상단(블루 플레이어 이름 위)에 배치 — 레퍼런스. 순서: 밴 → 이름 → 픽
 		{
 			UHorizontalBox* BanLine = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 			Team2BanRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team2BanRow"));
@@ -328,8 +320,17 @@ void UAOSBanPickWidget::BuildFallbackFrame()
 			BanLabel->SetFont(MakeFont(12));
 			BanLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.5f, 0.5f, 1.f)));
 			if (UHorizontalBoxSlot* HS = BanLine->AddChildToHorizontalBox(BanLabel)) HS->SetVerticalAlignment(VAlign_Center);
-			if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(BanLine)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
+			if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(BanLine)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
 		}
+
+		Team2PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Team2PlayerNameText"));
+		Team2PlayerNameText->SetText(FText::FromString(TEXT("TEAM 2")));
+		Team2PlayerNameText->SetFont(MakeFont(16));
+		Team2PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team2)));
+		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PlayerNameText)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
+
+		Team2PickRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team2PickRow"));
+		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PickRow)) S->SetHorizontalAlignment(HAlign_Left);
 
 		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(BlueBlock))
 		{
