@@ -10,6 +10,7 @@
 #include "UI/AOSLobbyWidget.h"
 #include "UI/AOSMinimapWidget.h"
 #include "UI/AOSBanPickWidget.h"
+#include "UI/AOSCharacterPreviewStage.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -830,6 +831,9 @@ void AAOSPlayerController::ShowBanPick()
 	{
 		// ⚠ WidgetTree->RootWidget 을 먼저 채운 뒤 AddToViewport — 빈 위젯 실현 방지(미니맵 교훈)
 		BanPickWidget->InitializeWithRoster(CachedCharacterRoster);
+		// 3D 프리뷰 스테이지 스폰 후 위젯에 연결 (클라 전용)
+		EnsureDraftPreviewStages();
+		BanPickWidget->SetPreviewStages(MyPreviewStage, EnemyPreviewStage);
 		if (!BanPickWidget->IsInViewport())
 		{
 			BanPickWidget->AddToViewport(20);
@@ -845,6 +849,59 @@ void AAOSPlayerController::HideBanPick()
 	{
 		BanPickWidget->SetVisibility(ESlateVisibility::Collapsed);
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 벤픽 UI 숨김"));
+	}
+	// BanPick 이탈 시 프리뷰 스테이지 정리 (BanPick 동안만 존재)
+	DestroyDraftPreviewStages();
+}
+
+// 벤픽 3D 프리뷰 스테이지 스폰 (클라 전용 — 서버는 렌더 없음)
+void AAOSPlayerController::EnsureDraftPreviewStages()
+{
+	if (!IsLocalPlayerController() || GetNetMode() == NM_DedicatedServer) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// 렌더 타깃 해상도 (세로 캐릭터 프레이밍)
+	const int32 RTW = 360, RTH = 640;
+
+	if (!MyPreviewStage)
+	{
+		MyPreviewStage = World->SpawnActor<AAOSCharacterPreviewStage>(
+			AAOSCharacterPreviewStage::StaticClass(),
+			FVector(0.f, 0.f, 100000.f), FRotator::ZeroRotator, Params);
+		if (MyPreviewStage)
+		{
+			MyPreviewStage->InitRenderTarget(RTW, RTH);
+		}
+	}
+	if (!EnemyPreviewStage)
+	{
+		// 두 스테이지를 떨어뜨려 스폰 (ShowOnlyList 로 격리되지만 안전 마진)
+		EnemyPreviewStage = World->SpawnActor<AAOSCharacterPreviewStage>(
+			AAOSCharacterPreviewStage::StaticClass(),
+			FVector(4000.f, 0.f, 100000.f), FRotator::ZeroRotator, Params);
+		if (EnemyPreviewStage)
+		{
+			EnemyPreviewStage->InitRenderTarget(RTW, RTH);
+		}
+	}
+}
+
+void AAOSPlayerController::DestroyDraftPreviewStages()
+{
+	if (MyPreviewStage)
+	{
+		MyPreviewStage->Destroy();
+		MyPreviewStage = nullptr;
+	}
+	if (EnemyPreviewStage)
+	{
+		EnemyPreviewStage->Destroy();
+		EnemyPreviewStage = nullptr;
 	}
 }
 

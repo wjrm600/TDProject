@@ -2,6 +2,8 @@
 #include "AOSGameState.h"
 #include "AOSPlayerState.h"
 #include "AOSPlayerController.h"
+#include "AOSCharacterPreviewStage.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -28,6 +30,7 @@
 namespace
 {
 	// 위젯이 자동로드할 텍스처 경로 (asset-gen 이 이 경로에 생성). 없으면 솔리드 폴백.
+	// ※ WBP_BanPick 사용 시엔 디자이너가 BackdropImage 브러시를 직접 지정 → 이 경로는 폴백 전용.
 	const TCHAR* kBackdropPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_Backdrop.T_BanPick_Backdrop");
 	// 카드 장식 프레임(9-slice). 없으면 컬러 림 폴백.
 	const TCHAR* kCardFramePath = TEXT("/Game/AOS/UI/Assets/T_BanPick_CardFrame.T_BanPick_CardFrame");
@@ -126,19 +129,28 @@ FString UAOSBanPickWidget::GetPlayerNameForTeam(EAOSTeam Team) const
 }
 
 // ============================================================
-// UI 빌드
+// WBP 없을 때 C++ 폴백 정적 프레임 (빈 동적 컨테이너 포함)
+//   ※ RootWidget 미설정일 때만 동작 — WBP_BanPick 이 트리를 저작했으면 skip.
 // ============================================================
-void UAOSBanPickWidget::BuildUI()
+TSharedRef<SWidget> UAOSBanPickWidget::RebuildWidget()
 {
-	if (bBuilt || !WidgetTree) return;
-	bBuilt = true;
+	if (WidgetTree && !WidgetTree->RootWidget)
+	{
+		BuildFallbackFrame();
+	}
+	return Super::RebuildWidget();
+}
+
+void UAOSBanPickWidget::BuildFallbackFrame()
+{
+	if (!WidgetTree || WidgetTree->RootWidget) return;
 
 	// 루트: 전체화면 오버레이
 	RootOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("BPRoot"));
 	WidgetTree->RootWidget = RootOverlay;
 
 	// [0] 배경 이미지 (전체화면, Visible → 카드 클릭 히트테스트 버블링 + 모달 차단)
-	BackdropImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("BPBackdrop"));
+	BackdropImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("BackdropImage"));
 	if (UTexture2D* BgTex = TryLoadTexture(kBackdropPath))
 	{
 		BackdropImage->SetBrushFromTexture(BgTex, false);
@@ -168,242 +180,205 @@ void UAOSBanPickWidget::BuildUI()
 		}
 	}
 
-	// [1] 메인 세로 박스
-	UVerticalBox* MainVB = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPMain"));
-	if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(MainVB))
+	// ── 상단 중앙: 제목 + 타이머 + CHAMPION SELECT (레퍼런스 상단 중앙) ──
 	{
-		OS->SetHorizontalAlignment(HAlign_Fill);
-		OS->SetVerticalAlignment(VAlign_Fill);
-		OS->SetPadding(FMargin(28.f, 18.f, 28.f, 18.f));
-	}
+		UVerticalBox* TopVB = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPTopVB"));
 
-	// ---- 상단바 ----
-	UHorizontalBox* TopBar = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("BPTop"));
-	if (UVerticalBoxSlot* VS = MainVB->AddChildToVerticalBox(TopBar))
-	{
-		VS->SetHorizontalAlignment(HAlign_Fill);
-		VS->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
-	}
-
-	// 상단바/본문 구분선 (옅은 골드 라인)
-	{
-		USizeBox* DivBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BPDivBox"));
-		DivBox->SetHeightOverride(2.f);
-		UBorder* DivLine = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPDivLine"));
-		DivLine->SetBrushColor(FLinearColor(0.55f, 0.48f, 0.30f, 0.55f));
-		DivBox->SetContent(DivLine);
-		if (UVerticalBoxSlot* VS = MainVB->AddChildToVerticalBox(DivBox))
-		{
-			VS->SetHorizontalAlignment(HAlign_Fill);
-			VS->SetPadding(FMargin(40.f, 0.f, 40.f, 12.f));
-		}
-	}
-
-	// 좌: 팀1 플레이어명 + 밴 행
-	{
-		UVerticalBox* L = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		Team1PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPT1Name"));
-		Team1PlayerNameText->SetText(FText::FromString(TEXT("Player 1")));
-		Team1PlayerNameText->SetFont(MakeFont(18));
-		Team1PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team1)));
-		L->AddChildToVerticalBox(Team1PlayerNameText);
-		L->AddChildToVerticalBox(BuildBanRow(EAOSTeam::Team1));
-		if (UHorizontalBoxSlot* HS = TopBar->AddChildToHorizontalBox(L))
-		{
-			HS->SetHorizontalAlignment(HAlign_Left);
-			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		}
-	}
-
-	// 중앙: 제목 + 타이머
-	{
-		UVerticalBox* C = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPTitle"));
+		TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TitleText"));
 		TitleText->SetText(FText::FromString(TEXT("PICK & BAN")));
 		{
-			FSlateFontInfo TitleFont = MakeFont(34);
-			TitleFont.OutlineSettings.OutlineSize = 1;
-			TitleFont.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
-			TitleText->SetFont(TitleFont);
+			FSlateFontInfo F = MakeFont(34);
+			F.OutlineSettings.OutlineSize = 1;
+			F.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
+			TitleText->SetFont(F);
 		}
 		TitleText->SetJustification(ETextJustify::Center);
 		TitleText->SetColorAndOpacity(FSlateColor(FLinearColor(0.95f, 0.88f, 0.62f, 1.f))); // 골드
-		if (UVerticalBoxSlot* S = C->AddChildToVerticalBox(TitleText))
-		{
-			S->SetHorizontalAlignment(HAlign_Center);
-		}
-		TimerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPTimer"));
+		if (UVerticalBoxSlot* S = TopVB->AddChildToVerticalBox(TitleText)) S->SetHorizontalAlignment(HAlign_Center);
+
+		TimerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("TimerText"));
 		TimerText->SetText(FText::FromString(TEXT("--")));
 		{
-			FSlateFontInfo TimerFont = MakeFont(40);
-			TimerFont.OutlineSettings.OutlineSize = 1;
-			TimerFont.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
-			TimerText->SetFont(TimerFont);
+			FSlateFontInfo F = MakeFont(40);
+			F.OutlineSettings.OutlineSize = 1;
+			F.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.85f);
+			TimerText->SetFont(F);
 		}
 		TimerText->SetJustification(ETextJustify::Center);
-		if (UVerticalBoxSlot* S = C->AddChildToVerticalBox(TimerText))
-		{
-			S->SetHorizontalAlignment(HAlign_Center);
-		}
-		if (UHorizontalBoxSlot* HS = TopBar->AddChildToHorizontalBox(C))
-		{
-			HS->SetHorizontalAlignment(HAlign_Center);
-			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		}
-	}
-
-	// 우: 팀2 플레이어명 + 밴 행
-	{
-		UVerticalBox* R = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-		Team2PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPT2Name"));
-		Team2PlayerNameText->SetText(FText::FromString(TEXT("Player 2")));
-		Team2PlayerNameText->SetFont(MakeFont(18));
-		Team2PlayerNameText->SetJustification(ETextJustify::Right);
-		Team2PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team2)));
-		if (UVerticalBoxSlot* S = R->AddChildToVerticalBox(Team2PlayerNameText))
-		{
-			S->SetHorizontalAlignment(HAlign_Right);
-		}
-		if (UVerticalBoxSlot* S = R->AddChildToVerticalBox(BuildBanRow(EAOSTeam::Team2)))
-		{
-			S->SetHorizontalAlignment(HAlign_Right);
-		}
-		if (UHorizontalBoxSlot* HS = TopBar->AddChildToHorizontalBox(R))
-		{
-			HS->SetHorizontalAlignment(HAlign_Right);
-			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-		}
-	}
-
-	// ---- 중앙 행: 좌 픽 / 중앙 그리드 / 우 픽 ----
-	UHorizontalBox* MidHB = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("BPMid"));
-	if (UVerticalBoxSlot* VS = MainVB->AddChildToVerticalBox(MidHB))
-	{
-		VS->SetHorizontalAlignment(HAlign_Fill);
-		VS->SetVerticalAlignment(VAlign_Fill);
-		VS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-	}
-
-	// 좌 팀1 픽 컬럼 (레드 진영 글로우 림 + 반투명 팀 패널)
-	{
-		UBorder* T1Glow = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT1Glow"));
-		T1Glow->SetBrushColor(FLinearColor(1.0f, 0.30f, 0.30f, 0.90f));   // 팀1 = 레드 외곽광(밝게)
-		T1Glow->SetPadding(FMargin(5.f));
-		UBorder* T1Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT1Panel"));
-		T1Panel->SetBrushColor(PanelColor(EAOSTeam::Team1));
-		T1Panel->SetPadding(FMargin(10.f));
-		T1Panel->SetContent(BuildPickColumn(EAOSTeam::Team1));
-		T1Glow->SetContent(T1Panel);
-		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T1Glow))
-		{
-			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
-			HS->SetPadding(FMargin(0.f, 0.f, 12.f, 0.f));
-		}
-	}
-
-	// 중앙 패널
-	{
-		UVerticalBox* CenterVB = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPCenter"));
+		if (UVerticalBoxSlot* S = TopVB->AddChildToVerticalBox(TimerText)) S->SetHorizontalAlignment(HAlign_Center);
 
 		UTextBlock* SelectLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPSelectLabel"));
 		SelectLabel->SetText(FText::FromString(TEXT("CHAMPION SELECT")));
-		SelectLabel->SetFont(MakeFont(18));
+		SelectLabel->SetFont(MakeFont(16));
 		SelectLabel->SetJustification(ETextJustify::Center);
 		SelectLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.75f, 0.75f, 0.82f, 1.f)));
-		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(SelectLabel))
-		{
-			S->SetHorizontalAlignment(HAlign_Center);
-			S->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
-		}
+		if (UVerticalBoxSlot* S = TopVB->AddChildToVerticalBox(SelectLabel)) { S->SetHorizontalAlignment(HAlign_Center); S->SetPadding(FMargin(0.f, 2.f, 0.f, 0.f)); }
 
-		// 그리드 위 신축 여백 (수직 중앙 정렬용)
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(TopVB))
 		{
-			USpacer* TopSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
-			if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(TopSpacer))
-			{
-				S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			}
+			OS->SetHorizontalAlignment(HAlign_Center);
+			OS->SetVerticalAlignment(VAlign_Top);
+			OS->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
 		}
+	}
 
-		CardGrid = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("BPGrid"));
-		// 챔피언 풀 패널: 얇은 골드 림 + 어두운 반투명 바탕 (그리드 그룹핑 — LoL 중앙 프레임 느낌)
+	// ── 중앙: 챔피언 그리드 + 상태 + LOCK IN (화면 중앙) ──
+	{
+		UVerticalBox* CenterVB = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPCenter"));
+
+		CardGrid = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("CardGrid"));
+		// 챔피언 풀 패널: 얇은 골드 림 + 어두운 반투명 바탕
 		UBorder* GridFrame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridFrame"));
 		GridFrame->SetBrushColor(FLinearColor(0.50f, 0.42f, 0.24f, 0.55f));   // 골드 림
 		GridFrame->SetPadding(FMargin(2.f));
 		UBorder* GridPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridPanel"));
-		GridPanel->SetBrushColor(FLinearColor(0.03f, 0.04f, 0.07f, 0.18f));   // 거의 투명 (중앙 골드 글로우 비치게)
-		GridPanel->SetPadding(FMargin(18.f, 16.f, 18.f, 16.f));
+		GridPanel->SetBrushColor(FLinearColor(0.03f, 0.04f, 0.07f, 0.55f));
+		GridPanel->SetPadding(FMargin(16.f, 14.f, 16.f, 14.f));
 		GridPanel->SetContent(CardGrid);
 		GridFrame->SetContent(GridPanel);
 		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(GridFrame))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
-			S->SetVerticalAlignment(VAlign_Center);
 		}
 
-		// 그리드 아래 신축 여백
-		{
-			USpacer* BotSpacer = WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass());
-			if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(BotSpacer))
-			{
-				S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-			}
-		}
-
-		StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPStatus"));
+		StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("StatusText"));
 		StatusText->SetText(FText::FromString(TEXT("드래프트 준비 중...")));
 		StatusText->SetFont(MakeFont(16));
 		StatusText->SetJustification(ETextJustify::Center);
 		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(StatusText))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
-			S->SetPadding(FMargin(0.f, 8.f, 0.f, 8.f));
+			S->SetPadding(FMargin(0.f, 12.f, 0.f, 8.f));
 		}
 
-		// 확정 버튼
-		ConfirmButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("BPConfirm"));
-		ConfirmButton->OnClicked.AddDynamic(this, &UAOSBanPickWidget::OnConfirmClicked);
+		// LOCK IN (확정) 버튼 — 크게, 중앙 (OnClicked 바인딩은 InitializeWithRoster 에서)
+		ConfirmButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ConfirmButton"));
 		ConfirmButton->SetBackgroundColor(FLinearColor(0.30f, 0.30f, 0.33f, 1.f)); // 기본(차례 아님)
-		ConfirmText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("BPConfirmText"));
-		ConfirmText->SetText(FText::FromString(TEXT("확정  (CONFIRM)")));
-		ConfirmText->SetFont(MakeFont(18));
+		ConfirmText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ConfirmText"));
+		ConfirmText->SetText(FText::FromString(TEXT("LOCK IN")));
+		ConfirmText->SetFont(MakeFont(22));
 		ConfirmText->SetJustification(ETextJustify::Center);
 		ConfirmButton->SetContent(ConfirmText);
 		if (UVerticalBoxSlot* S = CenterVB->AddChildToVerticalBox(ConfirmButton))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
-			S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
 		}
 
-		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(CenterVB))
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(CenterVB))
 		{
-			HS->SetHorizontalAlignment(HAlign_Fill);
-			HS->SetVerticalAlignment(VAlign_Fill);
-			HS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			OS->SetHorizontalAlignment(HAlign_Center);
+			OS->SetVerticalAlignment(VAlign_Center);
 		}
 	}
 
-	// 우 팀2 픽 컬럼 (블루 진영 글로우 림 + 반투명 팀 패널)
+	// ── 팀1(레드) 블록: 상단-우 (이름 + 가로 픽 행 + 밴) ──
 	{
-		UBorder* T2Glow = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT2Glow"));
-		T2Glow->SetBrushColor(FLinearColor(0.35f, 0.60f, 1.0f, 0.90f));   // 팀2 = 블루 외곽광(밝게)
-		T2Glow->SetPadding(FMargin(5.f));
-		UBorder* T2Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPT2Panel"));
-		T2Panel->SetBrushColor(PanelColor(EAOSTeam::Team2));
-		T2Panel->SetPadding(FMargin(10.f));
-		T2Panel->SetContent(BuildPickColumn(EAOSTeam::Team2));
-		T2Glow->SetContent(T2Panel);
-		if (UHorizontalBoxSlot* HS = MidHB->AddChildToHorizontalBox(T2Glow))
+		UVerticalBox* RedBlock = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPRedBlock"));
+
+		Team1PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Team1PlayerNameText"));
+		Team1PlayerNameText->SetText(FText::FromString(TEXT("TEAM 1")));
+		Team1PlayerNameText->SetFont(MakeFont(16));
+		Team1PlayerNameText->SetJustification(ETextJustify::Right);
+		Team1PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team1)));
+		if (UVerticalBoxSlot* S = RedBlock->AddChildToVerticalBox(Team1PlayerNameText)) { S->SetHorizontalAlignment(HAlign_Right); S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
+
+		Team1PickRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team1PickRow"));
+		if (UVerticalBoxSlot* S = RedBlock->AddChildToVerticalBox(Team1PickRow)) S->SetHorizontalAlignment(HAlign_Right);
+
+		// 밴: "BAN" 라벨 + 밴 행
 		{
-			HS->SetVerticalAlignment(VAlign_Fill);   // 전체 높이로 패널 확장
-			HS->SetPadding(FMargin(12.f, 0.f, 0.f, 0.f));
+			UHorizontalBox* BanLine = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+			UTextBlock* BanLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			BanLabel->SetText(FText::FromString(TEXT("BAN")));
+			BanLabel->SetFont(MakeFont(12));
+			BanLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.5f, 0.5f, 1.f)));
+			if (UHorizontalBoxSlot* HS = BanLine->AddChildToHorizontalBox(BanLabel)) HS->SetVerticalAlignment(VAlign_Center);
+			Team1BanRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team1BanRow"));
+			BanLine->AddChildToHorizontalBox(Team1BanRow);
+			if (UVerticalBoxSlot* S = RedBlock->AddChildToVerticalBox(BanLine)) { S->SetHorizontalAlignment(HAlign_Right); S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
+		}
+
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(RedBlock))
+		{
+			OS->SetHorizontalAlignment(HAlign_Right);
+			OS->SetVerticalAlignment(VAlign_Top);
+			OS->SetPadding(FMargin(0.f, 24.f, 24.f, 0.f));
+		}
+	}
+
+	// ── 팀2(블루) 블록: 하단-좌 (이름 + 가로 픽 행 + 밴) ──
+	{
+		UVerticalBox* BlueBlock = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("BPBlueBlock"));
+
+		Team2PlayerNameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Team2PlayerNameText"));
+		Team2PlayerNameText->SetText(FText::FromString(TEXT("TEAM 2")));
+		Team2PlayerNameText->SetFont(MakeFont(16));
+		Team2PlayerNameText->SetColorAndOpacity(FSlateColor(TeamColor(EAOSTeam::Team2)));
+		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PlayerNameText)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f)); }
+
+		Team2PickRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team2PickRow"));
+		if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(Team2PickRow)) S->SetHorizontalAlignment(HAlign_Left);
+
+		{
+			UHorizontalBox* BanLine = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+			Team2BanRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Team2BanRow"));
+			BanLine->AddChildToHorizontalBox(Team2BanRow);
+			UTextBlock* BanLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			BanLabel->SetText(FText::FromString(TEXT("BAN")));
+			BanLabel->SetFont(MakeFont(12));
+			BanLabel->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.5f, 0.5f, 1.f)));
+			if (UHorizontalBoxSlot* HS = BanLine->AddChildToHorizontalBox(BanLabel)) HS->SetVerticalAlignment(VAlign_Center);
+			if (UVerticalBoxSlot* S = BlueBlock->AddChildToVerticalBox(BanLine)) { S->SetHorizontalAlignment(HAlign_Left); S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
+		}
+
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(BlueBlock))
+		{
+			OS->SetHorizontalAlignment(HAlign_Left);
+			OS->SetVerticalAlignment(VAlign_Bottom);
+			OS->SetPadding(FMargin(24.f, 0.f, 0.f, 24.f));
+		}
+	}
+
+	// ── 3D 캐릭터 프리뷰 (폴백: 좌상단=상대 / 우하단=내 팀) ──
+	//   최상단 z + (RT 연결 시) HitTestInvisible → 카드 클릭이 루트로 통과. RT 미연결 시 Collapsed.
+	{
+		EnemyPreviewImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("EnemyPreviewImage"));
+		EnemyPreviewImage->SetVisibility(ESlateVisibility::Collapsed);
+		USizeBox* EnemyBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BPEnemyPrevBox"));
+		EnemyBox->SetWidthOverride(300.f);
+		EnemyBox->SetHeightOverride(560.f);
+		EnemyBox->SetContent(EnemyPreviewImage);
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(EnemyBox))
+		{
+			OS->SetHorizontalAlignment(HAlign_Left);
+			OS->SetVerticalAlignment(VAlign_Top);
+			OS->SetPadding(FMargin(10.f, 70.f, 0.f, 0.f));
+		}
+
+		MyPreviewImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("MyPreviewImage"));
+		MyPreviewImage->SetVisibility(ESlateVisibility::Collapsed);
+		USizeBox* MyBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BPMyPrevBox"));
+		MyBox->SetWidthOverride(300.f);
+		MyBox->SetHeightOverride(560.f);
+		MyBox->SetContent(MyPreviewImage);
+		if (UOverlaySlot* OS = RootOverlay->AddChildToOverlay(MyBox))
+		{
+			OS->SetHorizontalAlignment(HAlign_Right);
+			OS->SetVerticalAlignment(VAlign_Bottom);
+			OS->SetPadding(FMargin(0.f, 0.f, 10.f, 10.f));
 		}
 	}
 }
 
-UHorizontalBox* UAOSBanPickWidget::BuildBanRow(EAOSTeam Team)
+// ============================================================
+// 동적 자식 채우기 (바인딩되거나 폴백 생성된 컨테이너 대상, 멱등)
+// ============================================================
+void UAOSBanPickWidget::PopulateBanRow(EAOSTeam Team)
 {
-	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	UHorizontalBox* Row = (Team == EAOSTeam::Team1) ? Team1BanRow : Team2BanRow;
+	if (!Row || !WidgetTree) return;
+	Row->ClearChildren();
+
 	TArray<UImage*>& BanImages = (Team == EAOSTeam::Team1) ? Team1BanImages : Team2BanImages;
 	BanImages.Reset();
 
@@ -424,12 +399,13 @@ UHorizontalBox* UAOSBanPickWidget::BuildBanRow(EAOSTeam Team)
 			HS->SetPadding(FMargin(3.f, 4.f, 3.f, 0.f));
 		}
 	}
-	return Row;
 }
 
-UVerticalBox* UAOSBanPickWidget::BuildPickColumn(EAOSTeam Team)
+void UAOSBanPickWidget::PopulatePickRow(EAOSTeam Team)
 {
-	UVerticalBox* Col = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	UHorizontalBox* Row = (Team == EAOSTeam::Team1) ? Team1PickRow : Team2PickRow;
+	if (!Row || !WidgetTree) return;
+	Row->ClearChildren();
 
 	TArray<UBorder*>& Borders = (Team == EAOSTeam::Team1) ? Team1PickBorders : Team2PickBorders;
 	TArray<UImage*>& Images = (Team == EAOSTeam::Team1) ? Team1PickImages : Team2PickImages;
@@ -442,12 +418,12 @@ UVerticalBox* UAOSBanPickWidget::BuildPickColumn(EAOSTeam Team)
 	{
 		UBorder* PickSlot = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		PickSlot->SetBrushColor(FLinearColor(TC.R * 0.45f, TC.G * 0.45f, TC.B * 0.45f, 0.95f)); // 슬롯 팀색 프레임
-		PickSlot->SetPadding(FMargin(4.f));
+		PickSlot->SetPadding(FMargin(3.f));
 
 		UOverlay* Ov = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
 		PickSlot->SetContent(Ov);
 
-		// 초상화: 슬롯 전체 채움 (빈 칸도 색으로 꽉 참 — 작은 사각형 떠보임 해소)
+		// 초상화: 슬롯 전체 채움 (빈 칸도 색으로 꽉 참)
 		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 		Img->SetBrush(FSlateColorBrush(FLinearColor(0.08f, 0.08f, 0.11f, 1.f)));
 		if (UOverlaySlot* OS = Ov->AddChildToOverlay(Img))
@@ -456,11 +432,11 @@ UVerticalBox* UAOSBanPickWidget::BuildPickColumn(EAOSTeam Team)
 			OS->SetVerticalAlignment(VAlign_Fill);
 		}
 
-		// 이름: 하단 중앙 (초상화 위에 외곽선으로 가독성)
+		// 이름/슬롯번호: 하단 중앙 (초상화 위에 외곽선으로 가독성)
 		UTextBlock* Name = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Name->SetText(FText::FromString(TEXT("")));
 		{
-			FSlateFontInfo NF = MakeFont(15);
+			FSlateFontInfo NF = MakeFont(13);
 			NF.OutlineSettings.OutlineSize = 1;
 			NF.OutlineSettings.OutlineColor = FLinearColor(0.f, 0.f, 0.f, 0.9f);
 			Name->SetFont(NF);
@@ -470,100 +446,193 @@ UVerticalBox* UAOSBanPickWidget::BuildPickColumn(EAOSTeam Team)
 		{
 			OS->SetHorizontalAlignment(HAlign_Center);
 			OS->SetVerticalAlignment(VAlign_Bottom);
-			OS->SetPadding(FMargin(0.f, 0.f, 0.f, 6.f));
+			OS->SetPadding(FMargin(0.f, 0.f, 0.f, 5.f));
 		}
 
-		// 폭 고정 SizeBox 로 감싸 패널 collapse 방지 (초상화가 폭 없는 컬러 브러시일 때 대비), 높이는 Fill 균등 분배
+		// 세로 카드(레퍼런스): 폭·높이 고정 SizeBox 로 감싸 가로 행에 5칸 배치
 		USizeBox* SlotBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		SlotBox->SetWidthOverride(108.f);
+		SlotBox->SetWidthOverride(92.f);
+		SlotBox->SetHeightOverride(132.f);
 		SlotBox->SetContent(PickSlot);
-		if (UVerticalBoxSlot* VS = Col->AddChildToVerticalBox(SlotBox))
+		if (UHorizontalBoxSlot* HS = Row->AddChildToHorizontalBox(SlotBox))
 		{
-			VS->SetHorizontalAlignment(HAlign_Center);
-			VS->SetVerticalAlignment(VAlign_Fill);
-			VS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));  // 5칸 균등 분배(패널 높이 채움)
-			VS->SetPadding(FMargin(0.f, 0.f, 0.f, 8.f));
+			HS->SetVerticalAlignment(VAlign_Top);
+			HS->SetPadding(FMargin(3.f, 0.f, 3.f, 0.f));
 		}
 
 		Borders.Add(PickSlot);
 		Images.Add(Img);
 		Names.Add(Name);
 	}
-	return Col;
 }
 
 // ============================================================
-// 로스터 주입 → 그리드 카드 생성
+// 로스터 주입 → 동적 자식(밴/픽 슬롯 + 그리드 카드) 채움
+//   WBP 경로/폴백 경로 공통. PC 가 ShowBanPick 마다 호출(멱등 — clear 후 refill).
 // ============================================================
 void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>& Roster)
 {
 	CachedRoster = Roster;
-	BuildUI();
-	if (!CardGrid) return;
 
-	CardGrid->ClearChildren();
-	CardBorders.Reset();
-	CardImages.Reset();
-
-	for (int32 i = 0; i < Roster.Num(); ++i)
+	// 프레임 보장: WBP 미사용(폴백) + 아직 미생성이면 지금 생성.
+	// (WBP 사용 시엔 CreateWidget 단계에서 BindWidget 이 이미 컨테이너를 채워줌 → skip)
+	if (WidgetTree && !WidgetTree->RootWidget)
 	{
-		UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
-			*FString::Printf(TEXT("BPCard_%d"), i));
-		Card->SetVisibility(ESlateVisibility::HitTestInvisible); // 클릭은 루트가 히트테스트로 처리
+		BuildFallbackFrame();
+	}
 
-		// 장식 프레임: 텍스처 있으면 9-slice(Box), 없으면 금속 컬러 림 폴백.
-		// 어느 쪽이든 RefreshCards 가 SetBrushColor 로 상태별 틴트(골드/팀색).
-		if (UTexture2D* FrameTex = TryLoadTexture(kCardFramePath))
-		{
-			FSlateBrush FB;
-			FB.SetResourceObject(FrameTex);
-			FB.DrawAs = ESlateBrushDrawType::Box;
-			FB.ImageSize = FVector2D(32.f, 32.f);       // 렌더 테두리 = Margin*ImageSize ≈ 4px
-			FB.Margin = FMargin(0.125f);                // 새 텍스처 테두리 12.5%(64px 텍스처의 8px) 와 일치
-			Card->SetBrush(FB);
-			Card->SetPadding(FMargin(4.f));             // 초상화 인셋 = 프레임 두께와 정렬
-		}
-		else
-		{
-			Card->SetBrushColor(FLinearColor(0.55f, 0.50f, 0.38f, 1.f)); // 금속 림 폴백
-			Card->SetPadding(FMargin(5.f));
-		}
+	// 밴/픽 슬롯 (바인딩되거나 폴백 생성된 컨테이너에)
+	PopulateBanRow(EAOSTeam::Team1);
+	PopulateBanRow(EAOSTeam::Team2);
+	PopulatePickRow(EAOSTeam::Team1);
+	PopulatePickRow(EAOSTeam::Team2);
 
-		// 고정 크기 박스 — 초상화 유무와 무관하게 동일한 카드/클릭 영역 보장
-		// (SetDesiredSizeOverride 는 컬러 브러시에서 안정적이지 않아 SizeBox 로 강제)
-		USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-		CardSize->SetWidthOverride(64.f);
-		CardSize->SetHeightOverride(64.f);
-		Card->SetContent(CardSize);
+	// 챔피언 그리드 카드
+	if (CardGrid)
+	{
+		CardGrid->ClearChildren();
+		CardBorders.Reset();
+		CardImages.Reset();
 
-		UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-		if (UTexture2D* Portrait = Roster[i].Portrait)
+		for (int32 i = 0; i < Roster.Num(); ++i)
 		{
-			Img->SetBrushFromTexture(Portrait, false);
-		}
-		else
-		{
-			Img->SetBrush(FSlateColorBrush(PlaceholderColor(i)));  // 초상화 없으면 고유 컬러 타일
-		}
-		if (USizeBoxSlot* SBS = Cast<USizeBoxSlot>(CardSize->SetContent(Img)))
-		{
-			SBS->SetHorizontalAlignment(HAlign_Fill);
-			SBS->SetVerticalAlignment(VAlign_Fill);
-		}
+			UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
+				*FString::Printf(TEXT("BPCard_%d"), i));
+			Card->SetVisibility(ESlateVisibility::HitTestInvisible); // 클릭은 루트가 히트테스트로 처리
 
-		if (UWrapBoxSlot* WS = CardGrid->AddChildToWrapBox(Card))
-		{
-			WS->SetPadding(FMargin(4.f));
-		}
+			// 장식 프레임: 텍스처 있으면 9-slice(Box), 없으면 금속 컬러 림 폴백.
+			// 어느 쪽이든 RefreshCards 가 SetBrushColor 로 상태별 틴트(골드/팀색).
+			if (UTexture2D* FrameTex = TryLoadTexture(kCardFramePath))
+			{
+				FSlateBrush FB;
+				FB.SetResourceObject(FrameTex);
+				FB.DrawAs = ESlateBrushDrawType::Box;
+				FB.ImageSize = FVector2D(32.f, 32.f);       // 렌더 테두리 = Margin*ImageSize ≈ 4px
+				FB.Margin = FMargin(0.125f);                // 새 텍스처 테두리 12.5%(64px 텍스처의 8px) 와 일치
+				Card->SetBrush(FB);
+				Card->SetPadding(FMargin(4.f));             // 초상화 인셋 = 프레임 두께와 정렬
+			}
+			else
+			{
+				Card->SetBrushColor(FLinearColor(0.55f, 0.50f, 0.38f, 1.f)); // 금속 림 폴백
+				Card->SetPadding(FMargin(5.f));
+			}
 
-		CardBorders.Add(Card);
-		CardImages.Add(Img);
+			// 고정 크기 박스 — 초상화 유무와 무관하게 동일한 카드/클릭 영역 보장
+			// (SetDesiredSizeOverride 는 컬러 브러시에서 안정적이지 않아 SizeBox 로 강제)
+			USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			CardSize->SetWidthOverride(64.f);
+			CardSize->SetHeightOverride(64.f);
+			Card->SetContent(CardSize);
+
+			UImage* Img = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			if (UTexture2D* Portrait = Roster[i].Portrait)
+			{
+				Img->SetBrushFromTexture(Portrait, false);
+			}
+			else
+			{
+				Img->SetBrush(FSlateColorBrush(PlaceholderColor(i)));  // 초상화 없으면 고유 컬러 타일
+			}
+			if (USizeBoxSlot* SBS = Cast<USizeBoxSlot>(CardSize->SetContent(Img)))
+			{
+				SBS->SetHorizontalAlignment(HAlign_Fill);
+				SBS->SetVerticalAlignment(VAlign_Fill);
+			}
+
+			if (UWrapBoxSlot* WS = CardGrid->AddChildToWrapBox(Card))
+			{
+				WS->SetPadding(FMargin(4.f));
+			}
+
+			CardBorders.Add(Card);
+			CardImages.Add(Img);
+		}
+	}
+
+	// 확정 버튼 클릭 바인딩 (WBP 버튼/폴백 버튼 단일 경로 — 중복 add 방지)
+	if (ConfirmButton && !ConfirmButton->OnClicked.IsAlreadyBound(this, &UAOSBanPickWidget::OnConfirmClicked))
+	{
+		ConfirmButton->OnClicked.AddDynamic(this, &UAOSBanPickWidget::OnConfirmClicked);
 	}
 
 	PendingIndex = INDEX_NONE;
 	RefreshCards();
 	RefreshSlots();
 	RefreshStatus();
+	UpdatePreviewSelections();
+}
+
+// ============================================================
+// 3D 캐릭터 프리뷰
+// ============================================================
+void UAOSBanPickWidget::SetPreviewStages(AAOSCharacterPreviewStage* Mine, AAOSCharacterPreviewStage* Enemy)
+{
+	MyPreviewStage = Mine;
+	EnemyPreviewStage = Enemy;
+
+	// 스테이지 렌더 타깃을 프리뷰 Image 브러시에 직접 연결 (머티리얼 에셋 불필요).
+	auto BindRT = [](UImage* Img, AAOSCharacterPreviewStage* Stage)
+	{
+		if (!Img) return;
+		UTextureRenderTarget2D* RT = Stage ? Stage->GetRenderTarget() : nullptr;
+		if (RT)
+		{
+			FSlateBrush B;
+			B.SetResourceObject(RT);
+			B.ImageSize = FVector2D(RT->SizeX, RT->SizeY);
+			B.DrawAs = ESlateBrushDrawType::Image;
+			Img->SetBrush(B);
+			Img->SetVisibility(ESlateVisibility::HitTestInvisible);  // 카드 클릭은 루트로 통과
+		}
+		else
+		{
+			Img->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	};
+	BindRT(MyPreviewImage, MyPreviewStage);
+	BindRT(EnemyPreviewImage, EnemyPreviewStage);
+
+	UpdatePreviewSelections();
+}
+
+void UAOSBanPickWidget::UpdatePreviewSelections()
+{
+	AAOSGameState* GS = GetAOSGameState();
+	if (!GS) return;
+
+	const EAOSTeam Local = GetLocalTeam();
+	const EAOSTeam Enemy = (Local == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+
+	// 내 쪽(우하단): 미리보기 중이면 그 챔피언, 아니면 내 팀 최신 픽
+	int32 MyUnit = INDEX_NONE;
+	if (PendingIndex != INDEX_NONE)
+	{
+		MyUnit = PendingIndex;
+	}
+	else
+	{
+		const TArray<int32>& MyPicks = GS->GetPickedUnits(Local);
+		if (MyPicks.Num() > 0) MyUnit = MyPicks.Last();
+	}
+
+	// 상대 쪽(좌상단): 상대 팀 최신 픽
+	int32 EnemyUnit = INDEX_NONE;
+	{
+		const TArray<int32>& EnemyPicks = GS->GetPickedUnits(Enemy);
+		if (EnemyPicks.Num() > 0) EnemyUnit = EnemyPicks.Last();
+	}
+
+	if (MyPreviewStage)
+	{
+		MyPreviewStage->SetPreviewCharacter(
+			CachedRoster.IsValidIndex(MyUnit) ? CachedRoster[MyUnit].CharacterClass : nullptr);
+	}
+	if (EnemyPreviewStage)
+	{
+		EnemyPreviewStage->SetPreviewCharacter(
+			CachedRoster.IsValidIndex(EnemyUnit) ? CachedRoster[EnemyUnit].CharacterClass : nullptr);
+	}
 }
 
 // ============================================================
@@ -572,7 +641,11 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 void UAOSBanPickWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	BuildUI();
+	// 안전망: 보통 RebuildWidget 이 이미 프레임을 만들지만, 폴백 미생성 상태면 여기서 보장.
+	if (WidgetTree && !WidgetTree->RootWidget)
+	{
+		BuildFallbackFrame();
+	}
 	if (!bSubscribed)
 	{
 		if (AAOSGameState* GS = GetAOSGameState())
@@ -635,6 +708,7 @@ void UAOSBanPickWidget::OnDraftChanged()
 	RefreshCards();
 	RefreshSlots();
 	RefreshStatus();
+	UpdatePreviewSelections();   // 픽 확정/변경 시 3D 프리뷰 메시 스왑
 }
 
 void UAOSBanPickWidget::HandleCardClicked(int32 RosterIndex)
@@ -647,6 +721,7 @@ void UAOSBanPickWidget::HandleCardClicked(int32 RosterIndex)
 	PendingIndex = RosterIndex;  // 미리보기만 (서버 전송은 확정 버튼에서)
 	RefreshCards();
 	RefreshStatus();
+	UpdatePreviewSelections();   // 카드 클릭 = 내 쪽 3D 프리뷰에 즉시 표시
 }
 
 void UAOSBanPickWidget::OnConfirmClicked()

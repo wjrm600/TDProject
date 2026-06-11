@@ -772,6 +772,77 @@
 
 ---
 
+## 2026-06-10 — 벤픽 UI: UMG(WBP) 하이브리드 마이그레이션 (출시 스펙 Pass 1)
+
+**작업 내용**
+- 벤픽 위젯을 **순수 C++ Slate → UMG(WBP) 하이브리드**로 전환 (`WBP_MainMenu`/`WBP_Settlement`/`AOSLobbyWidget` 패턴 답습)
+- 정적 프레임(Backdrop/Title/Timer/Status/플레이어명/Confirm)을 `meta=(BindWidgetOptional)` 로, `RebuildWidget()` 가 WBP 없을 때만 C++ 폴백 프레임(`BuildFallbackFrame`) 생성
+- 동적 자식(카드 20 / 픽슬롯 5+5 / 밴슬롯 2+2)은 BindWidget 불가 → C++ 가 바인딩/폴백 컨테이너(`CardGrid`/`Team1·2BanRow`/`Team1·2PickColumn`)에 채움(`PopulateBanRow`/`PopulatePickColumn` + 카드 루프, `InitializeWithRoster` 에서 멱등)
+- `ConfirmButton.OnClicked` 바인딩을 `InitializeWithRoster` 로 일원화(`IsAlreadyBound` 가드) → WBP/폴백 단일 경로
+
+**문제점 / 난관**
+- 출시 스펙(LoL·이터널리턴) 대비 격차의 근본 원인 = **폴리시 양이 아니라 저작 파이프라인**: 벤픽만 순수 C++ Slate 라 모든 비주얼 수정이 코드+리빌드, UMG 디자이너/그라디언트/머티리얼/애니메이션 전부 불가
+- 벤픽은 카드/슬롯이 **동적 개수**라 단순 BindWidget 전환 불가 (MainMenu/Settlement 와 다른 점)
+
+**해결 방법**
+- **정적 프레임은 바인딩 / 동적 자식은 바인딩된 컨테이너에 C++ 가 채움**의 2분할 설계
+- PlayerController 는 이미 `ShowBanPick` → `LoadClass(WBP_BanPick_C)` → C++ 폴백 배선됨 → **PC 변경 0**, WBP 미생성 시 폴백이 기존과 동일(회귀 0)
+- WBP 저작 이름 계약을 헤더 주석 + CLAUDE.md 표로 명문화
+
+**결과 / 영향**
+- 이제 `WBP_BanPick`(Parent=`UAOSBanPickWidget`)을 만들면 디자이너에서 레이아웃·아트·UMG 애니를 **코드 리빌드 없이** 저작 가능 → 출시 스펙 천장 확보
+- 영향: `UI/AOSBanPickWidget.h/.cpp` (헤더 BindWidget 리플렉션 변경 → **풀 리빌드 필요**), `CLAUDE.md`, 본 TIMELINE
+- 범위(사용자 확정): *마이그레이션만 먼저*. 다음 Pass = 사용자 **손그림 와이어프레임 + LoL/ER 레퍼런스** 기준으로 WBP 위에 아트·모션·오디오
+- 관련 계획: `C:\Users\wjrm7\.claude\plans\breezy-wishing-noodle.md`
+
+---
+
+## 2026-06-11 — 벤픽 3D 캐릭터 프리뷰 (SceneCapture→RT→UMG, 클라 전용)
+
+**작업 내용**
+- 사용자 레퍼런스(LoL/이터널리턴 식 챔피언 선택)의 **좌상단·우하단 큰 캐릭터 공간을 2D 이미지가 아닌 실시간 3D 렌더**로 구현
+- 신규 `AAOSCharacterPreviewStage`(`UI/AOSCharacterPreviewStage.h/.cpp`): 화면 밖 스폰 액터 = SkeletalMesh + `SceneCaptureComponent2D`(`PRM_UseShowOnlyList` 격리) + 포인트라이트 2개. `SetPreviewCharacter`가 클래스 **CDO 메시/AnimClass**만 추출해 적용 → 런타임 RT 에 캡처
+- 위젯: `MyPreviewImage`(우하단=내 팀)/`EnemyPreviewImage`(좌상단=상대) BindWidgetOptional + `UpdatePreviewSelections`(내 미리보기/최신픽, 상대 최신픽) → 카드 클릭 즉시 3D 스왑. RT 는 **`FSlateBrush::SetResourceObject`로 직접 표시**(머티리얼/RT 에셋 불필요)
+- PC: `ShowBanPick`에서 스테이지 2개 스폰+`InitRenderTarget`+`SetPreviewStages`, `HideBanPick`에서 파괴 (클라+비DS 가드)
+
+**문제점 / 난관**
+- UMG엔 3D 뷰포트 위젯이 없음 → SceneCapture→RenderTarget 우회 필요
+- 전체 `AAOSCharacter` 액터를 프리뷰로 스폰하면 ASC/AI 등 게임플레이가 딸려와 무겁고 위험
+- AnimBP가 캐릭터 없는 메시에서 크래시할 위험
+
+**해결 방법**
+- 액터 대신 **CDO의 `GetMesh()`에서 SkeletalMesh+AnimClass만** 떼어 standalone 메시에 적용 (가볍고 안전)
+- `UAOSAnimInstance::NativeUpdateAnimation`이 OwningCharacter null 시 조기반환 확인 → AnimBP 그대로 붙여도 **크래시 없이 idle 포즈**, AnimGraph는 Speed=0 idle 평가
+- `AlwaysTickPoseAndRefreshBones`로 오프스크린에서도 포즈 갱신, 메시 보일 때만 `bCaptureEveryFrame`
+- 라이팅/프레이밍 `EditAnywhere` → 빌드 없이 PIE 중 튜닝
+
+**결과 / 영향**
+- 카드 클릭/픽 시 좌상단·우하단에 캐릭터 3D 모델 렌더. 머티리얼·RT 에셋 0개(순수 C+++런타임 RT), DS 안전(클라 전용)
+- 영향: `UI/AOSCharacterPreviewStage.h/.cpp`(신규), `UI/AOSBanPickWidget.h/.cpp`, `AOSPlayerController.h/.cpp`, `CLAUDE.md` → **풀 리빌드 필요**
+- 범위: 3D 시스템 우선(사용자 확정). 레퍼런스 레이아웃 전면 재현(픽 슬롯 재배치·LOCK IN 등)은 WBP 디자이너에서 후속
+- 후속: 라이팅/카메라 프레이밍 튜닝, WBP에 프리뷰 Image 배치, (옵션) 턴테이블 회전·투명 배경
+
+---
+
+## 2026-06-11 — 벤픽 레퍼런스 레이아웃 골격 (코너 배치 + 가로 픽 행 + LOCK IN)
+
+**작업 내용**
+- 사용자 레퍼런스(모바일레전드/LoL 식 챔피언 선택) 배치를 C++ 폴백에 반영 (골격 — 정교화는 WBP에서)
+- 풀-하이트 좌우 패널 → **코너 앵커드 오버레이**로 전환: 상단중앙=제목/타이머/CHAMPION SELECT, 중앙=그리드+**LOCK IN**, **팀1(레드) 상단-우 블록**(이름+가로 픽행+밴), **팀2(블루) 하단-좌 블록**, 3D 프리뷰는 좌상단(상대)/우하단(내 팀)
+- 픽 슬롯 세로 컬럼 → **가로 행(tall 카드 5칸)**: `Team1/2PickColumn`(VerticalBox) → `Team1/2PickRow`(HorizontalBox), `PopulatePickColumn` → `PopulatePickRow`
+
+**해결 방법 / 설계**
+- BindWidget 계약도 픽 컨테이너를 HorizontalBox(`Team1/2PickRow`)로 갱신 — WBP 미저작이라 변경 비용 0
+- `RefreshSlots`는 슬롯 배열(Borders/Images/Names) 기반이라 컨테이너 방향 바뀌어도 로직 불변
+
+**결과 / 영향**
+- 레퍼런스에 가까운 배치(코너 팀 블록 + 중앙 LOCK IN). cpp-only(레이아웃) → 빌드 필요
+- 영향: `UI/AOSBanPickWidget.h/.cpp`, `CLAUDE.md`(계약 표)
+- 범위: **골격**. 픽 카드 디테일(SELECTED HERO/Level/Role 라벨), 정확한 픽셀·아트는 WBP 디자이너에서 후속
+- 미해결(다음): 프리뷰 배경 하늘 비침 제거(캡처 ShowFlags Atmosphere/Fog off), 턴 적용 버그
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선

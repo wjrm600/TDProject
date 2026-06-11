@@ -1162,11 +1162,55 @@ Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → Roun
 - `OnGameStateChanged` 의 **BanPick 케이스** → 다른 위젯 hide + `ShowBanPick()` + `FInputModeGameAndUI`. 진입 전 항상 `HideBanPick()`.
 - `Server_DraftSelect(int32 UnitId)` (Server, Reliable) → 서버가 `PlayerState` 팀 강제 → `GameMode->ServerApplyDraftSelection`.
 - `Client_ReceiveCharacterRoster` 가 CharacterSelect 뿐 아니라 **`BanPickWidget->InitializeWithRoster`** 도 호출 (BanPick 진입 시 로스터 주입).
-- **`UAOSBanPickWidget`** (순수 C++ `UUserWidget`, **League of Legends 챔피언 선택 스타일**): `RootOverlay[BackdropImage(전체화면) + MainVBox]`. MainVBox = **상단바**(좌 플레이어명+밴슬롯 / 중앙 "PICK & BAN"+타이머 / 우 플레이어명+밴슬롯) + **중앙행**(좌 팀1 픽슬롯5 / 중앙 "CHAMPION SELECT" 그리드+상태+확정버튼 / 우 팀2 픽슬롯5).
+- **`UAOSBanPickWidget`** (**UMG(WBP) 하이브리드** — `WBP_MainMenu`/`WBP_Settlement` 패턴, **League of Legends 챔피언 선택 스타일**): 정적 프레임은 `BindWidgetOptional`, `RebuildWidget()` 가 WBP 없을 때 C++ 폴백 트리 생성. 폴백 레이아웃 = `RootOverlay[BackdropImage(전체화면) + MainVBox]`. MainVBox = **상단바**(좌 플레이어명+밴슬롯 / 중앙 "PICK & BAN"+타이머 / 우 플레이어명+밴슬롯) + **중앙행**(좌 팀1 픽슬롯5 / 중앙 "CHAMPION SELECT" 그리드+상태+확정버튼 / 우 팀2 픽슬롯5).
   - **2단계 선택**: 카드 클릭 = `PendingIndex` 미리보기(골드 테두리, `NativeOnMouseButtonDown` 지오메트리 hit-test) → **확정 버튼(`UButton::OnClicked`→`OnConfirmClicked`)** 에서만 `Server_DraftSelect` 전송. 확정 버튼은 내 턴 + 유효 미리보기 시만 활성.
   - 카드/픽/밴은 `UImage`. 초상화는 로스터 `Portrait`, 없으면 **인덱스별 컬러 타일**(`PlaceholderColor`, 황금비 hue 분산). 각 그리드 카드는 **`USizeBox(72×72)`** 로 감싸 초상화 유무와 무관하게 동일 크기/클릭영역.
   - 백드롭 `/Game/AOS/UI/Assets/T_BanPick_Backdrop` 자동로드(`StaticLoadObject`+솔리드 폴백). 초상화 `/Game/AOS/UI/Assets/T_Portrait_{Alex,Vega,Ken,Cammy,Guile}` → 로스터 0~4 `Portrait`. 플레이어명 = `PlayerState::GetPlayerName`(자기+상대, GameState PlayerArray).
   - `RefreshCards`(틴트: 밴=암적, T1픽=적, T2픽=청, 내 턴 아님=회색) / `RefreshSlots`(픽·밴 슬롯) / `RefreshStatus`(제목·타이머·확정버튼 활성). `NativeConstruct` 에서 GameState `OnDraftChanged` 구독, `NativeTick` 이 타이머 표시 갱신.
+
+#### UMG(WBP) 하이브리드 — `WBP_BanPick` 저작 계약 (출시 스펙 1차 마이그레이션)
+
+순수 C++ Slate 였던 벤픽 위젯을 **디자이너 저작 가능 구조**로 전환(2026-06-10). 목적: UMG 디자이너에서
+레이아웃·아트·UMG 애니메이션을 코드 리빌드 없이 저작 → "출시 스펙" 천장 확보. PlayerController 는
+**이미** WBP 로딩 배선됨(`ShowBanPick` → `BanPickWidgetClass` → `LoadClass(WBP_BanPick_C)` → C++ 폴백).
+
+- **정적 프레임 = `BindWidgetOptional`**: WBP 트리에 같은 이름 위젯이 있으면 자동 바인딩, 없으면
+  `RebuildWidget()`(=`WidgetTree && !RootWidget` 가드 → `BuildFallbackFrame()`)이 현재 C++ 레이아웃을 생성.
+  → **WBP 미생성 시 회귀 0**(폴백이 기존과 동일).
+- **동적 자식 = C++ 가 바인딩/폴백 컨테이너에 채움**: 카드·픽슬롯·밴슬롯은 개수가 로스터/슬롯 수라
+  `BindWidget` 불가 → C++ 가 `CardGrid`/`Team1·2BanRow`/`Team1·2PickRow` 컨테이너에 `InitializeWithRoster`
+  에서 생성·add(멱등: clear 후 refill). `PopulateBanRow`/`PopulatePickRow` + 카드 루프.
+- **`WBP_BanPick` 작성**(에디터, Parent=`UAOSBanPickWidget`) — 아래 이름과 **정확히 일치**해야 바인딩(전부 선택):
+
+  | 종류 | 위젯 타입 | 이름 |
+  |------|-----------|------|
+  | 배경 | Image | `BackdropImage` |
+  | 텍스트 | TextBlock | `TitleText` `TimerText` `StatusText` `Team1PlayerNameText` `Team2PlayerNameText` `ConfirmText` |
+  | 확정 | Button | `ConfirmButton` |
+  | 카드 컨테이너 | WrapBox | `CardGrid` |
+  | 밴 컨테이너 | HorizontalBox | `Team1BanRow` `Team2BanRow` |
+  | 픽 컨테이너 | HorizontalBox | `Team1PickRow` `Team2PickRow` |
+  | 3D 프리뷰 | Image | `MyPreviewImage`(우하단=내 팀) `EnemyPreviewImage`(좌상단=상대) |
+
+  - 컴파일·저장하면 PC 의 `LoadClass(WBP_BanPick_C)` 가 자동으로 잡아 WBP 경로 활성. (선택)
+    `BP_AOSPlayerController.BanPickWidgetClass` 에 명시 지정 가능.
+  - ⚠️ **카드 클릭 히트테스트**: 클릭은 위젯 루트의 `NativeOnMouseButtonDown` 지오메트리 hit-test 로 처리.
+    WBP 에서도 **카드 아래에 hit-test Visible 한 요소(백드롭을 `Visible`)** 가 있어야 클릭이 루트로 버블링됨.
+  - ⚠️ `ConfirmButton.OnClicked` 바인딩은 **`InitializeWithRoster` 가 1회**(`IsAlreadyBound` 가드) — WBP/폴백 단일 경로.
+
+#### 3D 캐릭터 프리뷰 (`AAOSCharacterPreviewStage`, 클라 전용)
+
+LoL/이터널리턴 식 "선택하면 캐릭터 3D 모델이 렌더되는 공간" (좌상단=상대, 우하단=내 팀). 2D 초상화 아님.
+
+- **기법**: `SceneCaptureComponent2D` → 런타임 생성 `UTextureRenderTarget2D` → **`FSlateBrush::SetResourceObject(RT)` 로 UMG Image 에 직접 표시** (머티리얼 에셋·RT 에셋 **불필요**).
+- **`AAOSCharacterPreviewStage`** (`UI/AOSCharacterPreviewStage.h/.cpp`) — 화면 밖(z=100000) 스폰 액터:
+  - `SkeletalMeshComponent`(AlwaysTickPose — 오프스크린 idle 재생) + `SceneCapture2D`(`PRM_UseShowOnlyList`+`ShowOnlyActors={this}` 로 게임월드 격리) + 포인트라이트 2개.
+  - `SetPreviewCharacter(TSubclassOf<AAOSCharacter>)` → 클래스 **CDO 의 `GetMesh()` 에서 `SkeletalMesh`+`AnimClass`** 추출해 프리뷰 메시에 적용(전체 캐릭터 액터 스폰 안 함 — 가볍고 안전). AnimBP(`UAOSAnimInstance`)는 OwningCharacter null 시 조기반환 → **크래시 없이 idle 포즈**.
+  - 메시 보일 때만 `bCaptureEveryFrame=true`(idle 갱신), 비면 캡처 끔. 프레이밍/라이팅은 `EditAnywhere`(빌드 없이 PIE 중 스테이지 액터 선택해 튜닝).
+- **`AAOSPlayerController`**: `ShowBanPick` → `EnsureDraftPreviewStages()`(클라+비DS 가드, 스테이지 2개 스폰+`InitRenderTarget(360,640)`) → `BanPickWidget->SetPreviewStages(Mine,Enemy)`. `HideBanPick` → `DestroyDraftPreviewStages()` (BanPick 동안만 존재).
+- **`UAOSBanPickWidget`**: `MyPreviewImage`/`EnemyPreviewImage`(BindWidgetOptional, 폴백은 코너 배치 + HitTestInvisible 로 카드 클릭 통과). `UpdatePreviewSelections()` 가 내 팀=`PendingIndex`(미리보기 중)∥최신 픽, 상대=최신 픽 으로 `Stage->SetPreviewCharacter` 호출. `OnDraftChanged`/`HandleCardClicked`/`SetPreviewStages` 에서 구동 → **카드 클릭 즉시 3D 미리보기**.
+- **DS**: 서버는 렌더 없음 → 스폰은 `IsLocalPlayerController()`+비`NM_DedicatedServer` 가드. 선택(UnitId)만 리플리케이션, 3D 렌더는 각 클라 로컬.
+- ⚠️ 라이팅: 스테이지 자체 포인트라이트로 메시 조명(월드 라이트는 먼 좌표라 거의 무영향). 캐릭터가 어둡/밝으면 `KeyLightIntensity`/`FillLightIntensity`(EditAnywhere) 튜닝.
 
 > ⚠️ **위젯 실현 순서(미니맵 교훈 재발)**: `ShowBanPick` 에서 **`InitializeWithRoster`(WidgetTree->RootWidget 구축)를 `AddToViewport` 보다 먼저** 호출해야 함. 순서가 뒤바뀌면 빈 RootWidget 이 Slate 로 실현되어 **벤픽 화면이 안 뜸** (실제로 이 버그가 발생했고 순서 교정으로 해결).
 > ⚠️ **타이머 갱신이 미리보기를 풀어버림**: `ServerSetDraftTurnTime` 가 매 초 `OnDraftChanged` 브로드캐스트 → 위젯 `OnDraftChanged` 가 무조건 `PendingIndex` 를 초기화하면 1초마다 미리보기가 풀려 확정 불가. → **미리보기 유닛이 가용하지 않을 때만**(밴/픽 확정 직후) 초기화.
@@ -1184,6 +1228,8 @@ Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → Roun
 ### Hot Reload 비호환
 
 `EAOSGameState::BanPick` enum 추가 + 신규 USTRUCT(`FAOSDraftStep`) + 신규 UCLASS(`UAOSBanPickWidget`) → **풀 리빌드 필수**.
+UMG 하이브리드 전환(신규 `meta=(BindWidgetOptional)` UPROPERTY + `RebuildWidget` override) 도 헤더 리플렉션 변경이라 **풀 리빌드 필수**(Live Coding 으로 BindWidget 메타 재파싱 불안정).
+3D 프리뷰 신규 UCLASS(`AAOSCharacterPreviewStage`) + PC/위젯 신규 UPROPERTY·UFUNCTION 도 **풀 리빌드 필수**.
 
 ## Memory Management Patterns
 

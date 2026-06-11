@@ -13,6 +13,7 @@ class UAOSCharacterSelectWidget;
 class UAOSLobbyWidget;
 class UAOSMinimapWidget;
 class UAOSBanPickWidget;
+class AAOSCharacterPreviewStage;
 
 /**
  * AOS 게임의 플레이어 컨트롤러
@@ -169,6 +170,13 @@ protected:
 	UPROPERTY()
 	UAOSMinimapWidget* MinimapWidget = nullptr;
 
+	// 벤픽 3D 캐릭터 프리뷰 스테이지 (클라 전용, BanPick 동안만 존재). Mine=우하단 / Enemy=좌상단.
+	UPROPERTY()
+	AAOSCharacterPreviewStage* MyPreviewStage = nullptr;
+
+	UPROPERTY()
+	AAOSCharacterPreviewStage* EnemyPreviewStage = nullptr;
+
 	// 게임 상태 변경 핸들러
 	UFUNCTION()
 	void OnGameStateChanged(EAOSGameState NewState);
@@ -182,6 +190,10 @@ protected:
 	void HideCharacterSelect();
 	void ShowBanPick();
 	void HideBanPick();
+
+	// 벤픽 3D 프리뷰 스테이지 스폰/파괴 (클라 전용)
+	void EnsureDraftPreviewStages();
+	void DestroyDraftPreviewStages();
 	void ShowLobby();
 	void HideLobby();
 
