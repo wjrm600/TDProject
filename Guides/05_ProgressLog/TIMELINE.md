@@ -843,6 +843,30 @@
 
 ---
 
+## 2026-06-11 — 벤픽 레퍼런스 디자인: 라이트 테마 + 카드/밴/그리드 콘텐츠 (C++ 폴백)
+
+**작업 내용** (디자인 갭 체크 후 사용자 확정: 밝은 테마 + C++ 폴백 우선)
+- **라이트 테마 전환**: 다크 고딕 배경 → 밝은 무채색(`kBgLight`), 모든 텍스트 어두운색, 그리드 패널 라이트+얇은 테두리, LOCK IN 블루 버튼. 파일 상단 라이트 팔레트 상수(`kPanelLight/kCardEmpty/kBorderLight/kTextDark/kTextGray/kLockInBlue/kBanRed`)
+- **픽 카드(레퍼런스)**: 초상화 영역 + "SELECTED HERO" + 이름(빈=CHOOSE HERO/픽=챔피언명) + 슬롯탭(R1~R5/B1~B5 팀색 바). 108×168 세로 카드
+- **밴 슬롯**: 라이트 박스 + 빈칸 빨간 ✕(이미지 투명→X 비침), 밴되면 초상화 회색조
+- **그리드**: 카드 아래 챔피언명 라벨 + 폭 고정(600)으로 ~8열 래핑 + 라이트 셀
+- **제목**: "CHARACTER SELECT" + "SEASON 9 DRAFT"
+- `RefreshCards/RefreshSlots/RefreshStatus` 라이트 리컬러 (타이머/상태 어두운색, 활성=골드/블루, CHOOSE HERO 갱신)
+
+**문제점 / 난관**
+- "완전히 같은 디자인"의 최대 분기 = 배경 테마(다크 vs 레퍼런스 밝은) → 사용자에게 확인 후 밝은 테마 확정
+- 레퍼런스 "Level 1 / Role"은 로스터에 대응 데이터 없음 → 생략(클러터 회피), "SELECTED HERO/CHOOSE HERO/슬롯탭"만 의미 구현
+
+**해결 방법 / 메모**
+- 헤더 변경 없는 cpp 본문 + 파일 스코프 상수 → **Live Coding 호환**(Ctrl+Alt+F11 + PIE 재시작)
+- 다크 배경/글로우/카드프레임 텍스처 로드 제거(라이트 테마). `TryLoadTexture`+경로 상수는 향후 라이트 백드롭용 보존
+
+**결과 / 영향**
+- 레퍼런스의 밝은 에디터풍 + 카드/밴/그리드 콘텐츠 반영. 영향: `UI/AOSBanPickWidget.cpp`(cpp-only)
+- 후속: 픽셀 정밀·폰트(Open Sans)·아트는 WBP 디자이너에서. (옵션) Level/Role 더미 라벨 추가
+
+---
+
 ## 진행 중 (작업 완료 시 위 형식으로 이동)
 
 ### Part B — ABP 상하체 분리 배선
