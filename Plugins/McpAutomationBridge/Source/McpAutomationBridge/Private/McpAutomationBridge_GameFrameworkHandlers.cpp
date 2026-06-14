@@ -77,8 +77,11 @@
 #include "GameFramework/SpectatorPawn.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/WorldSettings.h"
+#include "GameMapsSettings.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/SoftObjectPath.h"
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogMcpGameFrameworkHandlers, Log, All);
@@ -92,10 +95,10 @@ static void SetBPVarDefaultValueGF(UBlueprint* Blueprint, FName VarName, const F
     {
         return;
     }
-    
+
     // Compile the blueprint first to ensure GeneratedClass exists
     McpSafeCompileBlueprint(Blueprint);
-    
+
     if (Blueprint->GeneratedClass)
     {
         if (UObject* CDO = Blueprint->GeneratedClass->GetDefaultObject())
@@ -190,7 +193,7 @@ namespace GameFrameworkHelpers
         {
             UBlueprint* BP = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *CleanPath));
             if (BP) return BP;
-            
+
             if (CleanPath.EndsWith(TEXT(".uasset")))
             {
                 CleanPath = CleanPath.LeftChop(7);
@@ -223,15 +226,15 @@ namespace GameFrameworkHelpers
                 FullPath = TEXT("/Game/") + FullPath;
             }
         }
-        
+
         // Remove trailing slash if present
         if (FullPath.EndsWith(TEXT("/")))
         {
             FullPath = FullPath.LeftChop(1);
         }
-        
+
         FString AssetPath = FullPath / Name;
-        
+
         // CRITICAL: Check if a Blueprint with this name already exists to prevent
         // engine assertion failure in Kismet2.cpp (line 435). The engine asserts
         // that no Blueprint with the target name exists before creation.
@@ -242,7 +245,7 @@ namespace GameFrameworkHelpers
             OutError = FString::Printf(TEXT("Blueprint already exists: %s"), *AssetPath);
             return nullptr;
         }
-        
+
         // Also check using UEditorAssetLibrary for assets that may not be loaded yet
         // This is version-safe and works across UE 5.0-5.7
         if (UEditorAssetLibrary::DoesAssetExist(AssetPath))
@@ -250,7 +253,7 @@ namespace GameFrameworkHelpers
             OutError = FString::Printf(TEXT("Asset already exists at path: %s"), *AssetPath);
             return nullptr;
         }
-        
+
         UPackage* Package = CreatePackage(*AssetPath);
         if (!Package)
         {
@@ -273,10 +276,10 @@ namespace GameFrameworkHelpers
 
         FAssetRegistryModule::AssetCreated(Blueprint);
         Blueprint->MarkPackageDirty();
-        
+
         // Compile the blueprint
         McpSafeCompileBlueprint(Blueprint);
-        
+
         return Blueprint;
     }
 
@@ -353,7 +356,7 @@ namespace GameFrameworkHelpers
         {
             BPPath += TEXT("_C");
         }
-        
+
         UClass* BPClass = LoadClass<UObject>(nullptr, *BPPath);
         if (BPClass)
         {
@@ -374,14 +377,14 @@ namespace GameFrameworkHelpers
     bool AddBlueprintVariable(UBlueprint* Blueprint, const FString& VarName, const FEdGraphPinType& PinType, const FString& Category = TEXT(""))
     {
         if (!Blueprint) return false;
-        
+
         bool bSuccess = FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*VarName), PinType);
-        
+
         if (bSuccess && !Category.IsEmpty())
         {
             FBlueprintEditorUtils::SetBlueprintVariableCategory(Blueprint, FName(*VarName), nullptr, FText::FromString(Category));
         }
-        
+
         return bSuccess;
     }
 
@@ -478,13 +481,13 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
     FString Name = GetStringField(Payload, TEXT("name"));
     FString Path = GetStringField(Payload, TEXT("path"), TEXT("/Game"));
     bool bSave = GetBoolField(Payload, TEXT("save"), false);
-    
+
     // SECURITY: Validate path to prevent traversal attacks
     FString SanitizedPath = SanitizeProjectRelativePath(Path);
     if (SanitizedPath.IsEmpty() && !Path.IsEmpty())
     {
-        SendAutomationError(RequestingSocket, RequestId, 
-            TEXT("Invalid path: path traversal or invalid characters detected. Path must start with /Game/, /Engine/, or /Script/"), 
+        SendAutomationError(RequestingSocket, RequestId,
+            TEXT("Invalid path: path traversal or invalid characters detected. Path must start with /Game/, /Engine/, or /Script/"),
             TEXT("SECURITY_VIOLATION"));
         return true;
     }
@@ -492,22 +495,22 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
     {
         Path = SanitizedPath;
     }
-    
+
     // Support both gameModeBlueprint and blueprintPath as aliases
     FString GameModeBlueprint = GetStringField(Payload, TEXT("gameModeBlueprint"));
     if (GameModeBlueprint.IsEmpty())
     {
         GameModeBlueprint = GetStringField(Payload, TEXT("blueprintPath"));
     }
-    
+
     // SECURITY: Validate blueprint paths
     if (!GameModeBlueprint.IsEmpty())
     {
         FString SanitizedBPPath = SanitizeProjectRelativePath(GameModeBlueprint);
         if (SanitizedBPPath.IsEmpty())
         {
-            SendAutomationError(RequestingSocket, RequestId, 
-                TEXT("Invalid gameModeBlueprint path: path traversal or invalid characters detected"), 
+            SendAutomationError(RequestingSocket, RequestId,
+                TEXT("Invalid gameModeBlueprint path: path traversal or invalid characters detected"),
                 TEXT("SECURITY_VIOLATION"));
             return true;
         }
@@ -529,7 +532,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? AGameModeBase::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = AGameModeBase::StaticClass();
@@ -537,7 +540,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -565,6 +568,36 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
             }
         }
 
+        FString GameStateClass = GetStringField(Payload, TEXT("gameStateClass"));
+        if (!GameStateClass.IsEmpty())
+        {
+            UClass* GSClass = LoadClassFromPath(GameStateClass);
+            if (GSClass)
+            {
+                SetClassProperty(BP, TEXT("GameStateClass"), GSClass, Error);
+            }
+        }
+
+        FString PlayerStateClass = GetStringField(Payload, TEXT("playerStateClass"));
+        if (!PlayerStateClass.IsEmpty())
+        {
+            UClass* PSClass = LoadClassFromPath(PlayerStateClass);
+            if (PSClass)
+            {
+                SetClassProperty(BP, TEXT("PlayerStateClass"), PSClass, Error);
+            }
+        }
+
+        FString HUDClass = GetStringField(Payload, TEXT("hudClass"));
+        if (!HUDClass.IsEmpty())
+        {
+            UClass* HUDClassObj = LoadClassFromPath(HUDClass);
+            if (HUDClassObj)
+            {
+                SetClassProperty(BP, TEXT("HUDClass"), HUDClassObj, Error);
+            }
+        }
+
         if (bSave)
         {
             McpSafeAssetSave(BP);
@@ -588,7 +621,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? AGameStateBase::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = AGameStateBase::StaticClass();
@@ -596,7 +629,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -626,7 +659,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? APlayerController::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = APlayerController::StaticClass();
@@ -634,7 +667,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -664,7 +697,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? APlayerState::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = APlayerState::StaticClass();
@@ -672,7 +705,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -702,7 +735,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? UGameInstance::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = UGameInstance::StaticClass();
@@ -710,7 +743,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -740,7 +773,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString ParentClassPath = GetStringField(Payload, TEXT("parentClass"));
         UClass* ParentClass = ParentClassPath.IsEmpty() ? AHUD::StaticClass() : LoadClassFromPath(ParentClassPath);
-        
+
         if (!ParentClass)
         {
             ParentClass = AHUD::StaticClass();
@@ -748,7 +781,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         FString Error;
         UBlueprint* BP = CreateGameFrameworkBlueprint(Path, Name, ParentClass, Error);
-        
+
         if (!BP)
         {
             SendAutomationError(RequestingSocket, RequestId, Error, TEXT("CREATION_FAILED"));
@@ -815,7 +848,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         }
 
         McpSafeCompileBlueprint(BP);
-        
+
         if (bSave)
         {
             McpSafeAssetSave(BP);
@@ -1005,7 +1038,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         // Note: These properties may not exist on AGameModeBase, only on AGameMode
         // We'll try to set them if they exist
-        
+
         if (Payload->HasField(TEXT("bDelayedStart")))
         {
             FBoolProperty* Prop = CastField<FBoolProperty>(BP->GeneratedClass->FindPropertyByName(TEXT("bDelayedStart")));
@@ -1018,8 +1051,10 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         if (Payload->HasField(TEXT("startPlayersNeeded")))
         {
-            // This would typically be a custom property - log for user info
-            UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("startPlayersNeeded would require custom variable in Blueprint"));
+            SendAutomationError(RequestingSocket, RequestId,
+                TEXT("startPlayersNeeded is not a native GameMode property and is not implemented as a generated Blueprint variable."),
+                TEXT("UNSUPPORTED_FIELD"));
+            return true;
         }
 
         if (bModified)
@@ -1132,7 +1167,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("stateCount"), StateNames.Num());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         // Return the state names that were provided
         TArray<TSharedPtr<FJsonValue>> StatesJsonArray;
         for (const FString& StateName : StateNames)
@@ -1140,7 +1175,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
             StatesJsonArray.Add(MakeShared<FJsonValueString>(StateName));
         }
         Response->SetArrayField(TEXT("configuredStates"), StatesJsonArray);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1163,7 +1198,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         double RoundTime = GetNumberField(Payload, TEXT("roundTime"), 0);
         double IntermissionTime = GetNumberField(Payload, TEXT("intermissionTime"), 0);
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring round system: rounds=%d, roundTime=%.1f, intermission=%.1f"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring round system: rounds=%d, roundTime=%.1f, intermission=%.1f"),
                NumRounds, RoundTime, IntermissionTime);
 
         // Add round system variables to the Blueprint
@@ -1230,13 +1265,13 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("message"), FString::Printf(TEXT("Added %d round system variables to Blueprint"), VarsAdded));
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         TSharedPtr<FJsonObject> ConfigObj = McpHandlerUtils::CreateResultObject();
         ConfigObj->SetNumberField(TEXT("numRounds"), NumRounds);
         ConfigObj->SetNumberField(TEXT("roundTime"), RoundTime);
         ConfigObj->SetNumberField(TEXT("intermissionTime"), IntermissionTime);
         Response->SetObjectField(TEXT("configuration"), ConfigObj);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1260,7 +1295,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         bool bAutoBalance = GetBoolField(Payload, TEXT("autoBalance"), true);
         bool bFriendlyFire = GetBoolField(Payload, TEXT("friendlyFire"), false);
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring team system: teams=%d, size=%d, autoBalance=%d, friendlyFire=%d"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring team system: teams=%d, size=%d, autoBalance=%d, friendlyFire=%d"),
                NumTeams, TeamSize, bAutoBalance, bFriendlyFire);
 
         // Add team system variables to the Blueprint
@@ -1321,14 +1356,14 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("message"), FString::Printf(TEXT("Added %d team system variables to Blueprint"), VarsAdded));
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         TSharedPtr<FJsonObject> ConfigObj = McpHandlerUtils::CreateResultObject();
         ConfigObj->SetNumberField(TEXT("numTeams"), NumTeams);
         ConfigObj->SetNumberField(TEXT("teamSize"), TeamSize);
         ConfigObj->SetBoolField(TEXT("autoBalance"), bAutoBalance);
         ConfigObj->SetBoolField(TEXT("friendlyFire"), bFriendlyFire);
         Response->SetObjectField(TEXT("configuration"), ConfigObj);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1351,7 +1386,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         double ScorePerObjective = GetNumberField(Payload, TEXT("scorePerObjective"), 500);
         double ScorePerAssist = GetNumberField(Payload, TEXT("scorePerAssist"), 50);
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring scoring: kill=%.0f, objective=%.0f, assist=%.0f"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring scoring: kill=%.0f, objective=%.0f, assist=%.0f"),
                ScorePerKill, ScorePerObjective, ScorePerAssist);
 
         // Add scoring system variables to the Blueprint
@@ -1407,7 +1442,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("message"), FString::Printf(TEXT("Added %d scoring system variables to Blueprint"), VarsAdded));
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         TSharedPtr<FJsonObject> ConfigObj = McpHandlerUtils::CreateResultObject();
         ConfigObj->SetNumberField(TEXT("scorePerKill"), ScorePerKill);
         ConfigObj->SetNumberField(TEXT("scorePerObjective"), ScorePerObjective);
@@ -1415,7 +1450,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         ConfigObj->SetNumberField(TEXT("winScore"), WinScore);
         ConfigObj->SetNumberField(TEXT("scorePerDeath"), ScorePerDeath);
         Response->SetObjectField(TEXT("configuration"), ConfigObj);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1438,7 +1473,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         double RespawnDelay = GetNumberField(Payload, TEXT("respawnDelay"), 5.0);
         bool bUsePlayerStarts = GetBoolField(Payload, TEXT("usePlayerStarts"), true);
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring spawn system: method=%s, delay=%.1f, usePlayerStarts=%d"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configuring spawn system: method=%s, delay=%.1f, usePlayerStarts=%d"),
                *SpawnMethod, RespawnDelay, bUsePlayerStarts);
 
         // Add spawn system variables to the Blueprint
@@ -1511,7 +1546,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("message"), FString::Printf(TEXT("Added %d spawn system variables to Blueprint"), VarsAdded));
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         TSharedPtr<FJsonObject> ConfigObj = McpHandlerUtils::CreateResultObject();
         ConfigObj->SetStringField(TEXT("spawnSelectionMethod"), SpawnMethod);
         ConfigObj->SetNumberField(TEXT("respawnDelay"), RespawnDelay);
@@ -1519,7 +1554,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         ConfigObj->SetBoolField(TEXT("canRespawn"), bCanRespawn);
         ConfigObj->SetNumberField(TEXT("maxRespawns"), MaxRespawns);
         Response->SetObjectField(TEXT("configuration"), ConfigObj);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1538,13 +1573,13 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
         // This typically works on PlayerStart actors in a level, not blueprints
         // For now, we'll handle it as a configuration helper
-        
+
         TSharedPtr<FJsonObject> LocationObj = GetObjectField(Payload, TEXT("location"));
         TSharedPtr<FJsonObject> RotationObj = GetObjectField(Payload, TEXT("rotation"));
         int32 TeamIndex = static_cast<int32>(GetNumberField(Payload, TEXT("teamIndex"), 0));
         bool bPlayerOnly = GetBoolField(Payload, TEXT("bPlayerOnly"), false);
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configure PlayerStart: path=%s, teamIndex=%d, playerOnly=%d"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configure PlayerStart: path=%s, teamIndex=%d, playerOnly=%d"),
                *BlueprintPath, TeamIndex, bPlayerOnly);
 
         // Get the PlayerStart actor name to configure
@@ -1555,7 +1590,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         }
 
         FString PlayerStartTag = GetStringField(Payload, TEXT("playerStartTag"));
-        
+
         // Build the tag if not explicitly provided
         if (PlayerStartTag.IsEmpty() && TeamIndex > 0)
         {
@@ -1570,13 +1605,13 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         }
 
         int32 ConfiguredCount = 0;
-        
+
         // Find and configure PlayerStart actors
         for (TActorIterator<APlayerStart> It(World); It; ++It)
         {
             APlayerStart* PlayerStart = *It;
             if (!PlayerStart) continue;
-            
+
             // If a specific name is provided, only configure that one
             if (!PlayerStartName.IsEmpty())
             {
@@ -1597,15 +1632,15 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
             PlayerStart->MarkPackageDirty();
             ConfiguredCount++;
-            
-            UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configured PlayerStart: %s with tag=%s"), 
+
+            UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Configured PlayerStart: %s with tag=%s"),
                    *PlayerStart->GetName(), *PlayerStartTag);
         }
 
         if (ConfiguredCount == 0 && !PlayerStartName.IsEmpty())
         {
-            SendAutomationError(RequestingSocket, RequestId, 
-                FString::Printf(TEXT("PlayerStart '%s' not found in level."), *PlayerStartName), 
+            SendAutomationError(RequestingSocket, RequestId,
+                FString::Printf(TEXT("PlayerStart '%s' not found in level."), *PlayerStartName),
                 TEXT("NOT_FOUND"));
             return true;
         }
@@ -1643,7 +1678,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         bool bForceRespawn = GetBoolField(Payload, TEXT("forceRespawn"), true);
         int32 RespawnLives = static_cast<int32>(GetNumberField(Payload, TEXT("respawnLives"), -1));
 
-        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Setting respawn rules: delay=%.1f, location=%s, force=%d, lives=%d"), 
+        UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Setting respawn rules: delay=%.1f, location=%s, force=%d, lives=%d"),
                RespawnDelay, *RespawnLocation, bForceRespawn, RespawnLives);
 
         bool bModified = false;
@@ -1659,7 +1694,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
                 GameModeCDO->MinRespawnDelay = static_cast<float>(RespawnDelay);
                 GameModeCDO->MarkPackageDirty();
                 bModified = true;
-                
+
                 UE_LOG(LogMcpGameFrameworkHandlers, Log, TEXT("Set MinRespawnDelay=%.1f on CDO"), RespawnDelay);
             }
             else
@@ -1705,14 +1740,14 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         Response->SetStringField(TEXT("message"), FString::Printf(TEXT("Set respawn rules (MinRespawnDelay=%.1f, added %d variables)"), RespawnDelay, VarsAdded));
         Response->SetStringField(TEXT("blueprintPath"), BP->GetPathName());
         Response->SetNumberField(TEXT("variablesAdded"), VarsAdded);
-        
+
         TSharedPtr<FJsonObject> ConfigObj = McpHandlerUtils::CreateResultObject();
         ConfigObj->SetNumberField(TEXT("respawnDelay"), RespawnDelay);
         ConfigObj->SetStringField(TEXT("respawnLocation"), RespawnLocation);
         ConfigObj->SetBoolField(TEXT("forceRespawn"), bForceRespawn);
         ConfigObj->SetNumberField(TEXT("respawnLives"), RespawnLives);
         Response->SetObjectField(TEXT("configuration"), ConfigObj);
-        
+
         SendAutomationResponse(RequestingSocket, RequestId, true, TEXT("Success"), Response);
         return true;
     }
@@ -1770,7 +1805,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
     {
         TSharedPtr<FJsonObject> Response = McpHandlerUtils::CreateResultObject();
         Response->SetBoolField(TEXT("success"), true);
-        
+
         TSharedPtr<FJsonObject> InfoObj = McpHandlerUtils::CreateResultObject();
 
         // If a specific GameMode blueprint is provided, query it
@@ -1839,36 +1874,79 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
         }
         else
         {
-            // Query current world's game mode if available
-            UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
-            if (World)
+            UWorld* World = GEditor ? GEditor->PlayWorld : nullptr;
+            if (!World && GEditor)
             {
-                AGameModeBase* GM = World->GetAuthGameMode();
-                if (GM)
+                World = GEditor->GetEditorWorldContext().World();
+            }
+
+            AGameModeBase* GM = World ? World->GetAuthGameMode() : nullptr;
+            UClass* ResolvedGameModeClass = nullptr;
+
+            if (GM)
+            {
+                ResolvedGameModeClass = GM->GetClass();
+                InfoObj->SetStringField(TEXT("source"), TEXT("live"));
+            }
+            else if (World)
+            {
+                if (AWorldSettings* WorldSettings = World->GetWorldSettings())
                 {
-                    InfoObj->SetStringField(TEXT("gameModeClass"), GM->GetClass()->GetPathName());
-                    
-                    if (GM->DefaultPawnClass)
+                    if (UClass* LevelGameMode = WorldSettings->DefaultGameMode.Get())
                     {
-                        InfoObj->SetStringField(TEXT("defaultPawnClass"), GM->DefaultPawnClass->GetPathName());
-                    }
-                    if (GM->PlayerControllerClass)
-                    {
-                        InfoObj->SetStringField(TEXT("playerControllerClass"), GM->PlayerControllerClass->GetPathName());
-                    }
-                    if (GM->GameStateClass)
-                    {
-                        InfoObj->SetStringField(TEXT("gameStateClass"), GM->GameStateClass->GetPathName());
-                    }
-                    if (GM->PlayerStateClass)
-                    {
-                        InfoObj->SetStringField(TEXT("playerStateClass"), GM->PlayerStateClass->GetPathName());
-                    }
-                    if (GM->HUDClass)
-                    {
-                        InfoObj->SetStringField(TEXT("hudClass"), GM->HUDClass->GetPathName());
+                        ResolvedGameModeClass = LevelGameMode;
+                        InfoObj->SetStringField(TEXT("source"), TEXT("levelDefault"));
                     }
                 }
+
+                if (!ResolvedGameModeClass)
+                {
+                    const FString DefaultGameModeStr = UGameMapsSettings::GetGlobalDefaultGameMode();
+                    if (!DefaultGameModeStr.IsEmpty())
+                    {
+                        FSoftClassPath DefaultGameModePath(DefaultGameModeStr);
+                        ResolvedGameModeClass = DefaultGameModePath.TryLoadClass<AGameModeBase>();
+                        if (ResolvedGameModeClass)
+                        {
+                            InfoObj->SetStringField(TEXT("source"), TEXT("projectDefault"));
+                        }
+                    }
+                }
+            }
+
+            if (ResolvedGameModeClass)
+            {
+                InfoObj->SetStringField(TEXT("gameModeClass"), ResolvedGameModeClass->GetPathName());
+
+                if (const AGameModeBase* CDO = ResolvedGameModeClass->GetDefaultObject<AGameModeBase>())
+                {
+                    if (CDO->DefaultPawnClass)
+                    {
+                        InfoObj->SetStringField(TEXT("defaultPawnClass"), CDO->DefaultPawnClass->GetPathName());
+                    }
+                    if (CDO->PlayerControllerClass)
+                    {
+                        InfoObj->SetStringField(TEXT("playerControllerClass"), CDO->PlayerControllerClass->GetPathName());
+                    }
+                    if (CDO->GameStateClass)
+                    {
+                        InfoObj->SetStringField(TEXT("gameStateClass"), CDO->GameStateClass->GetPathName());
+                    }
+                    if (CDO->PlayerStateClass)
+                    {
+                        InfoObj->SetStringField(TEXT("playerStateClass"), CDO->PlayerStateClass->GetPathName());
+                    }
+                    if (CDO->HUDClass)
+                    {
+                        InfoObj->SetStringField(TEXT("hudClass"), CDO->HUDClass->GetPathName());
+                    }
+                }
+            }
+
+            if (World)
+            {
+                InfoObj->SetStringField(TEXT("worldName"), World->GetName());
+                InfoObj->SetBoolField(TEXT("isPlayInEditor"), World->IsPlayInEditor());
             }
         }
 
@@ -1884,7 +1962,7 @@ bool UMcpAutomationBridgeSubsystem::HandleManageGameFrameworkAction(
 
     else
     {
-        SendAutomationError(RequestingSocket, RequestId, 
+        SendAutomationError(RequestingSocket, RequestId,
             FString::Printf(TEXT("Unknown subAction: %s"), *SubAction), TEXT("UNKNOWN_SUBACTION"));
         return true;
     }

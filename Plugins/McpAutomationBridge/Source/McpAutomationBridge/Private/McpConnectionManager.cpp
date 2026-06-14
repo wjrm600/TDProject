@@ -30,6 +30,12 @@ static inline FString SanitizeForLogConnMgr(const FString &In) {
   return Out;
 }
 
+static inline bool IsImagePayloadPreviewField(const FString &Key) {
+  return Key.Equals(TEXT("imageBase64"), ESearchCase::IgnoreCase) ||
+         Key.Equals(TEXT("imageData"), ESearchCase::IgnoreCase) ||
+         Key.Equals(TEXT("data"), ESearchCase::IgnoreCase);
+}
+
 FMcpConnectionManager::FMcpConnectionManager() {}
 
 FMcpConnectionManager::~FMcpConnectionManager() { Stop(); }
@@ -215,8 +221,7 @@ void FMcpConnectionManager::AttemptConnection() {
 
   const bool bShouldListen = Settings->bAlwaysListen;
   if (bShouldListen && !IsAnyServerListening()) {
-    const FString PortsStr =
-        bEnvListenPortsSet ? EnvListenPorts : Settings->ListenPorts;
+    const FString PortsStr = EnvListenPorts.IsEmpty() ? Settings->ListenPorts : EnvListenPorts;
     TArray<FString> PortTokens;
     if (!PortsStr.IsEmpty()) {
       PortsStr.ParseIntoArray(PortTokens, TEXT(","), true);
@@ -236,7 +241,7 @@ void FMcpConnectionManager::AttemptConnection() {
         continue;
 
       int32 Port = 0;
-      if (!LexTryParseString(Port, *Trimmed) || Port <= 0)
+      if (!LexTryParseString(Port, *Trimmed) || Port <= 0 || Port > 65535)
         continue;
 
       bool bAlready = false;
@@ -352,6 +357,7 @@ void FMcpConnectionManager::ForceReconnect(const FString &Reason,
     }
   }
   ActiveSockets.Empty();
+  AuthenticatedSockets.Empty();
   {
     FScopeLock Lock(&RateLimitMutex);
     SocketRateLimits.Empty();
@@ -620,8 +626,9 @@ void FMcpConnectionManager::HandleMessage(
       FString PayloadPreview;
       if (Payload.IsValid()) {
         TArray<FString> Parts;
-        for (auto& Pair : Payload->Values) {
-          if (Pair.Key != TEXT("type") && Pair.Key != TEXT("requestId")) {
+        for (const auto& Pair : Payload->Values) {
+          const FString FieldName(Pair.Key.Len(), *Pair.Key);
+          if (FieldName != TEXT("type") && FieldName != TEXT("requestId")) {
             FString Val;
             if (Pair.Value->Type == EJson::String) {
               Val = FString::Printf(TEXT("\"%s\""), *Pair.Value->AsString().Left(50));
@@ -632,7 +639,7 @@ void FMcpConnectionManager::HandleMessage(
             } else {
               Val = TEXT("...");
             }
-            Parts.Add(FString::Printf(TEXT("%s=%s"), *Pair.Key, *Val));
+            Parts.Add(FString::Printf(TEXT("%s=%s"), *FieldName, *Val));
           }
         }
         PayloadPreview = Parts.Num() > 0 ? FString::Join(Parts, TEXT(" ")) : TEXT("{}");
@@ -755,14 +762,14 @@ bool FMcpConnectionManager::UpdateRateLimit(FMcpBridgeWebSocket* SocketPtr,
     ++State.AutomationRequestCount;
   }
 
-  if (MaxMessagesPerMinute > 0 && State.MessageCount >= MaxMessagesPerMinute) {
+  if (MaxMessagesPerMinute > 0 && State.MessageCount > MaxMessagesPerMinute) {
     OutReason = FString::Printf(TEXT("message rate %d/%d per minute"),
                                 State.MessageCount, MaxMessagesPerMinute);
     return false;
   }
 
   if (bIncrementAutomation && MaxAutomationRequestsPerMinute > 0 &&
-      State.AutomationRequestCount >= MaxAutomationRequestsPerMinute) {
+      State.AutomationRequestCount > MaxAutomationRequestsPerMinute) {
     OutReason = FString::Printf(TEXT("automation request rate %d/%d per minute"),
                                 State.AutomationRequestCount,
                                 MaxAutomationRequestsPerMinute);
@@ -832,9 +839,12 @@ void FMcpConnectionManager::SendAutomationResponse(
     FString ResultPreview;
     if (Result.IsValid() && Result->Values.Num() > 0) {
       TArray<FString> Parts;
-      for (auto& Pair : Result->Values) {
+      for (const auto& Pair : Result->Values) {
+        const FString FieldName(Pair.Key.Len(), *Pair.Key);
         FString Val;
-        if (Pair.Value->Type == EJson::String) {
+        if (IsImagePayloadPreviewField(FieldName)) {
+          Val = TEXT("\"<omitted; see image content>\"");
+        } else if (Pair.Value->Type == EJson::String) {
           Val = FString::Printf(TEXT("\"%s\""), *Pair.Value->AsString().Left(40));
         } else if (Pair.Value->Type == EJson::Boolean) {
           Val = Pair.Value->AsBool() ? TEXT("true") : TEXT("false");
@@ -847,7 +857,7 @@ void FMcpConnectionManager::SendAutomationResponse(
         } else {
           Val = TEXT("?");
         }
-        Parts.Add(FString::Printf(TEXT("%s=%s"), *Pair.Key, *Val));
+        Parts.Add(FString::Printf(TEXT("%s=%s"), *FieldName, *Val));
       }
       ResultPreview = FString::Printf(TEXT(" (%s)"), *FString::Join(Parts, TEXT(" ")));
     }
@@ -939,17 +949,17 @@ void FMcpConnectionManager::SendProgressUpdate(
   TSharedRef<FJsonObject> Update = MakeShared<FJsonObject>();
   Update->SetStringField(TEXT("type"), TEXT("progress_update"));
   Update->SetStringField(TEXT("requestId"), RequestId);
-  
+
   if (Percent >= 0.0f) {
     Update->SetNumberField(TEXT("percent"), Percent);
   }
-  
+
   if (!Message.IsEmpty()) {
     Update->SetStringField(TEXT("message"), Message);
   }
-  
+
   Update->SetBoolField(TEXT("stillWorking"), bStillWorking);
-  
+
   // Add timestamp in ISO format
   const FDateTime Now = FDateTime::UtcNow();
   const FString Timestamp = FString::Printf(TEXT("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ"),
@@ -957,12 +967,12 @@ void FMcpConnectionManager::SendProgressUpdate(
     Now.GetHour(), Now.GetMinute(), Now.GetSecond(),
     Now.GetMillisecond());
   Update->SetStringField(TEXT("timestamp"), Timestamp);
-  
+
   FString Serialized;
   const TSharedRef<TJsonWriter<>> Writer =
       TJsonWriterFactory<>::Create(&Serialized);
   FJsonSerializer::Serialize(Update, Writer);
-  
+
   // Find the socket for this request and send the progress update
   TSharedPtr<FMcpBridgeWebSocket> TargetSocket;
   {
@@ -971,7 +981,7 @@ void FMcpConnectionManager::SendProgressUpdate(
       TargetSocket = *Found;
     }
   }
-  
+
   if (TargetSocket.IsValid() && TargetSocket->IsConnected()) {
     if (!TargetSocket->Send(Serialized)) {
       UE_LOG(LogMcpAutomationBridgeSubsystem, Verbose,

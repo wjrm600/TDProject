@@ -67,7 +67,7 @@ Use the Unreal Editor's hot reload feature (Ctrl+Alt+F11) for quick C++ changes 
 ### MCP 서버 셋업 (Claude 연동)
 
 이 프로젝트는 두 개의 MCP 서버를 사용합니다:
-- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.1.4 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계)
+- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.5.30 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계)
 - `unreal-rag` — C++ 코드 RAG 검색 (`Mcp_Tools/ue_rag_mcp.py`)
 
 새 컴퓨터에서 똑같은 환경을 재현하려면 **`Mcp_Tools/README.md`** 를 따라 진행하세요.
@@ -1234,9 +1234,11 @@ LoL/이터널리턴 식 "선택하면 캐릭터 3D 모델이 렌더되는 공간
 > ⚠️ **컬러 브러시 카드 크기**: `UImage::SetDesiredSizeOverride` 는 텍스처 없는 컬러 브러시에서 불안정(폭 붕괴) → 카드를 `USizeBox(WidthOverride/HeightOverride)` 로 감싸 크기 강제.
 > ⚠️ **로스터 Portrait 기본값**: BP_Char_* 복제로 추가된 로스터 엔트리의 `Portrait` 가 Mannequin 기본 `T_UE_Logo_M`(빨간 "U")로 채워짐 → 플레이스홀더는 `Portrait=None` 으로 비워야 컬러 타일이 렌더됨. (에디터 Python `update_roster_portraits.py`: 클래스 로드 후 **`get_default_object`로 CDO** 획득 필요, `load_object(None, 경로)` 로 텍스처 로드, EditDefaultsOnly 막히면 부분 `import_text` 폴백.)
 
-### RoundPreparation 픽 필터 (소유: `UI/AOSCharacterSelectWidget.cpp`)
+### RoundPreparation UI (소유: `UI/AOSCharacterSelectWidget.h/.cpp`)
 
-`InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
+**UMG 하이브리드 마이그레이션**: `AOSCharacterSelectWidget`은 `BindWidgetOptional`을 사용하는 UMG 하이브리드 구조로 마이그레이션 중입니다. 이를 통해 디자이너가 "전술 맵(Tactical Map)" 레이아웃 등 화면 디자인을 C++ 리빌드 없이 WBP에서 시각적으로 편집할 수 있습니다.
+
+**픽 필터**: `InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
 
 ### DS 규칙 준수
 

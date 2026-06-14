@@ -148,7 +148,7 @@ pip install -r Mcp_Tools/requirements.txt
    - `MCP Automation Bridge` → **Enabled** 체크 확인
    - 비활성화 상태면 체크 후 에디터 재시작
 
-> 플러그인(0.1.4)이 활성화되면 에디터 실행 중 **WebSocket 서버**(`127.0.0.1:8091`, 8090 도 함께)가 자동 기동됩니다.
+> 플러그인(0.5.30)이 활성화되면 에디터 실행 중 **WebSocket 서버**(`127.0.0.1:8091`, 8090 도 함께)가 자동 기동됩니다.
 > Claude 쪽 `unreal-engine` MCP(`.mcp.json` 의 `npx unreal-engine-mcp-server`)가 이 `:8091` 에 붙어 중계합니다 — 그래서 Node.js 18+ 가 필요합니다.
 
 ---

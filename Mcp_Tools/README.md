@@ -5,7 +5,7 @@
 
 | MCP 서버 | 역할 | 실행 방식 |
 |---------|------|----------|
-| `unreal-engine` | UE 에디터 자동화(액터/에셋/레벨/머티리얼/AI 제어 등) | **`McpAutomationBridge`(0.1.4) 플러그인**이 에디터 안에서 WebSocket 서버(`:8090`/`:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`**(`npx`)가 거기에 붙어 Claude에 MCP를 중계. |
+| `unreal-engine` | UE 에디터 자동화(액터/에셋/레벨/머티리얼/AI 제어 등) | **`McpAutomationBridge`(0.5.30) 플러그인**이 에디터 안에서 WebSocket 서버(`:8090`/`:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`**(`npx`)가 거기에 붙어 Claude에 MCP를 중계. |
 | `unreal-rag` | 프로젝트 C++ 코드베이스 의미 검색(RAG) | **`ue_rag_mcp.py`** 가 ChromaDB + HuggingFace 임베딩으로 `Source/` 인덱싱 |
 
 ---
@@ -100,7 +100,7 @@ auto-memory 갱신 → `.claude/settings.local.json` 패치까지 한 번에
 
 ## 2. unreal-engine MCP — 셋업
 
-`Plugins/McpAutomationBridge/`(0.1.4) 플러그인이 에디터 안에서 **WebSocket 서버**(기본
+`Plugins/McpAutomationBridge/`(0.5.30) 플러그인이 에디터 안에서 **WebSocket 서버**(기본
 `:8090`, `:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`** 가 거기에 붙어
 Claude에 MCP(stdio)를 중계합니다. Node 서버는 `npx` 로 자동 실행되어 사전 설치는 불필요합니다
 (Node.js 18+ 필요). 설정은 §4-2 참고.
