@@ -1196,6 +1196,16 @@ Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → Roun
     `BP_AOSPlayerController.BanPickWidgetClass` 에 명시 지정 가능.
   - ⚠️ **카드 클릭 히트테스트**: 클릭은 위젯 루트의 `NativeOnMouseButtonDown` 지오메트리 hit-test 로 처리.
     WBP 에서도 **카드 아래에 hit-test Visible 한 요소(백드롭을 `Visible`)** 가 있어야 클릭이 루트로 버블링됨.
+  - **그리드 세로 스크롤**: 폴백은 `SizeBox(MaxDesiredHeight=410≈5행) → ScrollBox → CardGrid`. 5행 이하면
+    스크롤바 자동 숨김(현 20종=3행 무변화). `NativeOnMouseButtonDown` 은 **CardGrid 부모(=스크롤 뷰포트)
+    geometry 가드** — 뷰포트 밖으로 스크롤된 카드의 cached geometry 오클릭 방지. WBP 에선 디자이너가
+    `CardGrid` 를 자기 ScrollBox 안에 배치하면 동일 동작.
+  - **장식 텍스처 자동로드** (white-on-alpha → 위젯 틴트, 없으면 솔리드/skip 폴백):
+    `T_BanPick_LineTaper`(세로 대각 팀 경계선 — 좌=블루/우=레드 팀색, ±8°) / `T_BanPick_LineTaperH`(LOCK IN
+    양쪽 + 타이머 아래(그리드 폭 614) 레드 강조선) / `T_BanPick_WingSide`(**제목 양옆 필리그리 날개** —
+    좌=원본, 우=`SetRenderScale(-1,1)` 미러, 레드). 생성: `make_banpick_linetaper.py`(PIL) +
+    `gen_banpick_flourish.py`(ComfyUI 인라인, `--prompt`/`--out` 지원, 기하 폴백 내장) +
+    `crop_banpick_flourish.py`(창 크롭→알파 레벨→**최대 연결 성분 필터**→bbox — 배경 박스/조각/잘림 제거).
   - ⚠️ `ConfirmButton.OnClicked` 바인딩은 **`InitializeWithRoster` 가 1회**(`IsAlreadyBound` 가드) — WBP/폴백 단일 경로.
 
 #### 3D 캐릭터 프리뷰 (`AAOSCharacterPreviewStage`, 클라 전용)
