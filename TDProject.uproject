@@ -50,6 +50,14 @@
 		{
 			"Name": "GameplayAbilities",
 			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
+			"Enabled": true
+		},
+		{
+			"Name": "McpAutomationBridge",
+			"Enabled": true
 		}
 	]
 }
