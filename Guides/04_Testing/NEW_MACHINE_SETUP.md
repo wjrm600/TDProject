@@ -186,6 +186,13 @@ unreal-engine   connected   (Unreal Editor 실행 중일 때만 active)
 unreal-rag      connected
 ```
 
+### 안티그라비티(Antigravity) IDE 사용 시
+
+안티그라비티는 프로젝트 `.mcp.json` 이 아니라 `~/.gemini/config/mcp_config.json`
+(IDE·CLI 공용)을 읽습니다. 설정 방법은 [`Mcp_Tools/README.md` §4-4](../../Mcp_Tools/README.md) 참고 —
+빈 파일이면 IDE 에 MCP 가 "No MCP Servers" 로 뜨므로, 직접 `mcpServers` 형식으로 채운 뒤
+`Refresh ↻` 로 인식시킵니다. (에디터를 켜둬야 `unreal-engine` 이 connected 됩니다.)
+
 ### RAG 첫 실행 (코드 인덱싱)
 
 `unreal-rag` 서버는 Claude Code 시작 시 `Source/` 전체를 임베딩합니다.

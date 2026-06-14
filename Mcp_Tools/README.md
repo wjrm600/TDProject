@@ -170,6 +170,7 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Claude Desktop (Store) | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json` |
 | Claude Code | `%USERPROFILE%\.claude\config.json` (또는 프로젝트별 `.claude/settings.json`) |
+| 안티그라비티(Antigravity) | `%USERPROFILE%\.gemini\config\mcp_config.json` (IDE·CLI 공용) |
 
 ### 4-2. 템플릿 적용
 
@@ -214,6 +215,39 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
   }
 }
 ```
+
+### 4-4. 안티그라비티(Antigravity) IDE
+
+안티그라비티는 프로젝트 `.mcp.json` 이 아니라 **`~/.gemini/config/mcp_config.json`**
+(IDE·CLI 공용)을 읽습니다. ⚠️ 이 파일이 비어 있으면 IDE 의 MCP 목록에 "No MCP Servers"
+로 뜨므로, 아래처럼 표준 `mcpServers` 형식으로 직접 채웁니다. IDE 안에서는
+`Settings → Customizations → Add MCP +` 또는 agent 패널 `...` →
+`Manage MCP Servers → View raw config` 로 같은 파일을 편집할 수 있습니다.
+
+```json
+{
+  "mcpServers": {
+    "unreal-engine": {
+      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "args": ["-y", "unreal-engine-mcp-server"],
+      "env": {
+        "UE_PROJECT_PATH": "E:\\Unreal Project\\TDProject\\TDProject.uproject",
+        "MCP_AUTOMATION_PORT": "8091",
+        "PATH": "C:\\Program Files\\nodejs;C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem"
+      }
+    },
+    "unreal-rag": {
+      "command": "python",
+      "args": ["E:\\Unreal Project\\TDProject\\Mcp_Tools\\ue_rag_mcp.py"]
+    }
+  }
+}
+```
+
+> - **원격(HTTP) 서버는 `url` 이 아니라 `serverUrl` 키**를 씁니다(안티그라비티 규격 — Cursor/VS Code 와 다름).
+> - Windows 에서 `npx` 가 PATH 에서 안 잡히면 위처럼 `npx.cmd` 절대경로 + `env.PATH` 를 명시하세요.
+> - 작성 후 IDE 의 `Refresh ↻` 로 인식시키고, 에디터를 켜두면 `unreal-engine` 이 connected 됩니다.
+> - `mcp_config.json` 은 홈 디렉토리(머신별 절대경로)라 **git 추적 대상이 아닙니다** — 새 머신에서는 위 형식으로 다시 작성.
 
 ---
 
