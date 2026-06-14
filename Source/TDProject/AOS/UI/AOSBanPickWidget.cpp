@@ -812,24 +812,25 @@ void UAOSBanPickWidget::UpdatePreviewSelections()
 	const EAOSTeam Local = GetLocalTeam();
 	const EAOSTeam Enemy = (Local == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
 
-	// 내 쪽(우하단): 미리보기 중이면 그 챔피언, 아니면 내 팀 최신 픽
-	int32 MyUnit = INDEX_NONE;
-	if (PendingIndex != INDEX_NONE)
+	// 팀의 "가장 최근 드래프트 유닛"(밴 또는 픽). 드래프트 시퀀스는 밴4를 모두 픽보다
+	// 먼저 진행하므로, 픽이 있으면 픽이 더 최신이고 없으면 마지막 밴이 그 팀의 최신 선택.
+	// ⚠ 예전 버그: 상대(및 내 폴백)를 GetPickedUnits 만으로 계산 → 상대가 "밴"하면
+	//   픽 배열이 비어 프리뷰가 안 떴다. 밴 배열까지 봐야 밴 단계에서도 프리뷰가 갱신됨.
+	auto LatestDrafted = [GS](EAOSTeam Team) -> int32
 	{
-		MyUnit = PendingIndex;
-	}
-	else
-	{
-		const TArray<int32>& MyPicks = GS->GetPickedUnits(Local);
-		if (MyPicks.Num() > 0) MyUnit = MyPicks.Last();
-	}
+		const TArray<int32>& Picks = GS->GetPickedUnits(Team);
+		if (Picks.Num() > 0) return Picks.Last();
+		const TArray<int32>& Bans = (Team == EAOSTeam::Team1) ? GS->Team1BannedUnitIds : GS->Team2BannedUnitIds;
+		if (Bans.Num() > 0) return Bans.Last();
+		return INDEX_NONE;
+	};
 
-	// 상대 쪽(좌상단): 상대 팀 최신 픽
-	int32 EnemyUnit = INDEX_NONE;
-	{
-		const TArray<int32>& EnemyPicks = GS->GetPickedUnits(Enemy);
-		if (EnemyPicks.Num() > 0) EnemyUnit = EnemyPicks.Last();
-	}
+	// 내 쪽(우하단): 미리보기(PendingIndex) 중이면 그 챔피언, 아니면 내 팀 최신 드래프트(밴/픽)
+	const int32 MyUnit = (PendingIndex != INDEX_NONE) ? PendingIndex : LatestDrafted(Local);
+
+	// 상대 쪽(좌상단): 상대 팀 최신 드래프트(밴/픽). 상대 pending 은 리플리케이트 안 되므로
+	// 상대 확정(밴/픽 기록) 시점에 갱신된다.
+	const int32 EnemyUnit = LatestDrafted(Enemy);
 
 	if (MyPreviewStage)
 	{
