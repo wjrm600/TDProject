@@ -129,6 +129,14 @@ public:
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_DraftSelect(int32 UnitId);
 
+	// 벤픽 치트: 클라 → 서버 드래프트 자동 완성 요청
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_AutoCompleteDraft();
+
+	// 테스트용 콘솔 명령 — "AutoDraft" 입력 시 남은 벤픽을 랜덤으로 채워 라운드 준비로 진행
+	UFUNCTION(Exec)
+	void AutoDraft();
+
 protected:
 	// UI 위젯 클래스 (에디터에서 설정)
 	UPROPERTY(EditDefaultsOnly, Category = "AOS|UI")

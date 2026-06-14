@@ -234,6 +234,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
 	void ServerApplyDraftSelection(EAOSTeam Team, int32 UnitId);
 
+	// 치트/테스트: 남은 드래프트를 활성 팀별 랜덤 가용 유닛으로 일괄 채워 즉시 완성 → RoundPreparation.
+	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
+	void ServerAutoCompleteDraft();
+
 	// Draw 라운드 처리 — 5초 타이머 후 다음 라운드 준비로 전환
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void HandleDrawRound();

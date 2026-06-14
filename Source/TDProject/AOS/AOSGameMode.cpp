@@ -1175,6 +1175,29 @@ void AAOSGameMode::OnDraftTurnTimeout()
 	ServerApplyDraftSelection(AOSGS->GetActiveDraftTeam(), Choice);
 }
 
+void AAOSGameMode::ServerAutoCompleteDraft()
+{
+	if (!HasAuthority()) return;
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS || AOSGameState != EAOSGameState::BanPick || AOSGS->IsDraftComplete()) return;
+
+	const int32 RosterNum = GetCharacterRoster().Num();
+	// 남은 모든 스텝을 활성 팀별 랜덤 가용 유닛으로 채움. ServerApplyDraftSelection 이
+	// 스텝 진행 + 마지막에 RoundPreparation 전환까지 처리. Guard 는 무한루프 방지(시퀀스=14).
+	int32 Guard = 0;
+	while (!AOSGS->IsDraftComplete() && Guard++ < 64)
+	{
+		TArray<int32> Available;
+		for (int32 i = 0; i < RosterNum; ++i)
+		{
+			if (AOSGS->IsUnitAvailableForDraft(i)) Available.Add(i);
+		}
+		const int32 Choice = (Available.Num() > 0) ? Available[FMath::RandRange(0, Available.Num() - 1)] : -1;
+		ServerApplyDraftSelection(AOSGS->GetActiveDraftTeam(), Choice);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 치트: 드래프트 자동 완성 (%d 스텝 채움)"), Guard);
+}
+
 void AAOSGameMode::ServerApplyDraftSelection(EAOSTeam Team, int32 UnitId)
 {
 	if (!HasAuthority()) return;

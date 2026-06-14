@@ -917,6 +917,23 @@ void AAOSPlayerController::Server_DraftSelect_Implementation(int32 UnitId)
 	}
 }
 
+// 벤픽 치트 RPC — 서버에서 드래프트 일괄 자동 완성 (어느 클라가 눌러도 양 팀 전부 채움)
+void AAOSPlayerController::Server_AutoCompleteDraft_Implementation()
+{
+	if (!HasAuthority()) return;
+	if (AAOSGameMode* GM = GetWorld()->GetAuthGameMode<AAOSGameMode>())
+	{
+		GM->ServerAutoCompleteDraft();
+	}
+}
+
+// 테스트용 콘솔 명령 — 로컬 입력 → Server RPC 로 전달
+void AAOSPlayerController::AutoDraft()
+{
+	Server_AutoCompleteDraft();
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] AutoDraft 콘솔 명령 → 서버에 드래프트 자동 완성 요청"));
+}
+
 // 캐릭터 선택 UI에서 라운드 시작 클릭
 void AAOSPlayerController::OnStartRoundClicked()
 {
