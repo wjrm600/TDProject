@@ -1196,6 +1196,13 @@ Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → Roun
     `BP_AOSPlayerController.BanPickWidgetClass` 에 명시 지정 가능.
   - ⚠️ **카드 클릭 히트테스트**: 클릭은 위젯 루트의 `NativeOnMouseButtonDown` 지오메트리 hit-test 로 처리.
     WBP 에서도 **카드 아래에 hit-test Visible 한 요소(백드롭을 `Visible`)** 가 있어야 클릭이 루트로 버블링됨.
+  - **반응형 스케일(리사이즈 대응)**: 절대 픽셀 코너 레이아웃이라 창 축소 시 코너 블록이 겹침 → 루트를
+    `OuterOverlay[전체배경 + UScaleBox(Stretch=ScaleToFit) → SizeBox(1920×1080 디자인 캔버스) → RootOverlay(콘텐츠)]`
+    구조로 감쌈. 콘텐츠는 1920×1080 기준 절대 배치, ScaleBox 가 비율 유지 균일 스케일(안쪽 UI 포함). 16:9 창은
+    여백 0, 비-16:9 PIE 창에서만 레터박스. 클릭 히트테스트는 스케일된 실제 지오메트리로 계산돼 영향 없음.
+    ⚠️ **함정**: `Stretch=Fill` 은 고정크기 SizeBox 자식을 **스케일 안 함**(슬롯만 늘려 안쪽 UI 크기 그대로) /
+    수동 `SetRenderScale` 은 뷰포트·DPI 좌표 계산이 까다로워 한쪽 과도 잘림 → 둘 다 폐기, **ScaleToFit 이 정답**.
+    (비율 무시 꽉 채움을 정 원하면 DPI 글로벌 스케일 + 코너 앵커 반응형이 별도 옵션 — 단 극단 비율서 겹침.)
   - **그리드 세로 스크롤**: 폴백은 `SizeBox(MaxDesiredHeight=410≈5행) → ScrollBox → CardGrid`. 5행 이하면
     스크롤바 자동 숨김(현 20종=3행 무변화). `NativeOnMouseButtonDown` 은 **CardGrid 부모(=스크롤 뷰포트)
     geometry 가드** — 뷰포트 밖으로 스크롤된 카드의 cached geometry 오클릭 방지. WBP 에선 디자이너가

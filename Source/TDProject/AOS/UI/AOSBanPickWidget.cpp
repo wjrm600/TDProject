@@ -12,6 +12,7 @@
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 #include "Components/ScrollBox.h"
+#include "Components/ScaleBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Components/HorizontalBox.h"
@@ -164,9 +165,42 @@ void UAOSBanPickWidget::BuildFallbackFrame()
 {
 	if (!WidgetTree || WidgetTree->RootWidget) return;
 
-	// 루트: 전체화면 오버레이
+	// 루트: 바깥 오버레이(창 전체 배경 + ScaleBox 래퍼)
+	//   ⚠ 창 크기/비율이 바뀌어도 코너 블록이 겹치지 않게 — 콘텐츠를 1920x1080 고정 디자인 캔버스에 담고
+	//     ScaleBox(ScaleToFit)로 비율 유지 균일 스케일(레터박스). 절대 픽셀 레이아웃의 리사이즈 대응.
+	UOverlay* OuterRoot = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("BPOuter"));
+	WidgetTree->RootWidget = OuterRoot;
+
+	// 바깥 배경 (레터박스 영역까지 라이트로 — 디자인 캔버스 배경과 동색이라 이음새 안 보임)
+	UImage* OuterBg = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("BPOuterBg"));
+	OuterBg->SetBrush(FSlateColorBrush(kBgLight));
+	OuterBg->SetVisibility(ESlateVisibility::Visible);   // 레터박스 영역 클릭도 루트로 버블링
+	if (UOverlaySlot* OS = OuterRoot->AddChildToOverlay(OuterBg))
+	{
+		OS->SetHorizontalAlignment(HAlign_Fill);
+		OS->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	// ScaleBox(ScaleToFit): 1920x1080 디자인을 비율 유지 균일 스케일(필요 시 레터박스). 안쪽 UI 까지 함께 스케일.
+	//   ※ Stretch=Fill 은 고정크기 SizeBox 자식을 스케일 안 함(슬롯만 늘림→안쪽 크기 안 변함),
+	//     수동 RenderScale 은 뷰포트/DPI 좌표 계산이 까다로워 한쪽 과도 잘림 → 검증된 ScaleToFit 채택.
+	//     실제 플레이(16:9)에선 여백 0. 비-16:9 PIE 창에서만 여백.
+	UScaleBox* ScaleRoot = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass(), TEXT("BPScale"));
+	ScaleRoot->SetStretch(EStretch::ScaleToFit);
+	if (UOverlaySlot* OS = OuterRoot->AddChildToOverlay(ScaleRoot))
+	{
+		OS->SetHorizontalAlignment(HAlign_Fill);
+		OS->SetVerticalAlignment(VAlign_Fill);
+	}
+
+	USizeBox* DesignCanvas = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("BPDesignCanvas"));
+	DesignCanvas->SetWidthOverride(1920.f);
+	DesignCanvas->SetHeightOverride(1080.f);
+	ScaleRoot->SetContent(DesignCanvas);
+
+	// 콘텐츠 오버레이 — 이하 모든 장식/블록/그리드/프리뷰는 1920x1080 기준 절대 배치
 	RootOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("BPRoot"));
-	WidgetTree->RootWidget = RootOverlay;
+	DesignCanvas->SetContent(RootOverlay);
 
 	// [0] 배경 (라이트 테마 — 레퍼런스의 밝은 무채색. Visible → 카드 클릭 히트테스트 버블링)
 	BackdropImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("BackdropImage"));
@@ -846,6 +880,7 @@ void UAOSBanPickWidget::NativeDestruct()
 void UAOSBanPickWidget::NativeTick(const FGeometry& MyGeometry, float DeltaTime)
 {
 	Super::NativeTick(MyGeometry, DeltaTime);
+	// 반응형 스케일은 ScaleBox(ScaleToFit)가 자동 처리 — 별도 틱 로직 불필요.
 	// 타이머 표시 갱신 (NativeTick 미호출 시엔 DraftTurnTimeRemaining 의 OnRep_Draft 가 RefreshStatus 트리거)
 	RefreshStatus();
 }
