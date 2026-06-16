@@ -1236,7 +1236,13 @@ LoL/이터널리턴 식 "선택하면 캐릭터 3D 모델이 렌더되는 공간
 
 ### RoundPreparation UI (소유: `UI/AOSCharacterSelectWidget.h/.cpp`)
 
-**UMG 하이브리드 마이그레이션**: `AOSCharacterSelectWidget`은 `BindWidgetOptional`을 사용하는 UMG 하이브리드 구조로 마이그레이션 중입니다. 이를 통해 디자이너가 "전술 맵(Tactical Map)" 레이아웃 등 화면 디자인을 C++ 리빌드 없이 WBP에서 시각적으로 편집할 수 있습니다.
+**벤픽 디자인 비주얼 리스킨** (2026-06-16): `BuildUI()` 를 벤픽 창(`UAOSBanPickWidget`)과 동일한 라이트 테마로 재구성. **순수 C++**(WBP/BindWidgetOptional 미사용 — 과거 "전술 맵" UMG 하이브리드 시도는 리버트됨). 배치 흐름(타이틀→타이머→3레인 슬롯→카드 그리드→준비 버튼)과 드래그앤드롭은 유지하고 비주얼만 입힘:
+- **반응형 캔버스**: `OuterOverlay[솔리드 배경 + UScaleBox(ScaleToFit) → SizeBox(1920×1080 디자인 캔버스) → RootOverlay]` (벤픽과 동일 — 창 비율 무관 균일 스케일, 비-16:9 는 레터박스).
+- **배경 = 솔리드 라이트 그레이**(`CSBgLight`). 벤픽 C++ 폴백과 동일하게 **텍스처 백드롭(`T_BanPick_Backdrop` 성당 이미지) 안 깖** — 라이트 테마 통일.
+- **벤픽 장식 텍스처 재사용**(white-on-alpha → 틴트, 없으면 솔리드 폴백): 대각 팀 경계선(좌 Team2 블루 +8°/우 Team1 레드 −8°, `T_BanPick_LineTaper`), 타이틀 양옆 날개(`T_BanPick_WingSide`, 우측 `SetRenderScale(-1,1)` 미러), 타이머 아래 + 준비 버튼 양옆 테이퍼 라인(`T_BanPick_LineTaperH`).
+- 레인 슬롯/카드/준비 버튼(LOCK IN 스타일 파란 버튼) 라이트 리스킨. 타이머/팀상태/RoundResult 색도 라이트 배경 가독 색.
+- 상점 팝업은 `OuterRoot`(ScaleBox 위)에 Fill → 디자인 캔버스 스케일에 안 묶이고 전체 뷰포트 덮음.
+- **헤더 불변 → cpp-only, Live Coding 호환**. ⚠️ 색 상수/헬퍼(`CSBgLight`/`CSMakeFont`/`CSPlaceholderColor` 등)는 **`CS` 접두사 필수** — UE 유니티(Jumbo) 빌드가 `AOSCharacterSelectWidget.cpp` + `AOSBanPickWidget.cpp` 를 한 TU 로 합칠 때 벤픽의 동일 익명-네임스페이스 심볼과 재정의 충돌(C2374/C2084) 회피. (`TryLoadTexture`/`TeamColor` 는 벤픽에선 static 멤버라 free 함수와 비충돌.)
 
 **픽 필터**: `InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
 

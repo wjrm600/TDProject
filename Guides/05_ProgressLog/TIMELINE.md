@@ -980,3 +980,25 @@
 - C++ 클래스 수 = 1 (base) + 1 (cooldown base) — 기존 4+4=8 대비
 - 3단계 cleanup 후 기존 C++ 8개 모두 제거 예정 → 코드 베이스 ↓
 - 관련 가이드: `Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`
+
+## 2026-06-16 — 라운드 준비 창: 벤픽 디자인 비주얼 리스킨
+
+**작업 내용**:
+- `AOSCharacterSelectWidget::BuildUI()` 전면 재작성 — 벤픽 창(`UAOSBanPickWidget`)과 동일한 라이트 테마 비주얼 적용. 배치 흐름(타이틀→타이머→3레인 슬롯→카드 그리드→준비 버튼)과 드래그앤드롭은 유지, **비주얼만** 리스킨 (사용자 선택: 레이아웃 재구성이 아닌 비주얼 리스킨)
+- 반응형 1920×1080 `UScaleBox(ScaleToFit)` 디자인 캔버스 + 솔리드 라이트 그레이 배경
+- 벤픽 장식 텍스처 재사용: 대각 팀 경계선(좌 Team2 블루/우 Team1 레드), 타이틀 양옆 날개(우측 미러), 타이머 아래 + 준비 버튼 양옆 테이퍼 라인
+- 레인 슬롯/카드/준비 버튼(LOCK IN 스타일 파란 버튼) 라이트 리스킨, 타이머/팀상태/RoundResult 색도 라이트 배경 가독 색으로
+- cpp-only(헤더 불변) → Live Coding 호환
+
+**문제점**:
+- 1차 빌드 시 UE 유니티(Jumbo) 빌드가 `AOSCharacterSelectWidget.cpp` + `AOSBanPickWidget.cpp` 를 한 TU 로 합치면서, 복제한 익명-네임스페이스 심볼(`kBgLight`/`MakeFont`/`PlaceholderColor`/색·경로 상수)이 벤픽 것과 재정의 충돌 (C2374/C2084)
+- 초기 배경이 `T_BanPick_Backdrop`(성당 이미지)로 떠서 벤픽(솔리드 라이트 그레이)과 불일치
+
+**해결 방법**:
+- 충돌 심볼 전부 `CS` 접두사로 고유화 (벤픽 파일 무수정). `TryLoadTexture`/`TeamColor` 는 벤픽에선 static 멤버라 free 함수와 비충돌 → 그대로 유지
+- 배경을 벤픽 C++ 폴백과 동일하게 솔리드 `CSBgLight` 로 변경 (텍스처 백드롭 미사용)
+
+**결과**:
+- 라운드 준비 창이 벤픽(CHARACTER SELECT)과 동일한 디자인 언어로 통일 — Lobby→BanPick→RoundPreparation 흐름 시각적 일관성 확보
+- 변경: `Source/TDProject/AOS/UI/AOSCharacterSelectWidget.cpp` (cpp 1파일) + 문서(CLAUDE.md)
+- 관련 커밋: 본 작업 커밋 (라운드 준비 벤픽 리스킨)
