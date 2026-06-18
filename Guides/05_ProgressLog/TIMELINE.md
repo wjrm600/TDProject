@@ -1089,7 +1089,8 @@
 - `TestEqual` 의 enum 오버로드 회피 위해 `EAOSTeam` 비교는 `static_cast<int32>` 로 변환
 
 **결과**
-- 첫 피드백 루프 아티팩트 확보. **사용자 리빌드 → 위 명령(또는 Session Frontend) 으로 1회 실행해 통과 확인 필요** (확인되면 이후 새 로직마다 같은 패턴으로 테스트 추가)
+- 첫 피드백 루프 아티팩트 확보. **2026-06-19 사용자 리빌드 → Session Frontend 에서 통과 확인 완료** → UE Automation Test 인프라가 이 프로젝트에서 컴파일·실행됨이 검증됨(이후 새 로직은 같은 패턴으로 테스트 추가)
+- 추가 개선: `TestEqual`/`TestTrue` 단언은 **성공 시 무출력**이라 검증한 시퀀스가 화면에 안 보임 → `AddInfo()` 로 14스텝 밴/픽 시퀀스 + 집계를 덤프해 통과해도 로그에 표시(cpp-only 라 Live Coding 호환)
 - 후속 테스트 후보(순수 로직 우선): 골드 산식(kill/structure/round income), 웨이포인트 큐 구성 순서, 아이템 귀속(UnitItemInventory) 재적용
 - 다음 작업 = (c) CLAUDE.md 슬림화 (영구 규칙 ↔ 역사 아카이브 분리)
 

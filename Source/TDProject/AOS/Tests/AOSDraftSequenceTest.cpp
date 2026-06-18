@@ -39,6 +39,17 @@ bool FAOSDraftSequenceTest::RunTest(const FString& /*Parameters*/)
 		return false;
 	}
 
+	// ── 정보 출력: 단언(TestEqual/TestTrue)은 실패 시에만 메시지를 남기므로,
+	//    통과해도 "실제 검증한 시퀀스"를 Session Frontend 로그에서 볼 수 있도록 AddInfo 로 덤프.
+	AddInfo(TEXT("드래프트 시퀀스 (14스텝):"));
+	for (int32 i = 0; i < Seq.Num(); ++i)
+	{
+		AddInfo(FString::Printf(TEXT("  스텝 %2d: %s %s"),
+			i,
+			Seq[i].Team == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"),
+			Seq[i].bBan ? TEXT("BAN") : TEXT("PICK")));
+	}
+
 	// 2) 앞 4스텝 = 밴, 교대 순서 T1, T2, T1, T2.
 	const EAOSTeam ExpectedBanTeams[4] = {
 		EAOSTeam::Team1, EAOSTeam::Team2, EAOSTeam::Team1, EAOSTeam::Team2
@@ -80,6 +91,9 @@ bool FAOSDraftSequenceTest::RunTest(const FString& /*Parameters*/)
 	TestEqual(TEXT("Team2 밴 수"), T2Ban, 2);
 	TestEqual(TEXT("Team1 픽 수"), T1Pick, 5);
 	TestEqual(TEXT("Team2 픽 수"), T2Pick, 5);
+
+	AddInfo(FString::Printf(TEXT("집계 — Team1: 밴 %d / 픽 %d,  Team2: 밴 %d / 픽 %d"),
+		T1Ban, T1Pick, T2Ban, T2Pick));
 
 	return true;
 }
