@@ -1002,3 +1002,25 @@
 - 라운드 준비 창이 벤픽(CHARACTER SELECT)과 동일한 디자인 언어로 통일 — Lobby→BanPick→RoundPreparation 흐름 시각적 일관성 확보
 - 변경: `Source/TDProject/AOS/UI/AOSCharacterSelectWidget.cpp` (cpp 1파일) + 문서(CLAUDE.md)
 - 관련 커밋: 본 작업 커밋 (라운드 준비 벤픽 리스킨)
+
+## 2026-06-18 — AI 3D 캐릭터 파이프라인 완성: Gemini→Meshy→AccuRig→인게임 애니
+
+**작업 내용**:
+- 게임플레이 퀄리티 업을 위해 AI 생성 3D 캐릭터(Alex = 빨간 머리 용기사 여기사)를 인게임 애니메이션이 동작하도록 통합. 워크플로 확정: **Gemini로 이미지 생성 → Meshy.ai로 메시 생성 → AccuRig로 리깅 → UE 통합**.
+- char1_accurig.fbx 임포트(새 스켈레톤 `char1_accurig_Skeleton` + 메시 + PBR 머티리얼), `BP_Char_Alex` 메시를 SK_Mannequin_UE4 → char1로 교체(AnimClass `ABP_AOSCharacter` 유지).
+- 가이드 `AI_3D_ASSET_PIPELINE.md §11` 을 "검증된 정답" 6단계로 재작성.
+
+**문제점**:
+- **외부 Blender 리스킨(char1_ue4_rig.fbx)이 인게임에서 뒤틀림** — Blender FBX 왕복이 UE 본 방향을 ~90° 어긋나게 변환(ref포즈는 멀쩡, 애니 적용 시 메시 꼬임). send2ue는 방향 보존하지만 Blender 5.1과 비호환(2.4.3은 4.x용).
+- AccuRig 산출물은 **118본**(spine 5개 + cc_base_* 표정/트위스트)이라 게임 마네킹 **69본(spine 3개)과 본 트리 불일치** → `skeleton=기존마네킹` 직접 지정 임포트가 병합 실패.
+- 호환 스켈레톤 등록 후 **PIE에서 메시가 길쭉하게 늘어남** — FBX 임포트 기본 본 트랜슬레이션 리타겟팅이 전부 `Animation` 모드라 마네킹 애니(키~180)의 본 위치값이 char1(키~170)에 적용됨.
+
+**해결 방법**:
+- Blender·send2ue 포기, **AccuRig**(본 방향 UE 보존, Blender 왕복 회피)로 전환.
+- `skeleton=None`로 **새 스켈레톤 생성** 후, `Skeleton.add_compatible_skeleton(mann_skel)` 로 마네킹을 호환 스켈레톤 등록 → 기존 ABP·몽타주를 **리타깃·전용 ABP 없이 그대로** 재생.
+- 늘어남: char1 스켈레톤 118본 리타겟팅을 `root=Animation`, `pelvis=AnimationScaled`, 나머지=`Skeleton`로 수정. Python 직접 setter 없어 **`bone_tree` 배열 item-assignment write-through** 트릭 사용(`sk.set_editor_property('bone_tree',…)`는 read-only, `bt[i]=node`만 써짐).
+
+**결과**:
+- AI 생성 캐릭터가 인게임에서 **idle/run/공격 모두 정상**(에디터 `play_animation(Boss_Run_F_InP)` + PIE 검증). 방향 뒤틀림·늘어남 모두 해소.
+- 재사용 가능한 검증된 파이프라인 확보 → 나머지 19개 로스터 캐릭터에 동일 적용 가능.
+- 관련 가이드: `Guides/03_Implementation/AI_3D_ASSET_PIPELINE.md §11`
