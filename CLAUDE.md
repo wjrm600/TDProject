@@ -1,1638 +1,218 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code 가 이 저장소에서 작업할 때의 지침입니다. **이 파일은 매 작업마다 적용되는 "필수 규칙 + 핵심 아키텍처 + live 함정"의 슬림 버전**입니다.
+
+> 📚 **깊은 상세는 [`Guides/01_GameOverview/PROJECT_REFERENCE.md`](Guides/01_GameOverview/PROJECT_REFERENCE.md)** — GAS Phase별 마이그레이션 기록, StateTree task/condition 전체 표, 애니메이션 시스템 상세, 벤픽/상점 UI 저작 계약, 경제 시스템 상세, 해결된 historical 이슈가 모두 거기 있습니다. **GAS/StateTree/애니/벤픽 내부를 수정하기 전엔 PROJECT_REFERENCE 의 해당 섹션을 먼저 읽으세요.**
+> 둘이 어긋나면 CLAUDE.md 가 우선이고, 변경 시 양쪽을 맞추세요.
 
 ## Project Overview
 
-**TDProject** is an Unreal Engine 5.7 MOBA-style (AOS - Auto Oriented Strategy) game with 3-lane tower defense mechanics. The project implements AI-controlled characters that push lanes, attack towers sequentially, and compete to destroy the enemy Command Center.
+**TDProject** — Unreal Engine 5.7 기반 **오토배틀러 MOBA (AOS)**. 3레인 타워디펜스. AI가 조종하는 캐릭터들이 라인을 밀고 타워를 순차 공격해 적 Command Center 파괴를 겨룬다. 플레이어 입력은 **벤픽 드래프트 + 라운드 사이 상점/배치**, 전투는 관전. 북극성 = Mechabellum. 비전 문서: [`Guides/01_GameOverview/GAME_VISION.md`](Guides/01_GameOverview/GAME_VISION.md).
 
-## 작업 타임라인 자동 갱신 (필수)
+## ⚠️ 필수 운영 규칙 (매 작업)
 
-발표·회고용 작업 이력 파일: **`Guides/05_ProgressLog/TIMELINE.md`**
+- **빌드 금지(에이전트)**: 직접 `Build.bat`/풀 빌드 실행하지 말 것. 핫 리로드(Ctrl+Alt+F11) 제안 또는 사용자에게 빌드/검증 요청. (신규 USTRUCT/UCLASS/UPROPERTY/모듈 의존성 변경은 **풀 리빌드 필수** — 핫 리로드 비호환.)
+- **main 직접 작업**: worktree 가 아닌 main 프로젝트 파일을 편집 (사용자가 main 에서 테스트). 커밋/푸시는 사용자가 요청할 때만.
+- **Dedicated Server 전제**: 모든 상태 변경은 `HasAuthority()`, 모든 위젯/카메라 생성은 `IsLocalPlayerController()` 가드. 아래 [Dedicated Server 환경](#dedicated-server-환경-필수) 참고 — 이 규칙들은 매 작업 적용된다.
+- **작업 타임라인 갱신**: 의미 있는 작업(feat/fix/refactor/트러블슈팅 원인확정/새 시스템 도입/외부 비호환 발견) 완료 시 [`Guides/05_ProgressLog/TIMELINE.md`](Guides/05_ProgressLog/TIMELINE.md) 에 항목 추가. 형식 = `작업 내용` / `문제점` / `해결 방법` / `결과(+커밋 해시)`. 시간 순(오래된 것 위), 의미 단위로 묶어 1항목. **사용자가 스크린샷 공유 시** → 먼저 `Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/` 폴더 생성 후 "여기 넣어달라" 요청 → 타임라인에 상대경로 임베드. (상세 규칙 → PROJECT_REFERENCE)
+- **MCP 에셋 편집 함정** (must-follow):
+  - DataTable 행 추가/수정 = `export_data_table_to_json_string` ↔ `fill_data_table_from_json_string` **JSON 라운드트립**(기존 필드 보존).
+  - `EditDefaultsOnly` 구조체 = `set_editor_property` 가 "cannot be edited on instances" 로 막힘 → **`struct.import_text("(Field=Value,...)")`** 우회.
+  - BP CDO 편집 후 **`save_asset(path, only_if_is_dirty=False)` 강제 저장 필수** (안 하면 디스크 미반영 → 재시작 시 유실). 구조체 필드는 snake_case.
 
-### 갱신 트리거 — 다음 시점에 항목을 추가/갱신한다
-1. **의미 있는 작업 완료 시**: feat/fix/refactor/perf 류 커밋 직후 (사소한 오타·포맷팅 제외)
-2. **트러블슈팅 원인 확정 + 해결책 적용 시**: 환경/도구/네트워크/엔진 이슈 포함
-3. **새 아키텍처/시스템 도입 결정 시점**: 도입 시작 시점에 "진행 중" 섹션에, 완료 시 본문으로 이동
-4. **외부에서 발견한 비호환/제약**: UE 엔진 동작·서드파티 드라이버·플러그인 한계 등
-
-### 항목 형식 (필수 4블록 + 선택)
-```
-## YYYY-MM-DD — 한 줄 제목
-
-**작업 내용**: 핵심 변경 사항 bullet
-**문제점**: 막혔던 지점·원인 (없으면 생략)
-**해결 방법**: 어떻게 풀었는가
-**결과**: 영향 범위 + 관련 커밋 해시
-(선택) 관련 가이드: Guides/... 링크
-```
-
-### 운영 원칙
-- 항목은 **시간 순(오래된 것 위)** — 발표 시 스토리텔링 흐름 유지
-- 진행 중인 작업은 파일 하단 `## 진행 중` 섹션에 임시로 → 완료 시 본문으로 이동
-- 동일 작업 세션 내 다수 갱신 지양, **의미 단위**로 묶어 한 항목으로 작성
-- 커밋 해시는 `git log --pretty=format:"%h" -1` 로 확정 후 기재
-- 갱신 누락 시 다음 세션의 Claude 가 git log + 코드 diff 로 역으로 재구성하여 추가
-- **사용자가 이미지(스크린샷 등)를 공유하면 관련 타임라인 항목에 함께 임베드**한다.
-  - 저장 위치: `Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/`, 파일명은 단계 순(`01_*.png` …)
-  - **표준 워크플로 (사용자 선호)**: 타임라인 항목을 작성하기 **전에**
-    1. 해당 주제의 이미지 폴더를 **먼저 생성**한다 (`Guides/05_ProgressLog/images/<YYYY-MM-DD_주제>/`)
-    2. 사용자에게 "이 폴더에 스크린샷을 넣어달라"고 **요청**한다 (파일명·단계 안내)
-    3. 사용자가 넣은 뒤 타임라인에 `![설명](images/<주제>/파일.png)` 상대경로로 임베드 + 커밋 (before/after 비교 권장)
-  - (채팅 첨부 이미지의 원본 바이트는 에이전트가 직접 추출 불가 → 위 "폴더 선생성 + 요청" 방식이 표준)
-
-## Build Commands
-
-### Building the Project
-
-엔진 경로는 머신마다 다르므로 환경변수 `UE_ROOT` 와 `<PROJECT_ROOT>` 플레이스홀더를 사용합니다. 등록 절차는 [`Mcp_Tools/README.md` §1-1](Mcp_Tools/README.md) 참고.
+## Build & MCP
 
 ```powershell
-# Build with Unreal Engine 5.7 (PowerShell)
+# 엔진 경로는 머신마다 다름 → 환경변수 $env:UE_ROOT 사용 (등록: Mcp_Tools/README.md §1-1)
 & "$env:UE_ROOT\Engine\Build\BatchFiles\Build.bat" `
-    TDProject Win64 Development `
-    -Project="<PROJECT_ROOT>\TDProject.uproject"
+    TDProject Win64 Development -Project="<PROJECT_ROOT>\TDProject.uproject"
 ```
+- VS 2026 + Unreal Build Accelerator(UBA). 에디터에서 `TDProject.uproject` 열면 자동 컴파일.
+- **MCP 2서버**: `unreal-engine`(에디터 자동화 — 에디터가 WebSocket `:8091` → `unreal-engine-mcp-server`(npx) 중계) + `unreal-rag`(C++ 코드 RAG, `Mcp_Tools/ue_rag_mcp.py`). 새 머신 셋업 = [`Mcp_Tools/README.md`](Mcp_Tools/README.md).
 
-**Note**: This project uses Visual Studio 2026 and Unreal Build Accelerator (UBA).
+## 핵심 아키텍처 (불변)
 
-### Opening in Editor
+### Waypoint Queue System (가장 중요)
+AI 이동은 **pathfinding 이 아니라 웨이포인트 큐** 패턴. 각 AI가 방문할 구조물 큐를 만들어 순서대로 진행:
+아군 타워(스폰 가까운 순) → 적 타워(스폰 가까운 순) → 적 CC. 파괴된 웨이포인트는 자동 skip, 적 감지 시 전투가 이동을 인터럽트.
+- `AOSAIController::BuildWaypointQueue()` / `GetNextTargetLocation()` / `MoveTowardsTarget()`
+- ⚠️ **이 시스템을 모른 채 navmesh/pathfinding 기능 추가로 "고치려" 하지 말 것.** 큐가 MOBA 식 라인 푸시를 보장한다. 상세: [`Guides/04_Implementation/WAYPOINT_QUEUE_SYSTEM.md`](Guides/04_Implementation/WAYPOINT_QUEUE_SYSTEM.md).
 
-Open `TDProject.uproject` in Unreal Editor 5.7. The project will compile automatically if needed.
+### Map / Lane System
+- 3레인(Top/Mid/Bottom), 팀당 타워 9(레인당 3) + CC 1. `AOSMapManager` 가 `BeginPlay` 에서 스폰.
+- **`LanesInfo`(에디터 설정, 타워 좌표만) ≠ `AllTowers`(런타임 스폰 인스턴스)** — 런타임 로직은 항상 `AllTowers`, 스폰은 `LanesInfo`.
+- **라인 시작 = SpawnPoint 가 단일 진실 공급원**. `FLaneInfo` 는 `Team*StartPosition` 없음(제거됨). `(Team,Lane)` 매칭 `AAOSSpawnPoint::GetActorLocation()` 이 시작 위치. `GetLaneStartPosition()` 내부는 `GetNearestSpawnPoint()` 경유(클라는 ZeroVector).
 
-### Hot Reload
-
-Use the Unreal Editor's hot reload feature (Ctrl+Alt+F11) for quick C++ changes without full rebuild.
-
-### MCP 서버 셋업 (Claude 연동)
-
-이 프로젝트는 두 개의 MCP 서버를 사용합니다:
-- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.5.30 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계)
-- `unreal-rag` — C++ 코드 RAG 검색 (`Mcp_Tools/ue_rag_mcp.py`)
-
-새 컴퓨터에서 똑같은 환경을 재현하려면 **`Mcp_Tools/README.md`** 를 따라 진행하세요.
-설정 파일 템플릿: `Mcp_Tools/claude_desktop_config.example.json`
-
-## Architecture Overview
-
-### Core Game Loop
-
-The game follows a MOBA-style flow where AI-controlled characters automatically push lanes toward enemy structures:
-
-1. **Spawn**: Characters spawn at designated spawn points (12 total: 2 teams × 3 lanes × 2 spawn points per lane)
-2. **Lane Push**: Characters follow a **waypoint queue system** to move sequentially through structures
-3. **Combat**: Characters detect and engage enemies (characters or towers) within range
-4. **Victory**: Game ends when a team's Command Center is destroyed
-
-### Waypoint Queue System (Critical Architecture)
-
-The AI movement system uses a **waypoint queue** pattern, not simple pathfinding. This is the most important architectural decision in the codebase.
-
-**How it works**:
-- Each AI character builds a queue of structures to visit in order
-- Movement order: Friendly Towers (closest to spawn first) → Enemy Towers (closest to spawn first) → Enemy Command Center
-- The character progresses through the queue, automatically skipping destroyed waypoints
-- Combat interrupts waypoint movement when enemies are detected
-
-**Key files**:
-- `AOSAIController::BuildWaypointQueue()` - Constructs the waypoint sequence
-- `AOSAIController::GetNextTargetLocation()` - Returns current waypoint, skips destroyed ones
-- `AOSAIController::MoveTowardsTarget()` - Increments waypoint index on arrival
-
-**Why this matters**: Don't try to "fix" the AI by adding pathfinding or navigation mesh features without understanding this system. The waypoint queue ensures MOBA-style lane pushing behavior.
-
-### Map and Lane System
-
-**3-Lane Structure**:
-- Top, Mid, Bottom lanes
-- Each lane has two teams pushing toward each other
-- Managed by `AOSMapManager` which stores lane configurations in `FLaneInfo` structs
-
-**Structure Placement**:
-- **Towers**: 3 per team per lane (9 towers per team total)
-- **Command Centers**: 1 per team (team-based, not lane-based)
-- Tower positions are defined in `LanesInfo` array but actual spawned instances are tracked in `AllTowers` array
-
-**Critical distinction**:
-- `LanesInfo` = Editor configuration (what you set in the Blueprint) — 타워 좌표만 보유
-- `AllTowers` = Runtime spawned instances (actual actors in the world)
-- Always use `AllTowers` for runtime logic, `LanesInfo` for spawning
-
-**라인 시작 위치 — SpawnPoint 가 단일 진실 공급원**:
-- `FLaneInfo` 는 더 이상 `Team1StartPosition` / `Team2StartPosition` 을 가지지 않음 (제거됨)
-- 라인 시작 = `(Team, Lane)` 매칭되는 `AAOSSpawnPoint` 의 `GetActorLocation()`
-- `AAOSMapManager::GetLaneStartPosition(Lane, Team)` 시그니처는 유지되지만 내부가
-  `GameMode->GetNearestSpawnPoint(Team, Lane)->GetActorLocation()` 으로 동작 (DS 가드: 클라이언트는 ZeroVector)
-- AIController 는 `LaneStartPosition` 을 캐싱할 때 MapManager 우회로
-  `ControlledCharacter->GetActorLocation()` 사용 (캐릭터가 막 SpawnPoint 에서 스폰된 직후)
-
-### Team and Lane Enums
-
-```cpp
-// Defined in AOSGameMode.h
-EAOSTeam: Team1, Team2
-EAOSLane: Top, Mid, Bottom
-```
-
-These enums are used throughout the codebase for team/lane identification.
-
-### Character Lifecycle
-
-1. **Spawn**: `AOSSpawnPoint` creates character using `SpawnCharacter()`
-2. **Initialization**: `InitializeCharacter()` sets team and lane
-3. **AI Assignment**: `AOSAIController` automatically possesses character
-4. **Deployment**: `DeployToLane()` triggers `StartDeployment()` on AI controller
-5. **Waypoint Building**: AI builds its waypoint queue
-6. **Behavior Loop**: `UpdateAIBehavior()` runs every tick to check for enemies or continue moving
-7. **Death**: `OnCharacterDeath()` - hide mesh, disable collision, notify GameMode, `Destroy()` after 2s (no respawn)
+### Enums (AOSGameMode.h 소유)
+`EAOSTeam{Team1,Team2}`, `EAOSLane{Top,Mid,Bottom}`, `EAOSGameState{...,BanPick=5}`(enum **끝에 append** — 중간 삽입 금지). ⚠️ **enum 변경은 모든 AOS 파일이 의존 → 반드시 main 에 먼저 커밋 후 에이전트 브랜치 생성.**
 
 ### Core Classes
-
-**AOSGameMode** - Game state management, victory conditions
-- Manages game state transitions (Preparation → GameRunning → GameEnded)
-- Not heavily used in current implementation (auto-spawn system doesn't require preparation phase)
-
-**AOSMapManager** - Map layout and structure spawning
-- Spawns all towers and command centers at `BeginPlay()`
-- Provides lane information to AI controllers
-- Critical methods: `GetTowersInLane()`, `GetCommandCenter()`
-
-**AOSSpawnPoint** - Character spawning
-- Auto-spawns characters at runtime
-- 12 spawn points needed for full game (2 teams × 3 lanes × 2 per lane)
-- Each has Team, Lane, and Index properties
-
-**AOSCharacter** - AI-controlled character base class
-- Health, attack, movement properties
-- HP bar widget component (Screen Space, above character head)
-- Death handling: hide mesh, disable collision, notify GameMode, Destroy after 2s (no respawn)
-
-**AOSAIController** - AI behavior and movement
-- **Most complex class in the project**
-- Implements waypoint queue system
-- Handles enemy detection, combat (characters AND structures), and lane pushing
-- `AttackStructure()` - moves toward structure, attacks when in range
-- Uses `Tick()` for behavior updates (not Behavior Trees or State Trees)
-
-**AOSStructure** - Base class for towers and command centers
-- Health management (Tower: 1000, CommandCenter: 5000)
-- Auto-attack system: AttackRange=200, DetectionRange=400
-- HP bar widget component (Screen Space, above structure)
-- Destruction: hide mesh, disable detection, hide HP bar, stop Tick
-
-**AOSHealthBarWidget** - HP bar UI (UI/AOSHealthBarWidget.h/cpp)
-- Inherits UUserWidget, used as 3D world widget
-- Binds to `HealthProgressBar` via `BindWidget` meta
-- Team color: Team1=Red, Team2=Blue
-- Requires Widget Blueprint `WBP_HealthBar` created in editor
-
-## AI: State Tree Architecture (Phase 6)
-
-AI 행동 결정은 **State Tree** (UE 5.4+ production-ready) 가 담당.
-이전의 `AOSAIController::UpdateAIBehavior` (if/else 직접 결정) 제거됨.
-
-### 핵심 클래스 (Phase 6)
-
-- **`UStateTreeAIComponent`** (`Components/StateTreeAIComponent.h`)
-  - `AAOSAIController` 가 `CreateDefaultSubobject` 로 부착
-  - **`bStartLogicAutomatically = false`** (생성자에서 `SetStartLogicAutomatically(false)`) →
-    BeginPlay 자동 시작 끔. `StartLogic()` 은 **`AAOSAIController::StartDeployment()` 에서 수동 호출**
-    (`SetTeam → DeployToLane → StartDeployment` 순서라 팀이 확정된 뒤 시작).
-    (BeginPlay 시점엔 GetPawn()=null 이라 schema 의 context actor binding 실패 — 자동 시작 시
-    `Could not find context actor of type AOSCharacter. StateTree will not update.` 에러.
-    ⚠️ 과거 `OnPossess` 에서 시작했으나 SetTeam 보다 빨라 **아군 오사** 발생 → 이동. 트러블슈팅 #5 참고)
-  - StateTreeAIComponentSchema 사용 — AAIController 접근 보장
-  - BP_AOSAIController 의 컴포넌트 디테일 → `StateTreeRef` 슬롯에 ST 자산 지정
-
-- **`AAOSAIController`** (`AOSAIController.h/cpp`)
-  - 기존 `UpdateAIBehavior` / `MoveTowardsTarget` / `AttackTarget` / `AttackStructure` **제거**
-  - 헬퍼 메서드는 ST task 가 호출하기 위해 **public 노출**:
-    - `SetCurrentTarget(AAOSCharacter*)`
-    - `GetCurrentTargetCharacter()`
-    - `GetCurrentWaypointStructure()`
-    - `IsCurrentTargetInAttackRange()`
-    - `HasArrivedAtCurrentWaypoint()`
-    - `RequestMoveToCurrentTarget()` / `RequestMoveToCurrentWaypoint()`
-    - `AdvanceToNextWaypoint()`
-    - `FindNearestEnemy()` / `GetEffectiveAttackRange()` (이전부터 public)
-  - Tick 은 race-condition 재시도 (WaypointQueue 빈 경우 재구축) + 디버그 시각화만 담당.
-    행동 결정은 ST 가 자체 tick.
-
-### Custom Tasks (`Source/TDProject/AOS/AI/AOSStateTreeTasks.h/cpp`)
-
-모두 `FStateTreeTaskCommonBase` 상속. InstanceData 의 `Context` 카테고리로
-**`TObjectPtr<AAIController>`** (base 클래스) 자동 주입 — StateTreeAIComponentSchema 가
-NAME 기반("AIController") 으로 binding. **derived `AAOSAIController` 타입으로 선언하면
-schema 등록 클래스와 mismatch 되어 자동 binding 실패** (engine 의 `FStateTreeMoveToTaskInstanceData`
-와 동일 패턴). cpp 에서는 `Cast<AAOSAIController>` 로 derived 메서드 접근.
-
-| Task | EnterState/Tick 동작 |
-|------|----------------------|
-| `FStateTreeTask_FindNearestEnemy` | 적 캐릭터 검색 → CurrentTarget 설정. 못 찾으면 FAILED |
-| `FStateTreeTask_MoveToCurrentTarget` | CurrentTarget 으로 이동. 사거리 도달 시 정지하고 **RUNNING 유지** (Succeeded 반환 시 state 종료 → root 재선택 → oscillation 위험. SendAttackEvent task 가 같은 state 안에서 공격 처리) |
-| `FStateTreeTask_MoveToCurrentWaypoint` | CurrentMoveTarget 으로 이동. 도착 시 **자동으로 `AdvanceToNextWaypoint()` 호출 + RUNNING 유지** (state transition 없이 task 안에서 큐 진행) |
-| `FStateTreeTask_AdvanceWaypoint` | CurrentWaypointIndex++ 후 SUCCESS |
-| `FStateTreeTask_SendAttackEvent` | ASC->HandleGameplayEvent(`Ability.Attack.Basic`, {Target}) — 타겟은 캐릭터/구조물 선택 |
-| `FStateTreeTask_ActivateAbilityByTag` | Phase 4 스킬용. ASC->TryActivateAbilitiesByTag(Tag). **활성화 후 `State.Rooted` 보유 시 RUNNING 유지(Tick 에서 재확인) → 이동 불가 스킬이 끝날 때까지 AI 가 해당 state 에 홀드**. root 미부여(이동 가능 스킬)면 즉시 Succeeded → Design B 대로 root 재선택 |
-
-### Custom Conditions (`Source/TDProject/AOS/AI/AOSStateTreeConditions.h/cpp`)
-
-모두 `FStateTreeConditionCommonBase` 상속.
-
-| Condition | TestCondition 로직 |
-|-----------|--------------------|
-| `FStateTreeCond_HasNearbyEnemy` | `AIController->FindNearestEnemy() != nullptr` |
-| `FStateTreeCond_HealthBelowPct` | Health/MaxHealth < Threshold (instance param) |
-| `FStateTreeCond_HasCooldownTag` | ASC->HasMatchingGameplayTag(Tag) — 쿨다운 active 체크 |
-| `FStateTreeCond_TargetInAttackRange` | 타겟까지 거리 ≤ GetEffectiveAttackRange() |
-| `FStateTreeCond_HasCurrentWaypointStructure` | 현재 웨이포인트가 적 구조물 + 미파괴 |
-
-각 condition 의 `bInvert` 플래그로 NOT 연산 가능.
-
-### ST 자산 작성 (사용자 작업, 시각 편집기)
-
-**파일**: `/Game/AOS/AI/ST_AOSCharacterAI`
-
-**에셋 디테일 설정 (필수)**:
-- **스키마**: `스테이트 트리 AI 컴포넌트` (StateTreeAIComponentSchema)
-- **AI 컨트롤러 클래스**: `AOSAIController`
-- **컨텍스트 액터 클래스**: **`AOSCharacter`** ⚠️ (Pawn 클래스 — AIController 가 아님!)
-  Schema 의 `SetContextData` 가 AIController->GetPawn() 의 IsA(ContextActorClass) 로
-  Actor context 를 결정. AOSAIController 로 잘못 설정하면 schema binding 실패.
-
-**트리 구조 (선택자 패턴, 우선순위 순)**:
-```
-Root (Selector — "Try Select Children In Order")
-│ ⚠ Root 의 트랜지션 (필수, 우선순위 강제 전환):
-│   - On Tick + cond: HasNearbyEnemy                          → Goto AttackEnemy
-│   - On Tick + cond: HasCurrentWaypointStructure
-│                  && TargetInAttackRange(bUseCharacter=false) → Goto AttackStructure
-│ (running task 가 있는 state 는 자동 재선택 안 됨 → root transition 으로 강제)
-│
-├── [State] AttackEnemy
-│   EnterCondition: HasNearbyEnemy
-│   Tasks: FindNearestEnemy → MoveToCurrentTarget → SendAttackEvent (bTargetCurrentEnemy=true)
-├── [State] UseHealSkill (Phase 4 — 추후 활성)
-│   EnterCondition: HealthBelowPct(0.3) && !HasCooldownTag(Cooldown.Skill.Heal)
-│   Tasks: ActivateAbilityByTag(Ability.Skill.Heal)
-├── [State] AttackStructure
-│   EnterCondition: HasCurrentWaypointStructure && TargetInAttackRange(bUseCurrentTargetCharacter=false)
-│   Tasks: SendAttackEvent (bTargetCurrentEnemy=false)
-└── [State] PushLane (Default — fallback)
-    Tasks: MoveToCurrentWaypoint
-    (도착/큐 advance 는 task 내부에서 자동 처리 — AdvanceWaypoint task 별도 추가 불필요)
-```
-
-### BP 연결 (사용자 작업)
-
-1. `BP_AOSAIController` (없으면 생성: AAOSAIController 상속)
-2. 디테일 패널 → StateTreeComponent → StateTreeRef → ST_AOSCharacterAI 지정
-3. BP 컴파일 + 저장
-4. `BP_Character` 의 AIControllerClass 가 BP_AOSAIController 가리키는지 확인
-
-### 디버깅
-
-**State Tree Debugger 윈도우** (UE 5.7) — Rewind Debugger 와 통합:
-- 메인 에디터: **창 → 디버그 → Rewind Debugger** (또는 ST 자산 에디터 상단의 디버그 탭)
-- PIE 시작 → 좌측 액터 리스트에서 인스턴스 선택 → 타임라인에 state 활성/transition 시각화
-- Trace 채널 활성: `trace.start statetree` (또는 Project Settings → Trace 에서 StateTree 체크)
-- `WITH_STATETREE_TRACE_DEBUGGER=1` 빌드 필요 (Editor + Development 기본 활성)
-
-**Gameplay Debugger** (가장 빠른 방법):
-- PIE 중 `'` (apostrophe) 또는 F8 키 → 화면 오버레이
-- 숫자 키로 카테고리 토글 — StateTree 카테고리에서 활성 state 표시
-- `Project Settings → Gameplay Debugger → Categories` 에서 StateTree 활성 필요할 수 있음
-
-**콘솔 명령**:
-- `showdebug ai` — UStateTreeAIComponent 의 GetActiveStateNames() 출력
-- `gd.AIDebug.StateTree 1` — ST 활성 state 시각화
-- `log LogStateTree Verbose` / `log LogAI Verbose` — 상세 로그
-
-### Phase 6 트러블슈팅 (자주 빠지는 함정)
-
-ST 자산 만들고 AI 가 동작 안 할 때 점검 체크리스트 — 이 3가지가 거의 모든 케이스를 커버합니다.
-
-**1. ContextActorClass 가 AIController 로 잘못 설정**
-- 증상: 빌드는 통과, ST IsRunning=true 인데 task 가 전혀 실행 안 됨
-  (또는 우리 task 의 `InstanceData.AIController` 가 null 처럼 동작)
-- 원인: `에셋 디테일 → 컨텍스트 액터 클래스` 가 `AOSAIController` 또는 다른 잘못된 클래스
-- 수정: `AOSCharacter` (Pawn 클래스) 로 설정
-
-**2. bStartLogicAutomatically=true 로 BeginPlay 자동 시작 (타이밍 race)**
-- 증상 (PIE 로그):
-  ```
-  LogStateTree: Error: SetContextData: Could not find context actor of type AOSCharacter. StateTree will not update.
-  LogStateTree: Error: SetContextRequirements: Missing external data requirements. StateTree will not update.
-  LogStateTree: Warning: Context Requirements in UStateTreeComponent::StartTree failed. Component tick is disabled.
-  [AI Controller] Possessed ... — IsRunning=false
-  ```
-- 원인: BeginPlay 시점엔 AIController->GetPawn() = null → schema 가 ContextActorClass(AOSCharacter) 매칭 실패
-- 수정: 생성자에서 `StateTreeComponent->SetStartLogicAutomatically(false)` + **`StartDeployment()` 에서**
-  `StateTreeComponent->StartLogic()` 수동 호출 (과거엔 OnPossess 였으나 #5 의 아군 오사 때문에 이동)
-- BP 갱신 권장: `BP_AOSAIController → StateTreeComponent → AI → Start Logic Automatically` 도 false 확인 (BP CDO override 가능)
-
-**3. Running task 가 있는 state 는 자동 재선택 안 됨 (적 만나도 안 싸움)**
-- 증상: 캐릭터가 PushLane 으로 이동 중 적이 감지 범위 안에 들어와도 AttackEnemy 로 전환 안 됨
-- 원인: PushLane state 의 MoveToCurrentWaypoint task 가 RUNNING 유지 중 →
-  Root selector 가 재평가하지 않음 (state tree 기본 동작)
-- 수정: **Root state 에 "On Tick" 트랜지션 추가**
-  - On Tick + condition `HasNearbyEnemy` → Goto AttackEnemy
-  - On Tick + condition `HasCurrentWaypointStructure && TargetInAttackRange(bUseCharacter=false)` → Goto AttackStructure
-- 매 tick 마다 root 가 우선순위 조건 체크해서 강제 전환
-
-**4. InstanceData 의 AIController 타입은 base 클래스로**
-- 증상: Schema 가 binding 못 함 (위 #1 과 동일 증상)
-- 원인: `TObjectPtr<AAOSAIController>` 로 선언 → schema 가 등록한 base `AAIController` 와 mismatch
-- 수정: `TObjectPtr<AAIController>` (base) 로 선언, cpp 에서 `Cast<AAOSAIController>` 사용
-  (engine 의 `FStateTreeMoveToTaskInstanceData` 와 동일 패턴)
-
-**5. StartLogic 을 OnPossess 에서 호출 → 스폰 직후 아군 오사 (friendly fire)**
-- 증상: 게임 시작 직후 **자기 진영 근처에서 같은 팀 캐릭터끼리 기본공격** (데미지 숫자 = 공격자 AP).
-  특히 **두번째로 스폰되는 팀(Team2)에서만** 발생, 중앙 교전 전 자기 스폰 근처에서.
-- 원인: `OnPossess` 는 SpawnActor 중 auto-possess 로 `SetTeam` 보다 **먼저** 실행됨.
-  여기서 `StartLogic()` 하면 StateTree 가 `Team=기본값(Team1)` 으로 첫 평가 →
-  이미 Team2 로 설정된 동료를 적으로 오인하고 타겟 락 → 아군 공격.
-  (Team1 은 먼저 스폰돼 기본값==실제값이라 무사, Team2 만 피해 — 이 **비대칭**이 진단 단서)
-- 수정: `StartLogic()` 을 **`OnPossess` → `StartDeployment()` 로 이동**. StartDeployment 는
-  `SetTeam → DeployToLane` 이후라 팀·라인·웨이포인트가 모두 확정된 뒤 시작 → 오인 불가.
-  (StartDeployment 시점에도 pawn 은 possess 된 상태라 schema context binding 정상)
-- 진단 팁: 데미지 단일 훅 `AOSAttributeSet::PostGameplayEffectExecute` 에서
-  `Data.EffectSpec.GetContext().GetSourceObject()` 의 팀 vs victim 팀을 로그로 찍으면
-  friendly-fire 여부가 즉시 드러남.
-
-### Hot Reload 비호환
-
-신규 USTRUCT (Task/Condition) 추가 → **풀 리빌드 필수**.
-
-## GAS (Gameplay Ability System) Architecture
-
-GAS 도입은 **5 Phase 마이그레이션** 으로 진행됩니다.
-계획서: `C:\Users\wjrm7\.claude\plans\nested-herding-dragon.md` (참고용, 외부)
-
-### Phase 진행 상태
-
-| Phase | 내용 | 상태 |
-|-------|------|------|
-| 0 | 플러그인/모듈/태그/AbilitySystemGlobals 셋업 | ✅ 완료 |
-| 1 | ASC + AttributeSet 부착 (병행 운영) | ✅ 완료 |
-| 2 | Damage 흐름 GE_Damage 컷오버 | ✅ 완료 |
-| 3 | 기본 공격 → GA_Attack 전환 | ✅ 완료 |
-| 3.5 | 캐릭터 애니메이션 슬롯 스캐폴딩 (자산 미연결) | ✅ 완료 |
-| 4 | 신규 스킬 추가 — Alex 캐릭터 4스킬 (Garen 스타일 Q/W/E/R) | ✅ 완료 (상하체 분리는 후속) |
-| 5 | AOSStructure 도 ASC 통합 | ✅ 완료 |
-
-### 모듈/플러그인 (Phase 0)
-
-- `TDProject.uproject` — `GameplayAbilities` 플러그인 (GameplayTags/GameplayTasks 자동 활성)
-- `Source/TDProject/TDProject.Build.cs` — `GameplayAbilities`, `GameplayTags`, `GameplayTasks` 의존성
-- `Config/DefaultGame.ini` — `[/Script/GameplayAbilities.AbilitySystemGlobals]` 섹션
-  (`bUseDebugTargetFromHud`, `+GameplayCueNotifyPaths=/Game/AOS/GAS/GameplayCues` 등)
-- `Config/DefaultGameplayTags.ini` — Ability/Cooldown/State/Damage/Data 태그 계층
-
-### 핵심 클래스 (Phase 1)
-
-**`UAOSAbilitySystemComponent`** (`Source/TDProject/AOS/GAS/`)
-- `UAbilitySystemComponent` 의 wrapper. 후속 Phase 의 확장 지점
-- 캐릭터/구조물이 자체 소유 (PlayerState 미사용 — AI 캐릭터 패턴)
-
-**`UAOSAttributeSet`** (`Source/TDProject/AOS/GAS/`)
-- 속성: Health, MaxHealth, AttackPower, AttackRange, AttackSpeed, MoveSpeed, Damage(메타)
-- Health/MaxHealth 등 6개는 `DOREPLIFETIME_CONDITION_NOTIFY` (REPNOTIFY_Always)
-- Damage 는 메타 속성 — 리플리케이션 안 함, GE 입력 전용 (Phase 2 에서 PostGEExecute 처리)
-- `PreAttributeChange`: Health 클램프 [0, MaxHealth]
-- 기본값: Health=100, MaxHealth=100, AttackPower=10, AttackRange=500, AttackSpeed=1.0, MoveSpeed=600
-
-### AOSCharacter 통합 (Phase 1+2)
-
-- `IAbilitySystemInterface` 구현 → `GetAbilitySystemComponent()`
-- 생성자: `AbilitySystemComponent` + `AttributeSet` 을 CreateDefaultSubobject
-- ASC 설정: `SetIsReplicated(true)` + `SetReplicationMode(Mixed)`
-- `PossessedBy` (서버) / `BeginPlay` (클라이언트) → `InitializeAbilitySystem()` →
-  `ASC->InitAbilityActorInfo(this, this)` (Owner=self, Avatar=self)
-- **Phase 2 컷오버**: `CurrentHealth` 멤버 + `OnRep_CurrentHealth` **제거**. Health 의 진짜 소스는 AttributeSet.
-  - `GetCurrentHealth() / GetMaxHealth() / IsAlive()` → AttributeSet wrapper (BP 호환성 보존)
-  - `MaxHealth` 멤버는 AttributeSet 초기값 시드로만 유지 (Phase 3 에서 제거 예정)
-  - `AttackDamage / AttackRange / AttackCooldown / MovementSpeed` 도 시드로 유지 (Phase 3 에서 제거)
-
-### Damage Flow (Phase 2)
-
-```
-[공격자 AIController] AttackTarget()
-   ↓
-[공격자 AOSCharacter] (Phase 3 에서 GA_Attack 으로 일원화 예정)
-   ↓
-[피격자 AOSCharacter::ReceiveDamage(float)] — deprecated wrapper
-   ↓
-ASC->MakeOutgoingSpec(UGE_Damage)
-SetSetByCallerMagnitude("Data.Damage", DamageAmount)
-ASC->ApplyGameplayEffectSpecToSelf(*Spec)
-   ↓
-[GE_Damage 인스턴트 적용] Damage += SetByCaller(Data.Damage)
-   ↓
-[UAOSAttributeSet::PostGameplayEffectExecute]
-   - LocalDamage = GetDamage(); SetDamage(0) // 메타 리셋
-   - NewHealth = clamp(OldHealth - LocalDamage, 0, MaxHealth); SetHealth(NewHealth)
-   - if (NewHealth <= 0 && OldHealth > 0) → OnCharacterDeath()
-   ↓
-[AttributeChange Delegate] (서버/클라 양쪽)
-   ↓
-[AOSCharacter::OnHealthAttributeChanged] → UpdateHealthBar()
-```
-
-**HP 바 갱신**: 더 이상 `OnRep_CurrentHealth` 가 아닌 ASC 의
-`GetGameplayAttributeValueChangeDelegate(GetHealthAttribute())` 콜백 사용.
-
-**GE 클래스**: `Source/TDProject/AOS/GAS/Effects/GE_Damage.h/cpp` — C++ Default GE
-(BP 자산 없이도 즉시 동작). 디자이너가 BP 로 derive 하고 싶으면 가능.
-
-**AOSStructure**: 현재 Phase 2 미적용 (Phase 5 예정). 기존 float 기반
-`ReceiveDamage` 그대로 동작.
-
-### Phase 3: 기본 공격 GameplayAbility
-
-**핵심 클래스 (Phase 3 신규)**
-
-- `UGA_Attack` (`Source/TDProject/AOS/GAS/Abilities/GA_Attack.h/cpp`)
-  - `InstancingPolicy = InstancedPerActor`, `NetExecutionPolicy = ServerInitiated`
-  - AbilityTag: `Ability.Attack.Basic` (활성화 트리거)
-  - `CooldownGameplayEffectClass = UGE_Cooldown_Attack::StaticClass()`
-  - `ActivationBlockedTags`: `State.HitReact` (HitReact 중 공격 차단)
-  - **AttackSpeed 적용** (Phase 3.5+ 갱신): `AttackSpeed` 속성을 추출하여
-    - `MontageTask.Rate = AttackSpeed` → 몽타주 재생 속도 스케일
-    - `CooldownSpec.SetSetByCallerMagnitude("Data.Duration", 1.0/AttackSpeed)` → 쿨다운 반비례
-    - 안전 가드: `AttackSpeed <= 0` 이면 1.0 fallback (cooldown 무한대 / freeze 회피)
-  - `ActivateAbility` (montage-driven, Phase 3.5+):
-    AttackSpeed 추출 → 쿨다운 GE (1/AttackSpeed) → CommitCost → 타겟 cache →
-    `PlayMontageAndWait(AttackMontage, Rate=AttackSpeed)` + `WaitGameplayEvent("AnimNotify.AttackHit")` →
-    Notify 시점에 GE_Damage 적용 → 몽타주 종료 시 EndAbility
-  - **Structure fallback**: 타겟이 ASC 미보유면 `Cast<AAOSStructure>` → `ReceiveDamage(float)` 직접 호출 (Phase 5 에서 fallback 제거)
-
-- `UGE_Cooldown_Attack` (`Source/TDProject/AOS/GAS/Effects/GE_Cooldown_Attack.h/cpp`)
-  - Duration = SetByCaller(`Data.Duration`) — GA_Attack 이 `1.0 / AttackSpeed` 로 set
-  - 예시: AttackSpeed=1.0 → 1.0s, 2.0 → 0.5s, 0.5 → 2.0s
-  - GrantedTag: `Cooldown.Attack.Basic` (다음 활성화 차단)
-
-**AOSCharacter 통합 (Phase 3)**
-
-- 멤버 추가: `TArray<TSubclassOf<UGameplayAbility>> StartupAbilities` (BP 에서 추가 능력 부여 가능)
-- 생성자: `StartupAbilities.Add(UGA_Attack::StaticClass())`
-- `PossessedBy` 에서 `GiveStartupAbilities()` 호출 → 서버가 능력 부여
-- `GetAttackDamage()` → `AttributeSet->GetAttackPower()` wrapper
-- `OnMoveSpeedAttributeChanged` 델리게이트 → `CharacterMovement->MaxWalkSpeed` 동기화
-  (Phase 4 의 GA_Charge 가 MoveSpeed 모디파이 시 자동 반영)
-
-**AOSAIController 변경**
-
-- `AttackTarget` / `AttackStructure` 의 데미지 적용 부분이 `ASC->HandleGameplayEvent(...)` 로 전환:
-  ```cpp
-  if (ASC && !ASC->HasMatchingGameplayTag(Cooldown.Attack.Basic)) {
-      FGameplayEventData EventData;
-      EventData.Target = TargetActor;
-      EventData.Instigator = ControlledCharacter;
-      ASC->HandleGameplayEvent("Ability.Attack.Basic", &EventData);
-  }
-  ```
-- `CurrentAttackCooldown` / `AttackCooldownDuration` 멤버 **제거** — ASC 태그가 단일 진실 공급원
-- `AttackRange` 는 유지 (AI 행동 판단 — 어디까지 접근하면 공격할지)
-
-**Damage Flow (Phase 3+5 갱신)**
-
-```
-[AIController::Tick] UpdateAIBehavior
-   ↓ FindNearestEnemy / Tower
-[AttackTarget / AttackStructure]
-   ↓ if (!ASC->HasMatchingGameplayTag("Cooldown.Attack.Basic"))
-ASC->HandleGameplayEvent("Ability.Attack.Basic", {Target, Instigator})
-   ↓ 트리거
-[GA_Attack::ActivateAbility]
-   - 명시 Cooldown GE 적용 (Duration = 1.0/AttackSpeed 초, "Cooldown.Attack.Basic" 태그 부여)
-   - DamageAmount = AttributeSet::AttackPower
-   - Target IAbilitySystemInterface (Character/Structure 모두) → ApplyGameplayEffectSpecToTarget(GE_Damage, TargetASC)
-   - EndAbility
-   ↓
-[GE_Damage 적용] → AttributeSet::PostGameplayEffectExecute → Health 차감
-   - if NewHealth<=0 && OldHealth>0:
-       - AAOSCharacter  → OnCharacterDeath()
-       - AAOSStructure  → OnStructureDestroyed()
-   ↓ (양쪽 모두)
-OnHealthAttributeChanged → UpdateHealthBar
-```
-
-### Phase 5: AOSStructure 통합
-
-**핵심 변경**
-
-- `AAOSStructure : public AActor, public IAbilitySystemInterface`
-- 캐릭터와 동일한 `UAOSAbilitySystemComponent` + `UAOSAttributeSet` 재사용 (Health/MaxHealth 만 사용)
-- `CurrentHealth(Replicated)` / `OnRep_CurrentHealth` 멤버 **제거**, `MaxHealth` 는 시드로 유지
-- `GetCurrentHealth() / GetMaxHealth() / IsDestroyed()` → AttributeSet wrapper (BP 호환)
-- `ReceiveDamage(float)` → GE_Damage 적용 (캐릭터와 동일 패턴)
-- BeginPlay 에서 `InitializeAbilitySystem()` 호출 (Pawn 이 아니라 PossessedBy 없음 — 양쪽에서 BeginPlay)
-- `Initialize()` 에서 StructureType 별 MaxHealth 갱신 후 AttributeSet 재시드 (Tower=1000, CC=5000)
-- `OnStructureDestroyed` → public 노출 (AttributeSet PostGEExecute 가 호출)
-
-**AOSAttributeSet PostGameplayEffectExecute 분기 추가**
-```cpp
-if (NewHealth <= 0 && OldHealth > 0) {
-    AActor* Owner = GetOwningActor();
-    if (AAOSCharacter* Char = Cast<AAOSCharacter>(Owner))      Char->OnCharacterDeath();
-    else if (AAOSStructure* Struct = Cast<AAOSStructure>(Owner)) Struct->OnStructureDestroyed();
-}
-```
-
-**GA_Attack fallback 제거**: 이제 Structure 도 IAbilitySystemInterface 구현 → 모던 경로 (`ApplyGameplayEffectSpecToTarget`) 가 자동 처리. `Cast<AAOSStructure>` 분기 제거.
-
-**구조물의 자체 공격은 그대로**: `Tower::FireAtTarget` 의 `Target->ReceiveDamage(...)` 호출은 변경 없음 (Character::ReceiveDamage 가 이미 GE_Damage wrapper). GA_Tower_Attack 미적용 — 단순 공격이라 GE 만으로 충분.
-
-### Phase 4: 캐릭터 스킬 시스템 — Alex (Garen 스타일 Q/W/E/R)
-
-> ⚠️ **이 섹션은 원본 Phase 4 (캐릭터당 4 C++ Ability + 4 쿨다운 GE) 구현 기록**.
-> **2026-06-02 데이터 주도 마이그레이션 완료** — 이 8개 C++ 클래스(`GA_Alex_Q/W/E/R`, `GE_Cooldown_Alex_Q/W/E/R`)는 모두 **제거**되었고, `UGA_SkillBase` 기반 BP 자산(`BP_GA_Alex_*`, `BP_GE_Cooldown_Alex_*`)으로 대체됨. 아래 "스킬 데이터 주도식 — `UGA_SkillBase`" 섹션이 **현재 운영 패턴**.
-> 이 섹션은 게임 스펙(스킬 수치/효과) 참고용으로만 유지.
-
-LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는 가렌 스킬셋.
-
-**스킬 매핑**
-
-| 슬롯 | 이름 | 효과 (단순화) | 쿨다운 |
-|------|------|---------------|--------|
-| Q | DecisiveStrike | 3s +300 MoveSpeed (`State.SpeedBoost`) + 다음 공격 1.5배 (`State.EnhancedAttack`) | 8s |
-| W | Courage | 2s 받는 데미지 50% 감소 (`State.DamageShield`) | 15s |
-| E | Judgment | 3s 회전, 0.5s마다 반경 250 적에 50 데미지 (6틱) | 10s |
-| R | DemacianJustice | 단일 처형: 250 + (MaxHP-HP)×0.3 | 90s |
-
-**핵심 클래스** (`Source/TDProject/AOS/GAS/`)
-
-- `UGA_Alex_Q/W/E/R` (`Abilities/`) — 모두 `InstancedPerActor` + `ServerInitiated`, `ActivationBlockedTags=State.HitReact`
-  - Q/W: 쿨다운 GE → 자기 버프 GE 적용 → `SkillMontages[tag]` 재생 (PlayMontageAndWait)
-  - E: 쿨다운 → `FTimerManager` 0.5s × 6틱 → `OverlapMultiByChannel(ECC_Pawn, 반경 250)` → 적팀만 GE_Damage. `ActivationOwnedTags`에 `State.Spinning`. `EndAbility` 에서 타이머 정리
-  - R: 쿨다운 → 타겟의 missing HP 비례 데미지. **타겟 fallback**: `TriggerEventData->Target` null 이면 (= ActivateAbilityByTag 경로) `AIController->GetCurrentTargetCharacter()` → `FindNearestEnemy()`
-- `UGE_Cooldown_Alex_Q/W/E/R` (`Effects/`) — 고정 Duration + `Cooldown.Skill.Alex.X` 태그 (GE_Cooldown_Attack 패턴)
-- `UGE_MoveSpeed_Boost` — MoveSpeed Additive +300, `State.SpeedBoost`
-- `UGE_EnhancedAttack` — `State.EnhancedAttack` 마커 (modifier 없음). GA_Attack 이 데미지 시 ×1.5 + `RemoveActiveEffectsWithGrantedTags` 로 1회 소비
-- `UGE_DamageShield` — `State.DamageShield`. `AOSAttributeSet::PostGameplayEffectExecute` 가 데미지 차감 분기에서 `Data.Target.HasMatchingGameplayTag(State.DamageShield)` 시 `LocalDamage *= 0.5`
-
-**StateTree Condition 추가** (`AOSStateTreeConditions.h/cpp`)
-- `FStateTreeCond_HasNearbyEnemies(MinCount, Radius)` — 반경 내 적팀 N명 (E용)
-- `FStateTreeCond_TargetHealthBelowPct(Threshold)` — CurrentTarget HP% (R용)
-
-**BP_Char_Alex 설정**: `StartupAbilities` 에 GA_Alex_Q/W/E/R 추가 + `SkillMontages` 매핑 (`Ability.Skill.Alex.Q` → `AM_Alex_Q` 등)
-
-### 스킬 데이터 주도식 — `UGA_SkillBase` (Phase 4+ 진행 중)
-
-위 Phase 4 의 "캐릭터당 4개 C++ Ability + 4개 쿨다운 GE" 패턴은 캐릭터·스킬 수가 늘수록 폭증. 이를 해소하기 위해 **C++ 1개 base 클래스 + BP child 자산** 패턴으로 전환 중.
-
-**핵심 클래스** (`Source/TDProject/AOS/GAS/`)
-
-- `UGA_SkillBase` (`Abilities/GA_SkillBase.h/cpp`) — UCLASS(Abstract). 모든 캐릭터 스킬의 부모. 데이터 주도식 UPROPERTY 다발:
-  - **Identity**: `SkillIdentityTag` (Ability.Skill.* — `AbilityTags`/`ActivationOwnedTags` 에 `PostInitProperties`/`PostLoad` 가 자동 추가)
-  - **Cast**: `bAllowMovementDuringCast`, `ExplicitRootDuration`(-1=자동: Periodic→Montage 길이)
-  - **Cooldown**: `CooldownDuration` (`CooldownGameplayEffectClass`는 표준 슬롯)
-  - **Effects**: `SelfAppliedEffects[]`, `TargetAppliedEffects[]`, `DamageGameplayEffectClass`
-  - **Targeting**: `ESkillTargetType` (Self/SingleEnemy/AoE_Sphere), `AoERadius`
-  - **Damage**: `BaseDamage`, `MissingHpDamageScale` (R 의 처형식 = 0.3)
-  - **Periodic**: `PeriodicTickCount`, `PeriodicTickInterval` (E 의 6틱 × 0.5s)
-  - 특이 데미지식은 `BlueprintNativeEvent CalculateTargetDamage(Target)` 를 BP override
-  - 공통 적용: `ActivationOwnedTags += State.Casting`, `ActivationBlockedTags += State.HitReact`
-
-- `UGE_SkillCooldown_Base` (`Effects/GE_SkillCooldown_Base.h/cpp`) — Duration GE + SetByCaller(Data.Duration). 태그 grant 는 BP child 가 `UTargetTagsGameplayEffectComponent` 로 추가 (예: `BP_GE_Cooldown_Alex_Q` 가 `Cooldown.Skill.Alex.Q`).
-
-**ActivateAbility 통합 흐름** (모든 스킬 동일)
-1. 쿨다운 GE (SetByCaller Data.Duration = CooldownDuration)
-2. CommitAbilityCost
-3. SelfAppliedEffects → self 일괄 적용
-4. TargetType 분기:
-   - Self: skip
-   - SingleEnemy: TriggerEventData→Target / AIController fallback (R 패턴) → 데미지 + TargetAppliedEffects
-   - AoE_Sphere: PeriodicTickCount>0 → FTimerManager 로 Interval×Count, 아니면 즉발 1회 — `OverlapMultiByChannel(ECC_Pawn)` 적팀만
-5. `!bAllowMovementDuringCast` → `ApplyCastRoot(ResolveRootDuration())` (Explicit>0 ? : Periodic>0 ? Count×Interval : Montage 길이)
-6. SkillMontage (`AOSCharacter::GetSkillMontage(SkillIdentityTag)`) 재생 (`PlayMontageAndWait`)
-7. 몽타주 종료 또는 Periodic 마지막 tick 에서 `EndAbility` (둘 중 늦은 쪽)
-
-**BP child 작성 패턴 (디자이너 작업)**
-
-새 스킬 = `BP_GA_<Char>_<Slot>` 자산 1개 + `BP_GE_Cooldown_<Char>_<Slot>` 자산 1개:
-- Right-click → Blueprint Class → Parent: `UGA_SkillBase` → 이름 `BP_GA_Alex_Q`
-- Class Defaults 에서 UPROPERTY 채움
-- 쿨다운: `BP_GE_Cooldown_Alex_Q` (parent=`UGE_SkillCooldown_Base`) → Components → TargetTagsGameplayEffectComponent → `Cooldown.Skill.Alex.Q`
-- `BP_Char_Alex.StartupAbilities` 에 BP_GA_Alex_Q 추가
-- 특이 로직 시: BP event graph 의 `Calculate Target Damage` override
-
-**예시 설정값 (기존 4스킬 이식)**
-| 스킬 | TargetType | 핵심 UPROPERTY |
-|------|-----------|----------------|
-| Q (DecisiveStrike) | Self | SelfEffects=[GE_MoveSpeed_Boost, GE_EnhancedAttack], Cooldown=8, bAllowMovement=false |
-| W (Courage) | Self | SelfEffects=[GE_DamageShield], Cooldown=15, bAllowMovement=true |
-| E (Judgment) | AoE_Sphere | AoERadius=250, PeriodicTickCount=6, PeriodicTickInterval=0.5, BaseDamage=50, Damage=GE_Damage, Cooldown=10, bAllowMovement=false |
-| R (DemacianJustice) | SingleEnemy | BaseDamage=250, MissingHpDamageScale=0.3, Damage=GE_Damage, Cooldown=90, bAllowMovement=false |
-
-**마이그레이션 상태** (2026-06-02 완료)
-- ✅ 1단계: C++ base 작성 (`UGA_SkillBase`, `UGE_SkillCooldown_Base`)
-- ✅ 2단계: BP child 8개(`BP_GA_Alex_*` + `BP_GE_Cooldown_Alex_*`) 생성 + `BP_Char_Alex.StartupAbilities` 매핑 교체
-- ✅ 3단계: 기존 C++ 클래스 8개(`GA_Alex_Q/W/E/R` + `GE_Cooldown_Alex_Q/W/E/R`) 제거
-- 보너스: `GA_Attack` stuck race 픽스 (State.Casting 차단 + UGA_SkillBase 가 시작 시 active Attack `CancelAbilities` + `bAllowInterruptAfterBlendOut=true`)
-
-이제부터 새 캐릭터/스킬 추가는 **BP 자산만 작성** (C++ 빌드 불필요). `Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md` 참고.
-
-### StateTree 스킬 통합 — "Design B" (재선택 패턴)
-
-스킬을 StateTree 에 통합할 때 핵심 함정과 채택한 패턴:
-
-**StateTree task 와 GameplayAbility 의 수명은 분리됨**
-- `FStateTreeTask_ActivateAbilityByTag` 는 `TryActivateAbilitiesByTag` 후 **즉시 Succeeded** 반환 (ability 종료를 기다리지 않음).
-- GA 자체는 몽타주 완료 시 `OnMontageCompleted → EndAbility` (별도 긴 수명).
-- 따라서 StateTree 는 스킬 발동 즉시 재선택 → 이동 재개. **몽타주는 DefaultSlot 에서 계속 재생 → 캡슐 이동 + 정지 캐스트 애니 = "슬라이드"** 현상.
-
-**Design B — running state 만 재선택 트리거** (채택)
-- 스킬(UseR/W/Q/E)은 task 가 즉시 완료형 → **재선택 자동 트리거 → 트랜지션 불필요**.
-- RUNNING 유지 state (PushLane=MoveToCurrentWaypoint, AttackEnemy=MoveToCurrentTarget) 만 `On Tick → Root` 재선택 트랜지션 필요.
-- **우선순위 = 자식 노드 순서 한 곳**: `UseR → UseW → UseQ → UseE → AttackEnemy → AttackStructure → PushLane` (PushLane 은 조건 없는 fallback 이라 **반드시 맨 마지막**).
-- 새 스킬 추가 시 자식 노드만 추가 (트랜지션 변경 불필요) → 확장성 ↑.
-- (대안 Design A: Root 에 per-skill On-Tick 전환 — 스킬 추가마다 전환 추가 필요, 비추천)
-
-**트랜지션 우선순위**: 한 state 에 트랜지션 여러 개가 동시에 참일 수 있을 때 위→아래 첫 통과가 이김. Design B 에선 각 running state 가 `→ Root` 하나뿐이라 우선순위는 자식 순서가 담당.
-
-**HasCooldownTag 는 bInvert=true**: "쿨다운 **없을 때** 사용 가능" 의미. false 면 거꾸로 (쿨다운 중에만 발동) → 스킬 영영 안 나감.
-
-### Phase 4+: 스킬 시전 root + 상하체 분리 (Layered Animation)
-
-위 "슬라이드" 의 근본 해결. **스킬 GA 의 플래그 1개(`bAllowMovementDuringCast`)가 이동 가능/불가를 결정**하고, 애니는 이동 여부에 따라 상하체 분리 / 전신을 자동 선택.
-
-**스킬별 이동 가능 플래그** (`UGA_SkillBase::bAllowMovementDuringCast` — BP CDO 에서 디자이너가 조정)
-- 현 BP 운영 값: **Q=false** (풀 애니메이션 holds), **W=true** (이동 시전), **E=false** (회전 중 고정), **R=false** (처형 모션 중 고정)
-- `true`: root 안 함 → StateTree task 즉시 Succeeded (Design B) → 이동 재개 → ABP 가 상하체 분리.
-- `false`: `UGA_SkillBase` 가 `Char->ApplyCastRoot(Duration)` 호출 → `State.Rooted` 부여 + `StopMovementImmediately()` → 캐릭터 정지 + AI 가 스킬 끝까지 홀드.
-
-**C++ 구성 요소**
-- `UGE_Rooted` (`Effects/GE_Rooted.h/cpp`) — Duration GE, `SetByCaller(Data.Duration)`, `State.Rooted` 부여 (GE_HitReact_State 패턴).
-- `AAOSCharacter::ApplyCastRoot(float Duration)` — `UGE_Rooted` self 적용(Duration 전달) + `CMC->StopMovementImmediately()`. 서버 권한 가정.
-- `UGA_SkillBase` (데이터 주도 부모) — 생성자에 `ActivationOwnedTags += State.Casting` (ABP 신호 공통), `ActivateAbility` 의 몽타주 직전에 `if (!bAllowMovementDuringCast && Char) Char->ApplyCastRoot(ResolveRootDuration())`.
-  - `ResolveRootDuration()` = `ExplicitRootDuration > 0 ? : PeriodicTickCount > 0 ? Count*Interval : Montage 길이`
-- `FStateTreeTask_ActivateAbilityByTag` — 활성화 후 `State.Rooted` 보유 시 RUNNING(EnterState+Tick), 해제 시 Succeeded. GE_Rooted 가 고정 Duration 이라 반드시 만료 → 무한 홀드 없음.
-- `UAOSAnimInstance::bIsCasting` — `State.Casting` 태그 미러 (ABP 상하체 분리 트리거).
-
-**ABP 애니 작업** (Part B — 사용자/agent-art-anim, 미완)
-- 스킬 몽타주 `AM_Alex_*` 를 `DefaultSlot` → **`UpperBody` 슬롯**으로 (Attack/Death 전신용과 분리, AM_HitReact 패턴 재활용).
-- ABP AnimGraph: locomotion 을 cached pose 로 저장 → 정지 시 전신 스킬(슬롯을 전신 적용), 이동 시 `Layered Blend Per Bone`(base=loco, layer=슬롯, mask=`spine_01`↑) → `Blend Poses by bool(bIsMoving)`.
-- 상체 전용 자산 **불필요** — Layered Blend Per Bone 본 마스크가 전신 몽타주의 상체만 추출.
-
-**검증**: Q → 적에게 달려가며 시전, 다리는 계속 달리고 상체만 스킬(슬라이드 없음). E/R → 시전 시 즉시 정지 + 전신 애니, 끝날 때까지 AI 가 그 자리. BP 에서 E 의 플래그를 true 로 바꾸면 이동하며 상체 분리되는지 확인.
-
-### Attribute 초기값 세팅 패턴 (DataTable 기반)
-
-**권장 패턴: 3개의 DataTable + float 멤버 fallback**
-
-#### Row 타입 (`FAOSAttributeInitRow`, `Source/TDProject/AOS/GAS/Data/AOSAttributeInitData.h`)
-모든 AttributeSet 속성을 담는 공통 row 구조체:
-```cpp
-struct FAOSAttributeInitRow : public FTableRowBase {
-    float Health = 100.f;
-    float MaxHealth = 100.f;
-    float AttackPower = 10.f;
-    float AttackRange = 500.f;
-    float AttackSpeed = 1.f;     // 1/sec, 쿨다운 = 1/AttackSpeed
-    float MoveSpeed = 600.f;
-};
-```
-
-#### DataTable 자산 (디자이너가 에디터에서 생성)
-| 자산 경로 | 사용처 |
-|-----------|--------|
-| `/Game/AOS/GAS/Data/DT_CharacterAttributes` | `AAOSCharacter` |
-| `/Game/AOS/GAS/Data/DT_TowerAttributes` | `AAOSStructure` (Tower) |
-| `/Game/AOS/GAS/Data/DT_CommandCenterAttributes` | `AAOSStructure` (CommandCenter) |
-
-각 DT 의 row name 은 기본 `"Default"`. 캐릭터/구조물별 다른 값을 원하면 row 추가 후 BP 에서 `AttributeInitRowName` 변경.
-
-**DT 자산 만드는 법** (에디터):
-1. Content Browser → `AOS/GAS/Data` 폴더로 이동
-2. 우클릭 → Miscellaneous → Data Table
-3. Row Structure 선택: `AOSAttributeInitRow`
-4. 이름: `DT_CharacterAttributes` (또는 `DT_TowerAttributes`, `DT_CommandCenterAttributes`)
-5. 자산 열기 → row 추가, name=`Default`, 값 입력
-
-#### 캐릭터/구조물 BP 설정
-- **BP_Character** → `AOS|GAS|Init` 카테고리 → `Attribute Init Table` 에 `DT_CharacterAttributes` 지정
-- **BP_Tower** → `Tower Attribute Init Table` 에 `DT_TowerAttributes`
-- **BP_CommandCenter** → `Command Center Attribute Init Table` 에 `DT_CommandCenterAttributes`
-  (또는 단일 BP_Structure 가 두 DT 모두 보유 — Initialize 의 `StructureType` 이 자동 분기)
-
-#### 시드 우선순위 (`InitializeAbilitySystem` / `ApplyAttributeSeeds`)
-1. **DataTable** 의 row → 디자이너 친화적 중앙 데이터 (권장)
-2. **float 멤버 fallback** — `MaxHealth`, `AttackDamage`, `AttackRange`, `AttackCooldown`, `MovementSpeed`
-   (DT 미설정/row 미발견 시 사용)
-3. **MoveSpeed 만 예외**: BP CharacterMovement→MaxWalkSpeed override 가 우선 (BP 의 자연스러운 조정 존중)
-
-#### 호출 시점
-- **AOSCharacter**: `PossessedBy`(서버) / `BeginPlay`(클라) → `InitializeAbilitySystem()` 한 번
-- **AOSStructure**: `BeginPlay` → `InitializeAbilitySystem()` (default Tower 시드) →
-  `Initialize(Type, ...)` 가 호출되면 StructureType 확정 후 `ApplyAttributeSeeds()` 재호출
-  (default Tower → 정확한 Tower/CC 시드로 덮어씀)
-
-**주의**: 생성자에서 `GetCharacterMovement()->MaxWalkSpeed = MovementSpeed` 같은 강제 할당 금지.
-BP override 가 적용 후에 코드가 다시 덮어쓸 위험.
-
-### (참고) 다른 Attribute 초기화 옵션
-- (구식) **GE_InitCharacter** — Instant GE 로 모든 속성 일괄 부여. Magnitude 가 정적이라 캐릭터별 다른 값 어려움. DT 패턴이 더 유연.
-- (구식) **`UAbilitySystemGlobals::GlobalAttributeMetaDataTable`** — 엔진 내장 DataTable 시스템. 우리 DT 패턴과 비슷하지만 사용처가 분산됨.
-
-### UE 5.4+ GameplayEffect Component 시스템 (필수)
-
-UE 5.4 부터 `UGameplayEffect` 가 **`UGameplayEffectComponent` 기반**으로 리팩토링됨.
-이전 방식 (`InheritableOwnedTagsContainer.Added`, `InheritableBlockedAbilityTagsContainer` 등) 은
-런타임 태그는 적용되지만 **cooldown / 일부 검증 시스템에서 인식 안 됨**.
-
-**증상**: cooldown GE 적용 시 로그에 다음 경고 + 매 frame ability 활성화:
-```
-LogAbilitySystem: Warning: CooldownGameplayEffectClass 'GE_*' grants no tags.
-A GameplayEffect class must grant tags (Component: Grant Tags to Target Actor) to be used as cooldown.
-```
-
-**올바른 패턴 — `CreateDefaultSubobject` + `GEComponents.Add`** (생성자 안전):
+| 클래스 | 역할 |
+|--------|------|
+| `AOSGameMode` (서버 전용) | 게임 상태 전이, 승패, 골드 적립, 벤픽 드래프트 권한, 라운드 스폰 |
+| `AOSGameState` | 클라 리플리케이션 (상태/라운드/골드/드래프트/라운드결과) — **클라는 GameMode 없으니 GameState 경유** |
+| `AOSMapManager` | 맵 레이아웃 + 구조물 스폰(`HasAuthority` 가드) |
+| `AOSSpawnPoint` | 캐릭터 스폰 (12개: 2팀×3레인×2) |
+| `AOSCharacter` | AI 캐릭터 베이스. ASC+AttributeSet 소유. IAbilitySystemInterface |
+| `AOSAIController` | **가장 복잡** — 웨이포인트 큐 + StateTree 부착. 헬퍼는 ST task 용 public |
+| `AOSStructure` | 타워/CC 베이스. ASC 통합(Phase 5). Tower HP 1000 / CC 5000 |
+| `AOSPlayerController` | 입력/카메라/위젯(로컬 PC), 서버 RPC 진입점 |
+| `AOSHealthBarWidget` | 3D 월드 HP바. `WBP_HealthBar`(에디터) 필요, `HealthProgressBar` BindWidget |
+
+### Character Lifecycle
+SpawnPoint `SpawnCharacter` → `InitializeCharacter`(팀/레인) → AIController possess → `DeployToLane` → `StartDeployment`(여기서 StateTree `StartLogic()` 수동 호출 + 웨이포인트 빌드) → StateTree tick → 사망 시 `OnCharacterDeath`(아래 애니 섹션 순서 준수) → 2s 후 destroy(리스폰 없음).
+
+## AI: State Tree (현재 아키텍처)
+
+AI 행동 결정은 **State Tree** (`Source/TDProject/AOS/AI/`). 이전 `UpdateAIBehavior` if/else 제거됨.
+- `UStateTreeAIComponent` 가 `AAOSAIController` 에 부착. **`bStartLogicAutomatically=false`** + `StartDeployment()` 에서 수동 `StartLogic()` (팀 확정 후 시작 — 안 그러면 아군 오사).
+- 자산 `/Game/AOS/AI/ST_AOSCharacterAI`. **스키마=StateTreeAIComponentSchema, ContextActorClass=`AOSCharacter`(Pawn, AIController 아님!).**
+- **Design B (재선택 패턴)**: 우선순위 = 자식 노드 순서 한 곳(`UseR→UseW→UseQ→UseE→AttackEnemy→AttackStructure→PushLane`, PushLane 은 조건 없는 fallback 이라 **맨 마지막**). RUNNING 유지 state(PushLane/AttackEnemy)만 `On Tick → Root` 재선택 트랜지션. 스킬 task 는 즉시 완료형이라 트랜지션 불필요.
+
+**자주 빠지는 함정** (대부분 여기서 해결):
+1. ContextActorClass 가 AIController 로 잘못 설정 → `AOSCharacter` 로.
+2. `bStartLogicAutomatically=true` → BeginPlay 시 `GetPawn()=null` schema 실패. false + StartDeployment 에서 수동 시작.
+3. Running task state 는 자동 재선택 안 됨 → 적 만나도 안 싸움. Root 의 `On Tick` 트랜지션으로 강제.
+4. InstanceData 의 `AIController` 는 **base `TObjectPtr<AAIController>`** 로 선언(derived 로 하면 schema binding 실패), cpp 에서 `Cast<AAOSAIController>`.
+5. `HasCooldownTag` 는 `bInvert=true` ("쿨다운 **없을 때** 사용 가능").
+6. StartLogic 을 OnPossess 에서 호출 → SetTeam 전 평가 → Team2 가 아군 오사. StartDeployment 로 이동.
+
+> Task/Condition 전체 표 + ST 자산 작성 단계 + 디버깅 명령(`showdebug ai`, `gd.AIDebug.StateTree 1`, Rewind Debugger) → **PROJECT_REFERENCE** "AI: State Tree" 섹션.
+
+## GAS (Gameplay Ability System)
+
+**현재 운영 (Phase 0~6 완료)**:
+- 데미지/속성/공격 일원화: `UAOSAbilitySystemComponent` + `UAOSAttributeSet`(Health/MaxHealth/AttackPower/AttackRange/AttackSpeed/MoveSpeed/Damage(메타)). 캐릭터·구조물 모두 ASC 소유(PlayerState 미사용). 기본값 Health=100/AP=10/Range=500/AS=1.0/MS=600.
+- **단일 데미지 흐름**: 모든 데미지가 `GE_Damage` → `AOSAttributeSet::PostGameplayEffectExecute` 통과(Health 차감 + Owner 분기로 `OnCharacterDeath`/`OnStructureDestroyed`). HP바·데미지숫자 등 비주얼 훅은 여기 한 곳.
+- **기본 공격** = `UGA_Attack`(montage-driven, `Ability.Attack.Basic`, AttackSpeed 가 재생속도+쿨다운(1/AS)에 반영). 쿨다운 단일 진실 = `Cooldown.Attack.Basic` 태그.
+- **스킬 = 데이터 주도**: `UGA_SkillBase`(C++ abstract) + **BP child 자산**(`BP_GA_<Char>_<Slot>` + `BP_GE_Cooldown_*`). **새 캐릭터/스킬 = BP 자산만 작성(C++ 빌드 불필요).** 절차: [`Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`](Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md).
+- **속성 초기값** = DataTable (`DT_CharacterAttributes`/`DT_TowerAttributes`/`DT_CommandCenterAttributes`, row 타입 `FAOSAttributeInitRow`) → float 멤버 fallback. ⚠️ 생성자에서 `MaxWalkSpeed` 강제할당 금지(BP override 존중).
+
+**⚠️ UE 5.4+ GameplayEffect Component 패턴 (필수)** — cooldown/태그 부여 GE 는 이 패턴이 아니면 cooldown 시스템이 태그를 인식 못 함(`grants no tags` 경고 + 매 frame 활성화):
 ```cpp
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
-
-UGE_Cooldown_Attack::UGE_Cooldown_Attack()
-{
-    DurationPolicy = EGameplayEffectDurationType::HasDuration;
-    DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(1.0f));
-
-    // ⚠️ FindOrAddComponent / AddComponent 는 NewObject 를 호출하므로
-    //    CDO 생성자 안에서 호출 시 fatal error (AssertIfInConstructor).
-    //    대신 CreateDefaultSubobject + GEComponents 직접 추가 패턴 사용.
-    UTargetTagsGameplayEffectComponent* TagsComp =
-        CreateDefaultSubobject<UTargetTagsGameplayEffectComponent>(TEXT("TargetTagsGEComp"));
-    if (TagsComp)
-    {
-        FInheritedTagContainer TagsContainer;
-        TagsContainer.Added.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Attack.Basic"));
-        TagsComp->SetAndApplyTargetTagChanges(TagsContainer);
-        GEComponents.Add(TagsComp);  // GEComponents 는 protected — 자식 클래스 접근 가능
-    }
-}
+// 생성자 안 — FindOrAddComponent/AddComponent 는 NewObject 호출이라 CDO 생성자에서 fatal.
+//   CreateDefaultSubobject + GEComponents.Add 패턴을 써야 함.
+UTargetTagsGameplayEffectComponent* TagsComp =
+    CreateDefaultSubobject<UTargetTagsGameplayEffectComponent>(TEXT("TargetTagsGEComp"));
+FInheritedTagContainer C; C.Added.AddTag(FGameplayTag::RequestGameplayTag("Cooldown.Attack.Basic"));
+TagsComp->SetAndApplyTargetTagChanges(C);
+GEComponents.Add(TagsComp);   // GEComponents 는 protected
 ```
+**Instant GE 에는 TargetTagsComponent 금지** (`IsDataValid` 에러 — 즉시 만료라 grant 불가). 디버깅: `showdebug abilitysystem`, `LogAbilitySystem Verbose`.
 
-**Instant GE 에서는 TargetTagsComponent 사용 금지** — `IsDataValid` 가 에러.
-Instant 는 태그를 ASC 에 grant 할 수 없음 (즉시 만료). 데미지 타입 분류 등은
-`FGameplayEffectContextHandle` 또는 `GameplayCue` 로 처리.
+> Phase별 마이그레이션 기록·Alex 4스킬 스펙(Q/W/E/R)·`UGA_SkillBase` UPROPERTY 전체·전체 데미지 흐름도 → **PROJECT_REFERENCE** "GAS" 섹션.
 
-다른 컴포넌트 (cooldown 외 일반 태그/blocked tags 등) 도 같은 패턴:
-- `UTargetTagsGameplayEffectComponent` — Target ASC 에 태그 부여 (Duration GE 에서)
-- `UAssetTagsGameplayEffectComponent` — GE 자체의 asset tags (Instant 도 OK)
-- `UBlockAbilityTagsGameplayEffectComponent` — 차단할 ability tags
+## 애니메이션 (C++ 슬롯 + BP 자산)
 
-### 디버깅
+- `UAOSAnimInstance`(ABP parent) — `Speed/Direction/bIsMoving/bIsAttacking/bIsCasting/bIsHitReacting/bIsDead` 등 GAS 태그 미러. 생성자 `RootMotionMode = RootMotionFromMontagesOnly`.
+- `AAOSCharacter` 몽타주 슬롯: `AttackMontage`/`HitReactMontage`/`DeathMontage`/`SkillMontages`(map). **nullptr 면 조용히 skip — 자산 없어도 PIE 동작.**
+- **HitReact↔Attack 충돌 규칙**: (A) 공격 중(`Ability.Attack.Basic` 보유) HitReact 스킵. (B) `UGE_HitReact_State` 가 `State.HitReact` 부여(Duration=몽타주 길이, SetByCaller) → `GA_Attack::ActivationBlockedTags` 가 차단.
+- **스킬 시전 root**: `UGA_SkillBase::bAllowMovementDuringCast` (BP CDO). false → `Char->ApplyCastRoot(Duration)`(`GE_Rooted` + `StopMovementImmediately`). 이동 시전은 ABP 상하체 분리(Layered Blend Per Bone, spine_01↑).
 
-- 콘솔: `showdebug abilitysystem` — ASC 상태/태그/속성 실시간 확인
-- 로그 카테고리: `LogAbilitySystem`, `LogGameplayCue` (Verbose 권장)
+**⚠️ `OnCharacterDeath` (서버) 호출 순서 — 바꾸면 desync/root motion 깨짐:**
+1. `Brain->StopLogic` (안 하면 다음 tick SendAttackEvent 가 DeathMontage 덮어씀)
+2. `MOVE_NavWalking → MOVE_Walking` (NavWalking 은 root motion 무효)
+3. `Multicast_PlayDeathMontage` (서버+클라 각각 재생 + 타이머 → `StartRagdoll`)
+4. `SetLifeSpan(MontageLen + RagdollSettleDuration)`
 
-### Hot Reload 비호환
+**사망 시퀀스에서 건드리면 안 되는 것** (시도→되돌림): 진입 시점 capsule collision off (FindFloor 실패 → MOVE_Falling), `SetActorTickEnabled(false)`, AIController::Tick 에서 `StopMovement()`. capsule NoCollision 은 **ragdoll 진입 시점에만** 안전.
 
-ASC/AttributeSet 신규 추가, 모듈 의존성 변경 등은 **풀 리빌드 필요**.
-매 Phase 시작 시 에디터 종료 후 Build.bat 실행.
+> Root motion 트러블슈팅 체크리스트(EncodeRootBoneModifier 등)·DS root motion 흐름·자산 폴더 구조 → **PROJECT_REFERENCE** "캐릭터 애니메이션 시스템".
 
-## 캐릭터 애니메이션 시스템 (Phase 3.5)
+## 경제 / 상점 / 벤픽 드래프트
 
-캐릭터 애니메이션은 **C++ 슬롯 + BP 자산 연결** 패턴.
-Phase 3.5 는 슬롯만 만든 상태이며, **자산은 디자이너가 BP_Character 디테일에서 채운다**.
+- **골드** = 글로벌 팀 공유 풀 (`AOSGameState.Team1/2Gold`, 클라는 GameState 경유 조회). 적립: 캐릭터 처치 +50 / 구조물 +150 / 라운드 패시브 +100 (GameMode EditAnywhere).
+- **아이템** = **유닛(UnitId=로스터 인덱스) 귀속, 라운드 누적**. 카탈로그 `DT_Items`(`FAOSItemRow`), 효과는 Infinite GE(`BP_GE_Item_*`). 캐릭터는 매 라운드 리스폰돼도 유닛 아이템 재적용. 구매는 준비/정산 단계만. ⚠️ 한 유닛은 한 슬롯에만(중복 배치 불가).
+- **벤픽** = 매치당 1회 드래프트. `GetDraftSequence()` 고정 14스텝(밴4 교대 + 픽10 스네이크, 팀당 밴2·픽5). 전체 고유(한 UnitId 는 한 팀만). 이후 모든 라운드 준비는 **픽된 캐릭터만** 배치(`ServerSetLaneDeployClassesForPlayer` 서버 강제). 흐름: `Lobby→BanPick→RoundPreparation(픽 필터)→RoundRunning→Settlement→RoundPreparation`.
+- 현재 로스터 20종(고유 5: 알렉스/베가/켄/캐미/가일 + 플레이스홀더 15). 알렉스만 풀스킬(Q/W/E/R), 나머지 기본 공격. 새 캐릭터 = `BP_Char_Ken` 복제 = 기본형.
+- ⚠️ 위젯 실현 순서: `ShowBanPick` 에서 `InitializeWithRoster`(RootWidget 구축)를 `AddToViewport` **보다 먼저** (순서 뒤바뀌면 화면 안 뜸 — 미니맵·벤픽서 실제 발생).
 
-### 핵심 클래스
+> 벤픽/상점 위젯 저작 계약(`WBP_BanPick` 바인딩 이름·반응형 ScaleBox·3D 프리뷰 스테이지)·로스터 Portrait 함정 → **PROJECT_REFERENCE** "Ban/Pick" + "Economy & Shop" 섹션.
 
-- **`UAOSAnimInstance`** (`Source/TDProject/AOS/AOSAnimInstance.h/cpp`)
-  - BlueprintReadOnly 변수: `Speed`, `Direction`, `bIsMoving`, `bIsFalling`, `bIsAttacking`, `bIsCasting`, `bIsHitReacting`, `bIsDead`
-  - `NativeUpdateAnimation` 에서 `OwningCharacter->GetVelocity()` + `CachedASC->HasMatchingGameplayTag(...)` 로 매 tick 갱신
-  - DS 환경: `Velocity` 는 클라에 자동 replicate → 별도 동기화 코드 없음
-  - GAS 태그 미러는 정의된 태그만 (`Ability.Attack.Basic`). 미정의 태그는 Phase 4 에서 추가.
+## Memory Management (필수 불변식)
 
-- **`UAOSAnimNotify_AttackHit`** (`Source/TDProject/AOS/Anim/AOSAnimNotify_AttackHit.h/cpp`)
-  - 본 Phase: 빈 껍데기 (로깅만)
-  - Phase 4 에서 `GA_Attack` 의 `PlayMontageAndWait` + `WaitGameplayEvent` 패턴과 결합 → montage-driven damage
-
-### `AAOSCharacter` 몽타주 슬롯
-
+**모든 `UObject*` 포인터/배열은 `UPROPERTY()` 필수** (GC — 누락 시 크래시):
 ```cpp
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
-TObjectPtr<UAnimMontage> AttackMontage;
-
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
-TObjectPtr<UAnimMontage> HitReactMontage;
-
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
-TObjectPtr<UAnimMontage> DeathMontage;
-
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation")
-TMap<FGameplayTag, TObjectPtr<UAnimMontage>> SkillMontages;  // Phase 4 확장
-
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="AOS|Animation", meta=(ClampMin="0.0"))
-float RagdollSettleDuration = 2.0f;  // 사망 몽타주 종료 후 ragdoll 유지 시간(액터 destroy 까지)
-```
-
-- 슬롯이 nullptr 이면 조용히 skip — **자산 없어도 PIE 가 굴러간다.**
-- `GetSkillMontage(FGameplayTag)` 로 Phase 4 의 GA_Skill_X 가 매핑된 몽타주 조회.
-- `RagdollSettleDuration` 은 ragdoll 시뮬레이션이 정착할 시간 — 너무 짧으면 시체가 공중에서 사라짐.
-
-### 트리거 흐름
-
-| 애니메이션 | 트리거 진입점 | 호출 방식 |
-|----------|---------------|-----------|
-| Idle / Move | (없음 — ABP 가 `Speed`/`Direction` 변수만 읽음) | AnimGraph 자체 |
-| Attack | `GA_Attack::ActivateAbility` (서버) | `Char->PlayAnimMontage(AttackMontage)` 한 줄 (자동 replicate). **데미지는 즉시 적용 그대로** — Phase 4 에서 montage-driven 으로 전환 |
-| HitReact | `UAOSAttributeSet::PostGameplayEffectExecute` (서버, 데미지 차감 분기, NewHealth > 0 일 때) | `Char->Multicast_PlayHitReact()` (NetMulticast Reliable) |
-| Death | `AAOSCharacter::OnCharacterDeath` (서버) | (1) `Brain.StopLogic("Character died")` — StateTree 즉시 정지 (없으면 다음 tick 의 SendAttackEvent 가 DeathMontage 를 덮어씀) → (2) `CMC->SetMovementMode(MOVE_Walking)` 강제 (NavWalking 이면 root motion 무효) → (3) `Multicast_PlayDeathMontage()` (서버+클라 각각 `PlayAnimMontage` + 타이머 → `StartRagdoll`) → (4) `SetLifeSpan(MontageLength + RagdollSettleDuration)` |
-| Skill | (Phase 4) `GA_Skill_X::ActivateAbility` | `Char->PlayAnimMontage(GetSkillMontage(SkillTag))` |
-
-### HitReact ↔ Attack 충돌 규칙 (Phase 3.5+)
-
-두 몽타주가 같은 `DefaultSlot` 에서 재생되므로 HitReact 가 Attack 을 중간에 끊는 문제가 있었음.
-또한 AI 가 HitReact 중에도 공격을 시도해서 부자연스러웠음. 다음 두 규칙으로 해결:
-
-#### Rule A — 공격 중 HitReact 스킵
-
-`AAOSCharacter::Multicast_PlayHitReact_Implementation` 진입 시 ASC 가 `Ability.Attack.Basic`
-태그를 가지고 있으면 (= GA_Attack 활성 중) HitReact 재생을 스킵.
-
-```cpp
-if (ASC->HasMatchingGameplayTag(FGameplayTag::RequestGameplayTag("Ability.Attack.Basic")))
-{
-    return;  // 공격 진행 중 — hit react 무시
-}
-```
-
-#### Rule B — HitReact 중 공격 차단
-
-`State.HitReact` GameplayTag + `UGE_HitReact_State` Duration GE (`UTargetTagsGameplayEffectComponent`
-로 태그 부여) + GA_Attack 의 `ActivationBlockedTags` 에 `State.HitReact` 등록.
-
-흐름:
-1. 데미지 받음 → `Multicast_PlayHitReact` 호출
-2. Rule A 통과 (공격 중 아님) → 서버에서 `ApplyHitReactStateGE()` 호출
-3. `UGE_HitReact_State` 적용 → `State.HitReact` 태그 부여 (Duration = HitReactMontage 길이)
-4. 태그 active 동안 GA_Attack 활성화 시도 시 `ActivationBlockedTags` 에 걸려 거부됨
-5. AI 의 StateTree 가 `SendAttackEvent` 를 계속 보내도 ability 가 무시 → 사실상 일시 정지
-6. HitReactMontage 길이 만큼 후 GE 만료 → 태그 제거 → 공격 재개 가능
-
-```cpp
-// GA_Attack 생성자
-ActivationBlockedTags.AddTag(FGameplayTag::RequestGameplayTag("State.HitReact"));
-```
-
-#### HitReact Duration — SetByCaller 동적 매핑
-
-`UGE_HitReact_State` 의 `DurationMagnitude` 는 `SetByCaller(Data.Duration)`. 호출 측에서:
-```cpp
-Spec.Data->SetSetByCallerMagnitude(
-    FGameplayTag::RequestGameplayTag("Data.Duration"),
-    HitReactMontage->GetPlayLength());
-```
-이렇게 자산 길이에 맞춰 동적으로 duration 설정. BP 에서 HitReactMontage 를 교체하면 자동으로 적절한 차단 시간 유지.
-
-#### 신규 게임플레이 태그 (DefaultGameplayTags.ini)
-
-- `State.HitReact` — 피격 리액션 중 (공격/스킬 차단)
-- `Data.Duration` — GE SetByCaller duration key
-
-#### `UAOSAnimInstance` 의 `bIsHitReacting` 태그 미러
-
-Phase 3.5 당시 TODO 로 남겨뒀던 부분 활성화. `NativeUpdateAnimation` 안에서
-`ASC->HasMatchingGameplayTag("State.HitReact")` 로 갱신. ABP 가 이 변수로 transition 가능.
-
-#### Hot Reload 비호환
-
-신규 UCLASS `UGE_HitReact_State` + 신규 UFUNCTION `ApplyHitReactStateGE` 도입 → **풀 리빌드 필수**.
-
-### Dedicated Server 네트워킹
-
-- `PlayAnimMontage` 는 `ACharacter` 내장 replicate — 서버 호출 시 자동.
-- `Multicast_PlayDeathMontage` / `Multicast_PlayHitReact` 는 명시 RPC — 서버 권한 진입점에서만 호출.
-- AnimNotify 는 클라/서버 양쪽 실행 → notify 안에 게임플레이 로직 절대 금지 (현재는 빈 껍데기).
-- 단일 진실 공급원: 쿨다운은 `Cooldown.Attack.Basic` 태그 (Phase 3 부터 적용) — 몽타주 길이 ≠ 쿨다운이어도 무영향.
-
-### Death Montage + Root Motion + Ragdoll 전환
-
-사망 시퀀스는 **(1) StateTree 정지 → (2) MovementMode 정정 → (3) Death montage 멀티캐스트 → (4) Ragdoll 전환 타이머 → (5) 액터 destroy** 5 단계.
-각 단계마다 함정이 있었고 아래는 그 결과로 굳어진 패턴.
-
-**`OnCharacterDeath` (서버) 핵심 호출 순서** — 순서 바꾸면 desync 또는 root motion 깨짐:
-
-```cpp
-void AAOSCharacter::OnCharacterDeath()
-{
-    if (!HasAuthority() || bIsDeadCached) return;
-    bIsDeadCached = true;
-
-    // (1) StateTree 즉시 정지 — 안 그러면 다음 tick 의 SendAttackEvent 가
-    //     AttackMontage 를 재생해서 같은 DefaultSlot 의 DeathMontage 를 덮어씀.
-    if (AController* C = GetController()) {
-        if (UBrainComponent* Brain = Cast<AAOSAIController>(C) ?
-            Cast<AAOSAIController>(C)->GetBrainComponent() : nullptr) {
-            Brain->StopLogic(TEXT("Character died"));
-        }
-    }
-
-    // (2) MovementMode 를 Walking 으로 강제 — AI 캐릭터의 기본 MOVE_NavWalking 은
-    //     NavMesh 밖으로 나가는 root motion delta 를 snap-to-navmesh 로 무효화.
-    if (UCharacterMovementComponent* CMC = GetCharacterMovement()) {
-        if (CMC->MovementMode == MOVE_NavWalking) CMC->SetMovementMode(MOVE_Walking);
-    }
-
-    // (3) 사망 몽타주 멀티캐스트 — 서버+모든 클라가 각자 PlayAnimMontage + StartRagdoll 타이머.
-    Multicast_PlayDeathMontage();
-
-    // (4) GameMode 통보, lifespan 설정 등 (기존 로직)
-    const float MontageLen = DeathMontage ? DeathMontage->GetPlayLength() : 0.f;
-    SetLifeSpan(MontageLen + RagdollSettleDuration);
-    // ⚠ SetActorTickEnabled(false) 호출 금지 — root motion 적용을 방해함.
-    // ⚠ Capsule collision 변경 금지 — CMC::FindFloor sweep 실패 → MOVE_Falling 전환 → root motion 흐름 깨짐.
-}
-```
-
-**`StartRagdoll` (각 머신 로컬, Multicast 의 타이머에서 호출)** — 이 시점부턴 root motion 끝났으므로 capsule 안전하게 끔:
-
-```cpp
-void AAOSCharacter::StartRagdoll()
-{
-    USkeletalMeshComponent* M = GetMesh();
-    if (!M || !M->GetPhysicsAsset()) {                 // PhysicsAsset 없으면 fallback
-        if (M) M->SetVisibility(false, true);
-        return;
-    }
-    if (UCapsuleComponent* Cap = GetCapsuleComponent()) // 이제 안전 — root motion 종료됨
-        Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    if (UCharacterMovementComponent* CMC = GetCharacterMovement())
-        CMC->SetMovementMode(MOVE_None);
-
-    M->SetCollisionProfileName(TEXT("Ragdoll"));
-    M->SetAllBodiesSimulatePhysics(true);
-    M->WakeAllRigidBodies();
-    M->bBlendPhysics = true;
-}
-```
-
-**호출 시점 — `Multicast_PlayDeathMontage` 안에서**:
-- DeathMontage + AnimInstance 둘 다 있으면: `PlayAnimMontage(DeathMontage)` + `MontageLength` 만큼 타이머 → `StartRagdoll`
-- 둘 중 하나라도 없으면: 즉시 `StartRagdoll` (fallback)
-
-**건드리면 안 되는 것 — 시도했다가 되돌린 변경**:
-- ❌ `SetActorEnableCollision(false)` / `Capsule->SetCollisionEnabled(NoCollision)` 를 사망 진입 시점에 호출 — `CMC::FindFloor` sweep 실패 → `MOVE_Falling` 전환 → root motion 흐름 깨짐. (Ragdoll 진입 시점엔 OK)
-- ❌ `Capsule->SetCollisionResponseToAllChannels(Overlap)` — 같은 이유.
-- ❌ `SetActorTickEnabled(false)` — 정확한 메커니즘은 불명이지만 root motion 적용 안 됨.
-- ❌ `AOSAIController::Tick` 의 사망 처리 블록에서 `StopMovement()` 호출 — `PathFollowingComponent::AbortMove` 가 CMC velocity 에 간섭하여 root motion 과 race. `Brain.StopLogic` 이 이미 StateTree 정지하므로 중복.
-
-**시체 collision 정책**: 사망 후 액터 destroy 전까지 캡슐 collision 은 **유지** (Pawn vs Pawn 충돌 그대로). 시체가 살아있는 캐릭터를 막는 건 게임 특색으로 의도. Ragdoll 진입 후엔 캡슐 NoCollision (메시가 물리 시뮬되므로 캡슐은 더 이상 의미 없음).
-
-### Root Motion 트러블슈팅 체크리스트
-
-새 root motion 자산 도입 시 — 또는 root motion 이 추출은 되는데 액터가 안 움직일 때 — 다음 순서로 점검.
-
-1. **AnimSequence 설정** — AS 의 디테일에서:
-   - `Enable Root Motion = true`
-   - `Force Root Lock = false` (true 면 root 가 origin 에 고정)
-   - `Root Motion Root Lock = Anim First Frame` (또는 자산 의도에 맞게)
-2. **AS preview viewport** — 자산 에디터에서 "Process Root Motion" 토글 ON → 캐릭터가 viewport 안에서 실제 이동하면 자산 데이터 정상. 안 움직이면 → 3번.
-3. **C++ 진단** — `Montage->ExtractRootMotion(0, MontageLen, false)` 호출해서 결과 transform 의 translation 확인:
-   - `HasRootMotion()=TRUE` 인데 `ExtractRootMotion(...)` 의 translation 이 (0,0,0) → **bone track 비어있음**, 데이터가 anim curve (`root_translation_Y` 등) 에만 있는 케이스 (Boss_Parried_RM 등 외부 자산에서 자주 발생).
-   - 해결: AS 에디터 → `EncodeRootBoneModifier` 적용. source bone `pelvis`, axis `XYZ-Axes` → pelvis 의 track 데이터를 root 본 raw track 으로 baking. **자산 복제 후 적용 권장** (destructive 변경).
-4. **AnimInstance RootMotionMode** — `UAnimInstance::RootMotionMode` 기본값이 `NoRootMotionExtraction` 이라 AnimSequence 의 `bEnableRootMotion=true` 도 무시됨. 우리는 `UAOSAnimInstance` 생성자에서:
-   ```cpp
-   RootMotionMode = ERootMotionMode::RootMotionFromMontagesOnly;
-   ```
-5. **런타임 로그** — `log LogRootMotion Verbose` 로 CMC 의 per-tick root motion 적용 추적. delta 가 매 tick 찍히면 추출은 정상.
-6. **MovementMode 확인** — `showdebug character` 로 실시간 표시. `MOVE_NavWalking` 이면 NavMesh 밖으로 나가는 root motion 이 snap-to-navmesh 로 무효화 → `MOVE_Walking` 으로 전환 필요. (사망 시퀀스에선 이미 자동 처리, 다른 곳에서 root motion 쓰는 경우 주의)
-7. **MovementMode 가 Falling 으로 바뀌었는지** — `FindFloor` sweep 이 실패하면 `MOVE_Falling` 으로 떨어지면서 root motion translation 이 중력/공기저항 로직에 가려짐. 캡슐 collision 을 끄거나 floor 가 갑자기 사라진 경우 발생.
-
-### Dedicated Server 환경에서의 Root Motion
-
-DS 에서 montage-driven root motion 은 다음 흐름으로 동작:
-
-```
-[서버] PlayAnimMontage (예: Multicast_PlayDeathMontage 의 ImplementationAll branch)
-   ↓ AnimInstance tick → RootMotionFromMontagesOnly → ExtractRootMotion
-   ↓ CMC::PerformMovement 가 RootMotionDelta 를 액터 위치에 적용 (Authority)
-   ↓ ACharacter 가 root motion source 를 RepRootMotion 으로 직렬화
-   ↓
-[리플리케이션]
-   ↓
-[각 클라이언트] OnRep_RootMotion → ACharacter::SimulatedRootMotionPositionFixup
-   ↓ CanUseRootMotionRepMove / FindRootMotionRepMove 로 서버와 시간/위치 동기화
-   ↓ AnimInstance 가 같은 montage 를 같은 위치에서 재생 (Multicast 가 이미 PlayAnimMontage 호출)
-```
-
-**중요한 함정**:
-- **서버에서 StateTree 가 살아있으면 죽음 직후 SendAttackEvent → AttackMontage 가 DeathMontage 를 덮어씀** → 서버는 Attack 재생, 클라는 Death 재생하는 **desync 발생**. 반드시 `OnCharacterDeath` 의 (1) 단계 `Brain.StopLogic` 으로 정지.
-- `Multicast_PlayDeathMontage` 는 서버에서도 실행됨 (NetMulticast 의 표준 동작) → 서버 자신도 PlayAnimMontage 호출하므로 서버 권한 액터의 위치가 root motion 으로 실제 이동.
-- 클라이언트는 `OnRep_RootMotion` 이 도착하기 전까지는 서버 위치를 따라가지만, RootMotion replication 이 시작되면 자체 시뮬레이션으로 전환 → 짧은 보간 갭이 생길 수 있음 (현재는 무시 가능 수준).
-
-### 자산 폴더 구조 (예정 — 사용자 import 후)
-
-```
-Content/AOS/Anim/
-├── ABP_AOSCharacter.uasset           // parent = UAOSAnimInstance
-├── BS_Locomotion.uasset              // BlendSpace1D, axis=Speed 0..600
-├── Montages/
-│   ├── AM_Attack.uasset              // slot=DefaultSlot, AnimNotify_AttackHit @ ~0.4s
-│   ├── AM_HitReact.uasset            // slot=UpperBody
-│   ├── AM_Death.uasset               // slot=FullBody
-│   └── AM_Skill_<Name>.uasset        // Phase 4
-└── Notifies/                         // 비움 (C++ notify 만 사용)
-```
-
-`SetupCharacterDefaults` 가 `/Game/AOS/Anim/ABP_AOSCharacter` 를 우선 로드, 자산 없으면 `ABP_Unarmed` (UE5 기본) 폴백.
-
-### Skeletal Mesh
-
-현재 모든 캐릭터는 **UE5 Mannequin (`SKM_Manny_Simple` + `IK_Mannequin`)** 을 dev 타깃으로.
-사용자가 다른 메시/스켈레톤 자산을 가져오면 IK Retargeter 로 SK_Mannequin 호환으로 retarget 후 같은 슬롯에 꽂으면 됨.
-캐릭터별 derived BP (`BP_Warrior` 등) 도입 시점에 캐릭터별 ABP / Skill 몽타주 매핑을 분리한다.
-
-### 사용자 수동 작업 (자산 import 후)
-
-1. **자산 import**: UE5 Mannequin 호환 또는 IK Retargeter 로 retarget. `Content/AOS/Anim/Montages/` 에 배치.
-2. **몽타주 슬롯**: AM 자산의 Anim Slot Manager 에 `DefaultSlot` (Attack/Death) / `UpperBody` (HitReact) 그룹 설정.
-3. **AttackHit Notify**: `AM_Attack` 타임라인에 `AOSAnimNotify_AttackHit` 트랙 추가, 무기 충격 프레임 (보통 0.3~0.5s).
-4. **BP_Character 디테일**:
-   - Mesh → Skeletal Mesh / Anim Class
-   - AOS|Animation → 4 개 Montage 슬롯 + SkillMontages map (Phase 4)
-
-### Hot Reload 비호환
-
-신규 UCLASS (`UAOSAnimInstance`, `UAOSAnimNotify_AttackHit`) 추가 → **풀 리빌드 필수**.
-신규 UPROPERTY (`RagdollSettleDuration`) / UFUNCTION (`StartRagdoll`, `Multicast_PlayDeathMontage` 시그니처 변경) 도입 시점에도 풀 리빌드 — 현재는 적용 완료, history 기록용.
-이후 슬롯 채우기 / 몽타주 변경은 hot reload OK.
-
-## Economy & Shop System (Slice 0+)
-
-오토배틀러 MOBA 의 핵심 루프 "골드 벌어 → 아이템 사서 → 유닛 강화 → 라인 이김". 구매는 전투 중이 아니라 **준비/정산 단계**에서.
-
-### 골드 (글로벌, 팀 공유 풀)
-
-- **`AAOSGameState`**: `Team1Gold`/`Team2Gold` (`ReplicatedUsing=OnRep_Gold`), `GetGold(Team)`, `ServerAddGold`/`ServerSetGold`(서버 전용), `OnTeamGoldChanged(Team,NewGold)` 델리게이트(UI 라이브 갱신).
-- **`AAOSGameMode`**: `AwardGold(Team,Amount)`(음수=차감). EditAnywhere: `GoldPerCharacterKill`(50)/`GoldPerStructureKill`(150)/`GoldPerRoundIncome`(100).
-- 클라엔 GameMode 없음 → 골드는 **GameState 경유로만** 조회 (DS 규칙).
-
-### 아이템 (유닛 귀속, 라운드 간 누적)
-
-- **카탈로그**: `/Game/AOS/GAS/Data/DT_Items` (Row=`FAOSItemRow`: DisplayName/Cost/StatEffect(Infinite GE)/Icon/Description/**RecommendedClasses**). 현재 5종:
-
-  | Row | 효과 | 추천 |
-  |---|---|---|
-  | Sword(롱소드) | 공격력 +25 | 켄·알렉스·캐미 |
-  | Vitality(체력의 물약) | 최대체력 +200 | 베가·알렉스·가일 |
-  | Boots(신속의 신발) | 이속 +100 | 캐미·알렉스 |
-  | Dagger(재빠른 단검) | 공속 +0.3 | 켄·캐미 |
-  | Cannon(오래된 포신) | 사거리 +150 | 가일·베가 |
-
-- **아이템 GE 패턴**: `BP_GE_Item_*` = Infinite Duration + AttributeSet 속성에 AddBase Modifier. 새 아이템 = `BP_GE_Item_Sword` 복제 → Modifier 속성/크기 변경 → `DT_Items` 행 추가.
-- **유닛 귀속**: 아이템은 **유닛(UnitId = 로스터 인덱스)** 에 귀속·라운드 누적. 캐릭터는 매 라운드 리스폰되지만 배치된 유닛의 아이템이 스폰 시 재적용.
-  - `AAOSGameMode::UnitItemInventory[2]` = `TMap<int32(UnitId),TArray<FName>>` (서버 전용)
-  - `ServerBuyItemForUnit(Team,UnitId,Row)` — 단계/골드 검증 → 차감 → 인벤토리 추가
-  - `DeployPlan[T][L].UnitIds` (Classes 와 평행) → 스폰 시 `ApplyUnitItemsToCharacter(Team,UnitId,Char)` 로 GE 재적용
-  - ⚠️ **중복 배치 불가**: 한 유닛(로스터 항목)은 한 슬롯에만 (유닛 정체성 — CharacterSelect 드롭에서 강제)
-- **구매 단계 제한**: `RoundPreparation`/`Settlement` 에서만 허용 (전투 중 차단).
-
-### 상점 UI (팝업)
-
-- **`UAOSShopWidget`** (`UI/AOSShopWidget.*`) — 준비 화면(`UAOSCharacterSelectWidget`)에 **전체화면 오버레이 자식**으로 임베드(평소 Collapsed). "상점 열기" 버튼으로 표시.
-  - **View1 유닛 선택**: 배치된 유닛(최대 5) → 클릭 (`UAOSShopUnitButton`)
-  - **View2 아이템 페이지**: 동일 목록, **`RecommendedClasses` 매칭 유닛이면 ★ 추천 상단 정렬** (`UAOSShopItemButton`). 골드 부족 시 버튼 비활성.
-  - **뒤로가기**(유닛 선택) + **닫기**, 헤더에 **골드 + 준비 남은시간 상시 표시**(CharacterSelect 가 매 틱 `UpdateTimer` 포워딩).
-- **구매 경로**: ShopItemButton → `AAOSPlayerController::Server_BuyItemForUnit(UnitId,Row)` RPC → 서버가 PlayerState 팀 강제 → `GameMode::ServerBuyItemForUnit`. (클라는 `DT_Items` 직접 로드, 구매만 서버.)
-- 콘솔 테스트: `BuyItem <UnitId> <RowName>` (Exec).
-
-### 캐릭터 로스터 (현재 20종)
-
-`TDProj_GM` (BP GameMode) `CharacterRoster`: **고유 5종**(알렉스 / 베가 / 켄 / 캐미 / 가일) + **플레이스홀더 15종**(`BP_Char_Unit6..20`). 모두 `BP_Character` 자식 + Mannequin(`SK_Mannequin_UE4_WithWeapon`) + `ABP_AOSCharacter`.
-- 로스터 인덱스 = **UnitId** (벤픽·배치·아이템 귀속의 키). 0~4=고유, 5~19=플레이스홀더.
-- 스탯: `AttributeInitRowName` → `DT_CharacterAttributes` 행.
-- 스킬: **알렉스만 풀스킬**(Q/W/E/R, BP_GA_Alex_*). 나머지는 기본 공격(GA_Attack)만 — 새 캐릭터는 **BP_Char_Ken 복제 = 기본형**이 표준.
-- 플레이스홀더 15종은 벤픽이 의미를 가지려면 ≥14 필요(밴4+픽10)해서 추가. 고유 스탯/스킬/초상화 차별화는 후속 작업.
-
-### MCP 로 에셋 데이터 편집 (함정 주의)
-
-- **DataTable 행 추가·수정**: `DataTableFunctionLibrary.export_data_table_to_json_string` ↔ `fill_data_table_from_json_string` **JSON 라운드트립**(기존 필드 보존). `export_to_json` 은 없음.
-- **EditDefaultsOnly 구조체**(FCharacterRosterEntry, FGameplayModifierInfo 등): `set_editor_property` 가 "cannot be edited on instances" 로 막힘 → **`struct.import_text("(Field=Value,...)")`** 직렬화 우회. 클래스/텍스처 참조: `/Script/Engine.BlueprintGeneratedClass'/Game/...'`.
-- **BP CDO 편집 후 저장**: `set_editor_property` 가 패키지를 dirty 로 안 만들 수 있음 → **`save_asset(path, only_if_is_dirty=False)` 강제 저장 필수** (안 하면 디스크 미반영 → 재시작 시 유실). 구조체 필드 접근은 **snake_case**(`character_class`).
-
-## Ban/Pick Draft System (벤픽 드래프트)
-
-매칭(Lobby)과 1라운드 사이에 **MOBA 식 밴/픽 드래프트** 단계. 양 팀이 교대로 캐릭터를 밴/픽하고, 이후 모든 라운드의 준비 단계는 **픽된 캐릭터만** 배치 가능.
-
-### 상태 흐름
-
-```
-Lobby (양팀 ready) → [NEW] BanPick → RoundPreparation(픽 필터) → RoundRunning → ...
-   Settlement → RoundPreparation (BanPick 재진입 없음, 픽 풀은 매치 내내 유지)
-```
-
-- `EAOSGameState::BanPick` 은 **enum 끝에 append**(값 5) — 중간 삽입 시 기존 직렬화/BP 데이터 값 시프트 방지 (흐름 순서 ≠ enum 순서는 무방).
-- `ServerSetPlayerReady` 의 Lobby 양팀 ready 분기 → `TransitionToRoundPreparation` 대신 **`TransitionToBanPick`** 호출.
-- 드래프트 1회/매치. `Settlement → RoundPreparation` 경로는 불변 (픽 풀 유지).
-
-### 드래프트 시퀀스 (서버 고정 14스텝)
-
-`AAOSGameState::GetDraftSequence()` 의 `static const TArray<FAOSDraftStep>` (`FAOSDraftStep{ EAOSTeam Team; bool bBan; }`):
-
-```
-밴 4 (교대):       T1, T2, T1, T2
-픽 10 (스네이크):  T1, T2, T2, T1, T1, T2, T2, T1, T1, T2
-```
-
-팀당 **밴2 + 픽5**. **전체 고유** — 한 UnitId 는 밴/픽 즉시 풀에서 제거되어 한 팀만 보유. 턴 타이머(`DraftTurnDuration` 기본 30s) 만료 시 가용 유닛 중 **랜덤 자동 선택**.
-
-### GameMode (소유: `AOSGameMode.h/.cpp`, 서버 권한)
-
-| 함수/멤버 | 역할 |
-|-----------|------|
-| `TransitionToBanPick()` | `ServerResetDraft` → `SetGameState(BanPick)` → 전 PC 에 로스터 RPC → `StartDraftTurnTimer` |
-| `ServerApplyDraftSelection(EAOSTeam, int32 UnitId)` | 턴/가용 검증 → `ServerRecordBan`/`ServerRecordPick` → `ServerSetDraftStep(+1)` → 완료 시 `TransitionToRoundPreparation`, 아니면 타이머 재시작. **PC RPC 가 호출** |
-| `StartDraftTurnTimer()` / `OnDraftTurnTimeout()` | 턴 타이머 핸들, 만료 시 가용 유닛 랜덤 자동선택(`ServerApplyDraftSelection`) |
-| `DraftTurnDuration` (EditAnywhere, `AOS|BanPick`) | 턴당 제한시간(기본 30s). `DraftTurnTimeRemaining` 은 Tick 에서 1초마다 `ServerSetDraftTurnTime` |
-| `ServerSetLaneDeployClassesForPlayer` (**배치 필터**) | 각 UnitId 가 배치 팀의 픽 집합(`AOSGS->IsUnitPickedByTeam`)에 없으면 **거부** → "픽한 캐릭터만 사용" 서버 강제 |
-
-### GameState 리플리케이션 (소유: `AOSGameState.h/.cpp`)
-
-기존 `ReplicatedUsing=OnRep_X` + `ServerSetX` + `FOnXChanged` 패턴 답습. 6개 신규 Replicated 프로퍼티(모두 `ReplicatedUsing=OnRep_Draft`):
-
-- `Team1/2PickedUnitIds`, `Team1/2BannedUnitIds` (`TArray<int32>`), `CurrentDraftStep`(int32), `DraftTurnTimeRemaining`(float)
-- 서버 setter: `ServerResetDraft / ServerRecordBan / ServerRecordPick / ServerSetDraftStep / ServerSetDraftTurnTime` (각각 `OnDraftChanged` 브로드캐스트 — 리슨 호스트 즉시 갱신)
-- 시퀀스/스텝 기반 getter: `GetPickedUnits / IsUnitPickedByTeam / IsUnitPicked / IsUnitBanned / IsUnitAvailableForDraft / IsDraftComplete / GetActiveDraftTeam / IsCurrentStepBan`
-- `OnRep_Draft()` → `FOnDraftChanged OnDraftChanged` 브로드캐스트 (벤픽 위젯 구독)
-
-### PlayerController + 위젯 (소유: `AOSPlayerController.h/.cpp` + `UI/AOSBanPickWidget.h/.cpp`)
-
-- `OnGameStateChanged` 의 **BanPick 케이스** → 다른 위젯 hide + `ShowBanPick()` + `FInputModeGameAndUI`. 진입 전 항상 `HideBanPick()`.
-- `Server_DraftSelect(int32 UnitId)` (Server, Reliable) → 서버가 `PlayerState` 팀 강제 → `GameMode->ServerApplyDraftSelection`.
-- `Client_ReceiveCharacterRoster` 가 CharacterSelect 뿐 아니라 **`BanPickWidget->InitializeWithRoster`** 도 호출 (BanPick 진입 시 로스터 주입).
-- **`UAOSBanPickWidget`** (**UMG(WBP) 하이브리드** — `WBP_MainMenu`/`WBP_Settlement` 패턴, **League of Legends 챔피언 선택 스타일**): 정적 프레임은 `BindWidgetOptional`, `RebuildWidget()` 가 WBP 없을 때 C++ 폴백 트리 생성. 폴백 레이아웃 = `RootOverlay[BackdropImage(전체화면) + MainVBox]`. MainVBox = **상단바**(좌 플레이어명+밴슬롯 / 중앙 "PICK & BAN"+타이머 / 우 플레이어명+밴슬롯) + **중앙행**(좌 팀1 픽슬롯5 / 중앙 "CHAMPION SELECT" 그리드+상태+확정버튼 / 우 팀2 픽슬롯5).
-  - **2단계 선택**: 카드 클릭 = `PendingIndex` 미리보기(골드 테두리, `NativeOnMouseButtonDown` 지오메트리 hit-test) → **확정 버튼(`UButton::OnClicked`→`OnConfirmClicked`)** 에서만 `Server_DraftSelect` 전송. 확정 버튼은 내 턴 + 유효 미리보기 시만 활성.
-  - 카드/픽/밴은 `UImage`. 초상화는 로스터 `Portrait`, 없으면 **인덱스별 컬러 타일**(`PlaceholderColor`, 황금비 hue 분산). 각 그리드 카드는 **`USizeBox(72×72)`** 로 감싸 초상화 유무와 무관하게 동일 크기/클릭영역.
-  - 백드롭 `/Game/AOS/UI/Assets/T_BanPick_Backdrop` 자동로드(`StaticLoadObject`+솔리드 폴백). 초상화 `/Game/AOS/UI/Assets/T_Portrait_{Alex,Vega,Ken,Cammy,Guile}` → 로스터 0~4 `Portrait`. 플레이어명 = `PlayerState::GetPlayerName`(자기+상대, GameState PlayerArray).
-  - `RefreshCards`(틴트: 밴=암적, T1픽=적, T2픽=청, 내 턴 아님=회색) / `RefreshSlots`(픽·밴 슬롯) / `RefreshStatus`(제목·타이머·확정버튼 활성). `NativeConstruct` 에서 GameState `OnDraftChanged` 구독, `NativeTick` 이 타이머 표시 갱신.
-
-#### UMG(WBP) 하이브리드 — `WBP_BanPick` 저작 계약 (출시 스펙 1차 마이그레이션)
-
-순수 C++ Slate 였던 벤픽 위젯을 **디자이너 저작 가능 구조**로 전환(2026-06-10). 목적: UMG 디자이너에서
-레이아웃·아트·UMG 애니메이션을 코드 리빌드 없이 저작 → "출시 스펙" 천장 확보. PlayerController 는
-**이미** WBP 로딩 배선됨(`ShowBanPick` → `BanPickWidgetClass` → `LoadClass(WBP_BanPick_C)` → C++ 폴백).
-
-- **정적 프레임 = `BindWidgetOptional`**: WBP 트리에 같은 이름 위젯이 있으면 자동 바인딩, 없으면
-  `RebuildWidget()`(=`WidgetTree && !RootWidget` 가드 → `BuildFallbackFrame()`)이 현재 C++ 레이아웃을 생성.
-  → **WBP 미생성 시 회귀 0**(폴백이 기존과 동일).
-- **동적 자식 = C++ 가 바인딩/폴백 컨테이너에 채움**: 카드·픽슬롯·밴슬롯은 개수가 로스터/슬롯 수라
-  `BindWidget` 불가 → C++ 가 `CardGrid`/`Team1·2BanRow`/`Team1·2PickRow` 컨테이너에 `InitializeWithRoster`
-  에서 생성·add(멱등: clear 후 refill). `PopulateBanRow`/`PopulatePickRow` + 카드 루프.
-- **`WBP_BanPick` 작성**(에디터, Parent=`UAOSBanPickWidget`) — 아래 이름과 **정확히 일치**해야 바인딩(전부 선택):
-
-  | 종류 | 위젯 타입 | 이름 |
-  |------|-----------|------|
-  | 배경 | Image | `BackdropImage` |
-  | 텍스트 | TextBlock | `TitleText` `TimerText` `StatusText` `Team1PlayerNameText` `Team2PlayerNameText` `ConfirmText` |
-  | 확정 | Button | `ConfirmButton` |
-  | 카드 컨테이너 | WrapBox | `CardGrid` |
-  | 밴 컨테이너 | HorizontalBox | `Team1BanRow` `Team2BanRow` |
-  | 픽 컨테이너 | HorizontalBox | `Team1PickRow` `Team2PickRow` |
-  | 3D 프리뷰 | Image | `MyPreviewImage`(우하단=내 팀) `EnemyPreviewImage`(좌상단=상대) |
-
-  - 컴파일·저장하면 PC 의 `LoadClass(WBP_BanPick_C)` 가 자동으로 잡아 WBP 경로 활성. (선택)
-    `BP_AOSPlayerController.BanPickWidgetClass` 에 명시 지정 가능.
-  - ⚠️ **카드 클릭 히트테스트**: 클릭은 위젯 루트의 `NativeOnMouseButtonDown` 지오메트리 hit-test 로 처리.
-    WBP 에서도 **카드 아래에 hit-test Visible 한 요소(백드롭을 `Visible`)** 가 있어야 클릭이 루트로 버블링됨.
-  - **반응형 스케일(리사이즈 대응)**: 절대 픽셀 코너 레이아웃이라 창 축소 시 코너 블록이 겹침 → 루트를
-    `OuterOverlay[전체배경 + UScaleBox(Stretch=ScaleToFit) → SizeBox(1920×1080 디자인 캔버스) → RootOverlay(콘텐츠)]`
-    구조로 감쌈. 콘텐츠는 1920×1080 기준 절대 배치, ScaleBox 가 비율 유지 균일 스케일(안쪽 UI 포함). 16:9 창은
-    여백 0, 비-16:9 PIE 창에서만 레터박스. 클릭 히트테스트는 스케일된 실제 지오메트리로 계산돼 영향 없음.
-    ⚠️ **함정**: `Stretch=Fill` 은 고정크기 SizeBox 자식을 **스케일 안 함**(슬롯만 늘려 안쪽 UI 크기 그대로) /
-    수동 `SetRenderScale` 은 뷰포트·DPI 좌표 계산이 까다로워 한쪽 과도 잘림 → 둘 다 폐기, **ScaleToFit 이 정답**.
-    (비율 무시 꽉 채움을 정 원하면 DPI 글로벌 스케일 + 코너 앵커 반응형이 별도 옵션 — 단 극단 비율서 겹침.)
-  - **그리드 세로 스크롤**: 폴백은 `SizeBox(MaxDesiredHeight=410≈5행) → ScrollBox → CardGrid`. 5행 이하면
-    스크롤바 자동 숨김(현 20종=3행 무변화). `NativeOnMouseButtonDown` 은 **CardGrid 부모(=스크롤 뷰포트)
-    geometry 가드** — 뷰포트 밖으로 스크롤된 카드의 cached geometry 오클릭 방지. WBP 에선 디자이너가
-    `CardGrid` 를 자기 ScrollBox 안에 배치하면 동일 동작.
-  - **장식 텍스처 자동로드** (white-on-alpha → 위젯 틴트, 없으면 솔리드/skip 폴백):
-    `T_BanPick_LineTaper`(세로 대각 팀 경계선 — 좌=블루/우=레드 팀색, ±8°) / `T_BanPick_LineTaperH`(LOCK IN
-    양쪽 + 타이머 아래(그리드 폭 614) 레드 강조선) / `T_BanPick_WingSide`(**제목 양옆 필리그리 날개** —
-    좌=원본, 우=`SetRenderScale(-1,1)` 미러, 레드). 생성: `make_banpick_linetaper.py`(PIL) +
-    `gen_banpick_flourish.py`(ComfyUI 인라인, `--prompt`/`--out` 지원, 기하 폴백 내장) +
-    `crop_banpick_flourish.py`(창 크롭→알파 레벨→**최대 연결 성분 필터**→bbox — 배경 박스/조각/잘림 제거).
-  - ⚠️ `ConfirmButton.OnClicked` 바인딩은 **`InitializeWithRoster` 가 1회**(`IsAlreadyBound` 가드) — WBP/폴백 단일 경로.
-
-#### 3D 캐릭터 프리뷰 (`AAOSCharacterPreviewStage`, 클라 전용)
-
-LoL/이터널리턴 식 "선택하면 캐릭터 3D 모델이 렌더되는 공간" (좌상단=상대, 우하단=내 팀). 2D 초상화 아님.
-
-- **기법**: `SceneCaptureComponent2D` → 런타임 생성 `UTextureRenderTarget2D` → **`FSlateBrush::SetResourceObject(RT)` 로 UMG Image 에 직접 표시** (머티리얼 에셋·RT 에셋 **불필요**).
-- **`AAOSCharacterPreviewStage`** (`UI/AOSCharacterPreviewStage.h/.cpp`) — 화면 밖(z=100000) 스폰 액터:
-  - `SkeletalMeshComponent`(AlwaysTickPose — 오프스크린 idle 재생) + `SceneCapture2D`(`PRM_UseShowOnlyList`+`ShowOnlyActors={this}` 로 게임월드 격리) + 포인트라이트 2개.
-  - `SetPreviewCharacter(TSubclassOf<AAOSCharacter>)` → 클래스 **CDO 의 `GetMesh()` 에서 `SkeletalMesh`+`AnimClass`** 추출해 프리뷰 메시에 적용(전체 캐릭터 액터 스폰 안 함 — 가볍고 안전). AnimBP(`UAOSAnimInstance`)는 OwningCharacter null 시 조기반환 → **크래시 없이 idle 포즈**.
-  - 메시 보일 때만 `bCaptureEveryFrame=true`(idle 갱신), 비면 캡처 끔. 프레이밍/라이팅은 `EditAnywhere`(빌드 없이 PIE 중 스테이지 액터 선택해 튜닝).
-- **`AAOSPlayerController`**: `ShowBanPick` → `EnsureDraftPreviewStages()`(클라+비DS 가드, 스테이지 2개 스폰+`InitRenderTarget(360,640)`) → `BanPickWidget->SetPreviewStages(Mine,Enemy)`. `HideBanPick` → `DestroyDraftPreviewStages()` (BanPick 동안만 존재).
-- **`UAOSBanPickWidget`**: `MyPreviewImage`/`EnemyPreviewImage`(BindWidgetOptional, 폴백은 코너 배치 + HitTestInvisible 로 카드 클릭 통과). `UpdatePreviewSelections()` 가 내 팀=`PendingIndex`(미리보기 중)∥최신 픽, 상대=최신 픽 으로 `Stage->SetPreviewCharacter` 호출. `OnDraftChanged`/`HandleCardClicked`/`SetPreviewStages` 에서 구동 → **카드 클릭 즉시 3D 미리보기**.
-- **DS**: 서버는 렌더 없음 → 스폰은 `IsLocalPlayerController()`+비`NM_DedicatedServer` 가드. 선택(UnitId)만 리플리케이션, 3D 렌더는 각 클라 로컬.
-- ⚠️ 라이팅: 스테이지 자체 포인트라이트로 메시 조명(월드 라이트는 먼 좌표라 거의 무영향). 캐릭터가 어둡/밝으면 `KeyLightIntensity`/`FillLightIntensity`(EditAnywhere) 튜닝.
-
-> ⚠️ **위젯 실현 순서(미니맵 교훈 재발)**: `ShowBanPick` 에서 **`InitializeWithRoster`(WidgetTree->RootWidget 구축)를 `AddToViewport` 보다 먼저** 호출해야 함. 순서가 뒤바뀌면 빈 RootWidget 이 Slate 로 실현되어 **벤픽 화면이 안 뜸** (실제로 이 버그가 발생했고 순서 교정으로 해결).
-> ⚠️ **타이머 갱신이 미리보기를 풀어버림**: `ServerSetDraftTurnTime` 가 매 초 `OnDraftChanged` 브로드캐스트 → 위젯 `OnDraftChanged` 가 무조건 `PendingIndex` 를 초기화하면 1초마다 미리보기가 풀려 확정 불가. → **미리보기 유닛이 가용하지 않을 때만**(밴/픽 확정 직후) 초기화.
-> ⚠️ **컬러 브러시 카드 크기**: `UImage::SetDesiredSizeOverride` 는 텍스처 없는 컬러 브러시에서 불안정(폭 붕괴) → 카드를 `USizeBox(WidthOverride/HeightOverride)` 로 감싸 크기 강제.
-> ⚠️ **로스터 Portrait 기본값**: BP_Char_* 복제로 추가된 로스터 엔트리의 `Portrait` 가 Mannequin 기본 `T_UE_Logo_M`(빨간 "U")로 채워짐 → 플레이스홀더는 `Portrait=None` 으로 비워야 컬러 타일이 렌더됨. (에디터 Python `update_roster_portraits.py`: 클래스 로드 후 **`get_default_object`로 CDO** 획득 필요, `load_object(None, 경로)` 로 텍스처 로드, EditDefaultsOnly 막히면 부분 `import_text` 폴백.)
-
-### RoundPreparation UI (소유: `UI/AOSCharacterSelectWidget.h/.cpp`)
-
-**벤픽 디자인 비주얼 리스킨** (2026-06-16): `BuildUI()` 를 벤픽 창(`UAOSBanPickWidget`)과 동일한 라이트 테마로 재구성. **순수 C++**(WBP/BindWidgetOptional 미사용 — 과거 "전술 맵" UMG 하이브리드 시도는 리버트됨). 배치 흐름(타이틀→타이머→3레인 슬롯→카드 그리드→준비 버튼)과 드래그앤드롭은 유지하고 비주얼만 입힘:
-- **반응형 캔버스**: `OuterOverlay[솔리드 배경 + UScaleBox(ScaleToFit) → SizeBox(1920×1080 디자인 캔버스) → RootOverlay]` (벤픽과 동일 — 창 비율 무관 균일 스케일, 비-16:9 는 레터박스).
-- **배경 = 솔리드 라이트 그레이**(`CSBgLight`). 벤픽 C++ 폴백과 동일하게 **텍스처 백드롭(`T_BanPick_Backdrop` 성당 이미지) 안 깖** — 라이트 테마 통일.
-- **벤픽 장식 텍스처 재사용**(white-on-alpha → 틴트, 없으면 솔리드 폴백): 대각 팀 경계선(좌 Team2 블루 +8°/우 Team1 레드 −8°, `T_BanPick_LineTaper`), 타이틀 양옆 날개(`T_BanPick_WingSide`, 우측 `SetRenderScale(-1,1)` 미러), 타이머 아래 + 준비 버튼 양옆 테이퍼 라인(`T_BanPick_LineTaperH`).
-- 레인 슬롯/카드/준비 버튼(LOCK IN 스타일 파란 버튼) 라이트 리스킨. 타이머/팀상태/RoundResult 색도 라이트 배경 가독 색.
-- 상점 팝업은 `OuterRoot`(ScaleBox 위)에 Fill → 디자인 캔버스 스케일에 안 묶이고 전체 뷰포트 덮음.
-- **헤더 불변 → cpp-only, Live Coding 호환**. ⚠️ 색 상수/헬퍼(`CSBgLight`/`CSMakeFont`/`CSPlaceholderColor` 등)는 **`CS` 접두사 필수** — UE 유니티(Jumbo) 빌드가 `AOSCharacterSelectWidget.cpp` + `AOSBanPickWidget.cpp` 를 한 TU 로 합칠 때 벤픽의 동일 익명-네임스페이스 심볼과 재정의 충돌(C2374/C2084) 회피. (`TryLoadTexture`/`TeamColor` 는 벤픽에선 static 멤버라 free 함수와 비충돌.)
-
-**픽 필터**: `InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
-
-### DS 규칙 준수
-
-모든 드래프트 상태 변경은 `HasAuthority()` 서버, 위젯/입력은 `IsLocalPlayerController()` 가드, 클라는 GameState 리플리케이션(`OnRep_Draft`)으로만 드래프트 상태 수신. 클라는 `DT_Items` 처럼 로스터를 직접 안 읽고 **`Client_ReceiveCharacterRoster` RPC** 로 받음.
-
-### Hot Reload 비호환
-
-`EAOSGameState::BanPick` enum 추가 + 신규 USTRUCT(`FAOSDraftStep`) + 신규 UCLASS(`UAOSBanPickWidget`) → **풀 리빌드 필수**.
-UMG 하이브리드 전환(신규 `meta=(BindWidgetOptional)` UPROPERTY + `RebuildWidget` override) 도 헤더 리플렉션 변경이라 **풀 리빌드 필수**(Live Coding 으로 BindWidget 메타 재파싱 불안정).
-3D 프리뷰 신규 UCLASS(`AAOSCharacterPreviewStage`) + PC/위젯 신규 UPROPERTY·UFUNCTION 도 **풀 리빌드 필수**.
-
-## Memory Management Patterns
-
-### UPROPERTY Requirements
-
-**Critical rule**: All `UObject*` pointer arrays MUST be marked with `UPROPERTY()` for garbage collection.
-
-```cpp
-// CORRECT
 UPROPERTY()
-TArray<AAOSStructure*> AllTowers;
-
-// WRONG - Will cause crashes
-TArray<AAOSStructure*> AllTowers;
+TArray<AAOSStructure*> AllTowers;   // O    /  TArray<...> AllTowers; ← X, 크래시
 ```
-
-### AI Controller Cleanup
-
-AI controllers must explicitly clean up in destructor:
-
+AI 컨트롤러 소멸자에서 명시 정리:
 ```cpp
-AAOSAIController::~AAOSAIController()
-{
-    WaypointQueue.Empty();
-    ControlledCharacter = nullptr;
-    CurrentTarget = nullptr;
-}
+AAOSAIController::~AAOSAIController() { WaypointQueue.Empty(); ControlledCharacter=nullptr; CurrentTarget=nullptr; }
 ```
 
-**Why**: Prevents dangling pointers when editor closes or PIE ends.
-
-## Collision System
-
-Structures (towers/command centers) use specific collision settings:
-
-- **CollisionComponent**: `ECollisionEnabled::NoCollision` - No physical blocking
-- **MeshComponent**: `ECollisionEnabled::NoCollision` - Visual mesh doesn't block
-- **DetectionRange**: `ECollisionEnabled::QueryOnly` - Overlap detection for finding enemies
-
-**Rationale**: Characters should pass through towers, not be blocked by them.
+## Collision System (구조물)
+- CollisionComponent / MeshComponent = `NoCollision` (캐릭터가 타워를 통과). DetectionRange = `QueryOnly`(적 감지 오버랩).
 
 ## Debug Visualization
+- 런타임 `DrawDebugTowerPositions()` 는 **`AllTowers`(실제 스폰)** 순회 — `LanesInfo` 아님. 에디터 시각화는 `DrawDebugLine`(`DrawDebugBox` 는 에디터 뷰포트 미렌더).
 
-### Runtime Debug (Play Mode)
+## Dedicated Server 환경 (필수)
 
-`AOSMapManager::DrawDebugTowerPositions()` draws persistent debug boxes:
-- Blue boxes = Team1 towers
-- Red boxes = Team2 towers
-- Yellow box = Team1 Command Center (1.5x size)
-- Orange box = Team2 Command Center (1.5x size)
+이 프로젝트는 **DS** 로 실행. 모든 에이전트 전제.
 
-**Important**: This function iterates `AllTowers` (actual spawned actors), NOT `LanesInfo` (configuration).
+| 시스템 | DS(서버) | 클라이언트 |
+|--------|:--------:|:----------:|
+| GameMode | ✅ 유일 | ❌ `GetAuthGameMode()`=null |
+| GameState | ✅ 권한 | ✅ 복제 읽기전용 |
+| AIController | ✅ 전부 | ❌ 없음 |
+| PlayerController | ✅ 서버사이드 | ✅ 로컬 |
+| Character/Structure | ✅ 스폰/파괴 권한 | ✅ 복제본 |
+| UI/카메라 | ❌ 생성 금지 | ✅ `IsLocalPlayerController()` 안에서만 |
+| VFX/사운드 | ❌ 렌더 없음 | ✅ |
 
-### Editor Visualization (Edit Mode)
+**핵심 규칙**:
+1. `HasAuthority()` 가드 — 상태 변경(HP/스폰/파괴/라운드)은 서버만.
+2. `IsLocalPlayerController()` 가드 — 모든 `CreateWidget`/`AddToViewport`/카메라 앞에.
+3. 클라 로직에서 `GetAuthGameMode()` 금지 → **GameState 경유**.
+4. 디버그 출력(`AddOnScreenDebugMessage`/`DrawDebug`)은 DS 렌더 없음 → NetMode 체크 또는 클라 RPC.
+5. 리플리케이션 = `UPROPERTY(ReplicatedUsing=OnRep_*)` + `DOREPLIFETIME` + `OnRep_*` 세트.
+6. 클라→서버 = `UFUNCTION(Server, Reliable)`. 서버→전클라 = `NetMulticast` 또는 Replicated+OnRep.
+7. **테스트는 Play As Dedicated Server / Listen Server 2-Client** (Single Process 는 DS 재현 부정확).
 
-`UpdateEditorVisualization()` uses `DrawDebugLine` to show lane paths and tower positions:
-- Uses `LanesInfo` configuration data
-- Draws X markers for towers, wireframe boxes for command centers
-- Note: `DrawDebugBox` doesn't render properly in editor viewport, use `DrawDebugLine` instead
+**안티패턴**: 클라에서 `GetAuthGameMode<AAOSGameMode>()->GetCurrentRound()` (null 크래시) → `GetGameState<AAOSGameState>()->GetCurrentRound()`.
+**"클라에서만" 증상** = 권한 가드 누락 / 초기 복제 미전송(CDO 기본값과 같은 프로퍼티는 전송 안 됨) 의심.
 
-## Common Development Patterns
+## Known Issues (live)
 
-### Adding New Structure Types
+- **지형/Nav 변경 후 RecastNavMesh 반드시 재빌드**: `RuntimeGeneration=Static` 이라 cooked. 지형 액터 위치/스케일·`NavMeshBoundsVolume`·타워 위치 변경 후 **Build → Build Paths Only(Ctrl+Shift+B)** + nav uasset 저장/커밋. 안 하면 AI 가 옛 영역에 갇히거나 정지.
+- **라인 시작 = SpawnPoint 단일 진실** (위 Map/Lane 참고 — `FLaneInfo` 좌표 이중화 제거됨).
 
-1. Extend `AOSStructure` base class
-2. Set `StructureType` enum value
-3. Add to spawning logic in `AOSMapManager::SpawnStructures()`
-4. Update waypoint queue building logic in `AOSAIController::BuildWaypointQueue()`
+> 해결된 historical 이슈(에디터 종료 크래시, 타워 미표시, AI 미이동, HP바 미표시, 생존 캐릭터 소멸, 클라 구조물 유령 등) → **PROJECT_REFERENCE** "Known Issues and Gotchas".
 
-### Modifying AI Behavior
+## Multi-Agent Workflow (3도메인)
 
-Key parameters in `AOSAIController`:
-- `EnemyDetectionRange` (default: 1500.0f) - How far AI can see enemy characters
-- `AttackRange` (default: 500.0f) - Distance to begin attacking enemy characters
-- `ArrivalDistance` (100.0f) - How close to waypoint before considering "arrived"
-- `AttackCooldownDuration` (1.0f) - Cooldown between attacks
+`.claude/agents/<name>.md` 서브에이전트 + `Task(subagent_type)`. 오케스트레이션 스킬: `/multi-agent`, `/merge-agents`.
 
-AI behavior loop in `UpdateAIBehavior()`:
-1. Check for nearby enemy characters (`FindNearestEnemy()`)
-2. If enemy character found → `AttackTarget()` (move + attack)
-3. If no enemy character → Check current waypoint:
-   - If waypoint is an enemy structure → `AttackStructure()` (move + attack structure)
-   - If no structure target → `MoveTowardsTarget()` (move toward next waypoint)
+| 도메인 | 모델 | 에이전트(소유) |
+|--------|------|----------------|
+| 프로그래머 (worktree, C++) | sonnet | prog-ai(AIController) / prog-character(Character·SpawnPoint·GameMode=enum소유) / prog-object(Structure·MapManager) / prog-ui(HealthBar·PlayerController) / prog-anim(AnimInstance·Notify) / build-verify(읽기전용) |
+| 기획자 (MCP) | opus | design-balance(BP 파라미터) / design-level(레벨 배치) / design-docs(CLAUDE.md·Guides) |
+| 아트 (MCP) | haiku | art-visual(머티리얼·텍스처·메시) / art-vfx(Niagara·UI) / art-anim(ABP·몽타주) |
 
-### HP Bar Setup (Widget Blueprint)
+- **머지 순서**(결합도 역순): docs → prog-ui → prog-anim → prog-object → prog-character → prog-ai, 각 단계 후 build-verify.
+- 조율 파일: `.claude/coordination/` (INTERFACE_CONTRACTS / AGENT_STATUS / CROSS_DOMAIN_REQUESTS / ASSET_OWNERSHIP).
+- ⚠️ enum 변경은 main 에 먼저 커밋 후 브랜치 (위 Enums 게이트).
 
-After building, create `WBP_HealthBar` in editor:
-1. Content Browser → Content/AOS/UI/ → Right-click → User Interface → Widget Blueprint
-2. Parent class: `AOSHealthBarWidget`
-3. Add ProgressBar, rename it to exactly `HealthProgressBar`
-4. Open BP_Character → HealthBarComponent → Widget Class → select `WBP_HealthBar`
-5. Same for any Structure Blueprints that use `HealthBarWidgetClass`
-
-### Testing in PIE (Play In Editor)
-
-Quickest test setup:
-1. Place `AOSMapManager` in level
-2. Configure `LanesInfo` with 3 lanes (Top, Mid, Bottom)
-3. Set tower positions and command center positions
-4. Place 12 `AOSSpawnPoint` actors with correct Team/Lane/Index
-5. Play (PIE) - Characters auto-spawn and begin pushing
-
-See `Guides/04_UsageGuide/QUICK_TOWER_TEST.md` for detailed checklist.
-
-## Project Structure
-
-```
-TDProject/
-├── Source/TDProject/
-│   ├── AOS/                           # Main game system (Active)
-│   │   ├── AOSGameMode.*              # Game state management
-│   │   ├── AOSCharacter.*             # Character base class
-│   │   ├── AOSAIController.*          # AI movement & combat
-│   │   ├── AOSPlayerController.*      # Player input (minimal)
-│   │   ├── AOSStructure.*             # Towers & Command Centers
-│   │   ├── AOSMapManager.*            # Map layout & spawning
-│   │   ├── AOSSpawnPoint.*            # Character spawning
-│   │   └── UI/
-│   │       └── AOSHealthBarWidget.*   # HP bar 3D world widget
-│   ├── Variant_Combat/                # Secondary system (Unused)
-│   └── TDProject.*                    # Default UE starter files
-├── Content/
-│   └── AOS/UI/                        # Widget Blueprint assets (WBP_HealthBar)
-├── Guides/                            # Extensive documentation (Korean)
-│   ├── 01_GameOverview/               # Architecture docs
-│   ├── 02_ProgressLog/                # Development history
-│   ├── 03_ClassReview/                # Implementation details
-│   └── 04_UsageGuide/                 # Setup & testing guides
-└── TDProject.uproject                 # UE 5.7 project file
-```
-
-**Note**: The `Variant_Combat` folder contains an older combat system prototype and is not currently used.
-
-## Documentation
-
-The `Guides/` folder contains comprehensive Korean-language documentation:
-
-- **`DOCUMENTATION_INDEX.md`** - Master index of all docs
-- **`01_GameOverview/AOS_SYSTEM_OVERVIEW.md`** - Full system architecture
-- **`02_ProgressLog/2026-01-05_MAP_STRUCTURE_IMPROVEMENTS.md`** - Recent work log (waypoint system, memory fixes, debug improvements)
-- **`04_Implementation/WAYPOINT_QUEUE_SYSTEM.md`** - Detailed waypoint queue explanation
-
-**Read these first** when making significant changes to understand design intent.
+## 테스트 / 검증 (피드백 루프)
+- C++ Automation Test: `Source/TDProject/AOS/Tests/` (`WITH_DEV_AUTOMATION_TESTS` 가드, 별도 모듈 불필요). 첫 예시 = `AOSDraftSequenceTest.cpp`.
+- 헤드리스 실행: `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests TDProject.AOS; Quit" -unattended -nullrhi -nosplash -log`. 또는 에디터 Tools → Session Frontend → Automation.
+- 순수 로직(UWorld 불필요)부터 테스트화 권장: 드래프트 시퀀스, 골드 산식, 웨이포인트 큐 순서, 아이템 귀속.
 
 ## Git Workflow
-
-Recent commits show the pattern:
-```bash
-git add [modified files]
-git commit -m "커밋 제목
-
-상세 설명
-...
-
+한글 제목 + 상세 한글 설명 + 푸터:
+```
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
-git push
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
-
-**Commit message format**: Korean title with detailed Korean description, Claude attribution footer.
-
-## Known Issues and Gotchas
-
-### Editor Crash on Exit
-
-**Fixed**: Added destructors to AI controllers to clean up waypoint queues and null out pointers.
-
-### Towers Not Visible
-
-**Cause**: `DrawDebugTowerPositions()` was using `LanesInfo` instead of `AllTowers`
-**Solution**: Always use `AllTowers` array for runtime visualization
-
-### Characters Go to Map Center
-
-**Cause**: Waypoint queue not built or built incorrectly
-**Check**: Verify `BuildWaypointQueue()` is called in `StartDeployment()`
-
-### AI Not Moving
-
-**Causes**:
-1. MapManager not placed in level
-2. Spawn points not configured with correct Team/Lane
-3. AI controller not possessing character
-4. Waypoint queue empty
-
-**Debug**: Check log output from `BuildWaypointQueue()` showing waypoint list
-
-### HP Bar Not Showing
-
-**Cause**: Widget Blueprint (`WBP_HealthBar`) not created or not assigned
-**Solution**:
-1. Create Widget Blueprint with parent class `AOSHealthBarWidget`
-2. Add ProgressBar named exactly `HealthProgressBar`
-3. Assign `WBP_HealthBar` to BP_Character's `HealthBarComponent` → Widget Class
-
-### Surviving Characters Disappear After Winning Fight
-
-**Cause**: Characters couldn't attack structures — they only moved toward them while towers attacked back
-**Fixed**: Added `AttackStructure()` to `AOSAIController`. Characters now attack structures when the waypoint is an enemy structure.
-
-### 라인 시작 위치 이중화 — SpawnPoint 가 단일 진실 공급원
-
-**Cause**: 과거에는 `FLaneInfo::Team1StartPosition` / `Team2StartPosition` 와 `AAOSSpawnPoint`
-액터가 별도로 라인 시작 위치를 표현했음. 둘이 동기화 깨질 위험(MCP 자동화로 한쪽만 변경되거나
-저장 누락 등) 이 실제로 발생.
-
-**Fixed**: `FLaneInfo` 에서 두 필드 제거. 이후 라인 시작은 `(Team, Lane)` 매칭되는
-`AAOSSpawnPoint::GetActorLocation()`이 유일한 진실 공급원.
-- `AAOSMapManager::GetLaneStartPosition()` — 내부에서 `GameMode->GetNearestSpawnPoint()` 사용
-- `AAOSAIController::CacheLaneInfo()` — 캐릭터 위치를 직접 캐시 (스폰 직후라 SpawnPoint 위치와 동일)
-- 에디터 시각화는 `ResolveLaneStartForVisualization()` 헬퍼가 SpawnPoint 매칭 → 첫 타워 fallback
-
-### 지형/필드 변경 시 RecastNavMesh 반드시 재빌드
-
-**증상**: 지형 액터(StaticMeshActor, Floor, Tower 등) 의 위치/스케일을 바꾸거나
-`NavMeshBoundsVolume` 영역을 변경한 뒤 PIE 를 돌리면 캐릭터가 정해진 곳에서 벗어나지
-못하거나(이전 nav 영역 밖) 아예 가만히 서 있음.
-
-**Cause**: 프로젝트의 `[/Script/NavigationSystem.RecastNavMesh]` 설정이 `RuntimeGeneration=Static`
-(default). 즉 `RecastNavMesh` 데이터는 **에디터에서 명시적으로 빌드된 시점의 cooked 데이터**
-이고 런타임에 자동 재생성되지 않음. 지형이 바뀌었는데 NavMesh 가 옛 영역으로 cooked
-돼 있으면 AI 의 `MoveTo` / pathfinding 이 실패. `ServerTravel(MainMenu→ThirdPerson)` 같은
-레벨 전환에서도 stale nav 가 그대로 로드됨.
-
-**대응 — 지형/Nav 영역 변경 후 반드시**:
-1. 에디터 메뉴: **Build → Build Paths Only** (또는 `Ctrl+Shift+B`)
-2. 변경된 레벨 + Nav 관련 액터들 (`RecastNavMesh`, `NavMeshBoundsVolume`) **저장**
-3. 커밋에 nav uasset (`Content/__ExternalActors__/.../RecastNavMesh*`, `NavMeshBoundsVolume*`)
-   포함되어 있는지 확인
-
-특히 다음 작업 후엔 잊지 말 것:
-- `StaticMeshActor` 위치/스케일 일괄 변경 (지형 ×N 확장 등)
-- 새 지형 액터 추가 / 삭제
-- `NavMeshBoundsVolume` 의 위치/스케일 조정
-- 타워·CC 위치 재배치
-
-**근본 fix 옵션 (선택)**: `Project Settings → Navigation Mesh → Runtime Generation`
-을 `Dynamic` 으로 바꾸면 런타임에 nav 가 자동 빌드됨. 단 cook 비용·빌드 시간 증가.
-현재는 명시적 rebuild 정책 유지.
-
-## Multi-Agent Development Workflow (3도메인)
-
-이 프로젝트는 **3개 도메인** 멀티 에이전트 방식으로 개발됩니다. 각 에이전트는 `.claude/agents/<name>.md` 의 **서브에이전트**로 정의되어 있고, `Task` 도구로 `subagent_type` 을 지정해 호출합니다. 오케스트레이션용 슬래시 커맨드 `/multi-agent`, `/merge-agents` 만 `.claude/commands/` 에 남아 있습니다.
-
-> 서브에이전트는 별도 컨텍스트와 모델로 동작합니다. 슬래시 커맨드는 부모 세션의 모델을 그대로 쓰며 모델 분리가 안 되므로 사용하지 않습니다.
-
-### 도메인 1: 프로그래머 (C++ 코드, model: sonnet)
-
-작업 방식: git worktree + C++ 파일 편집
-
-| 서브에이전트 | 모델 | 소유 파일 | 충돌 위험 |
-|----------|------|-----------|-----------|
-| `agent-prog-ai` | sonnet | AOSAIController.h/cpp | HIGH |
-| `agent-prog-character` | sonnet | AOSCharacter.h/cpp, AOSSpawnPoint.h/cpp, AOSGameMode.h/cpp | HIGH (enum 소유) |
-| `agent-prog-object` | sonnet | AOSStructure.h/cpp, AOSMapManager.h/cpp | MEDIUM |
-| `agent-prog-ui` | sonnet | AOSHealthBarWidget.h/cpp, AOSPlayerController.h/cpp | LOW |
-| `agent-prog-anim` | sonnet | AOSAnimInstance.h/cpp, Anim/AOSAnimNotify_*.h/cpp | MEDIUM |
-| `agent-build-verify` | sonnet | 없음 (읽기 전용) | NONE |
-
-### 도메인 2: 기획자 (밸런스, 레벨, 문서, model: opus)
-
-작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
-
-| 서브에이전트 | 모델 | 소유 영역 |
-|----------|------|-----------|
-| `agent-design-balance` | opus | Blueprint EditAnywhere 파라미터 전체 |
-| `agent-design-level` | opus | 레벨 액터 배치, MapManager 설정 |
-| `agent-design-docs` | opus | CLAUDE.md, Guides/ 전체 |
-
-### 도메인 3: 아트 (비주얼, VFX, model: haiku)
-
-작업 방식: MCP 도구 (worktree 불필요, 에디터에서 직접 수정)
-
-| 서브에이전트 | 모델 | 소유 에셋 |
-|----------|------|-----------|
-| `agent-art-visual` | haiku | 머티리얼, 텍스처, 메시, 팀 색상 |
-| `agent-art-vfx` | haiku | Niagara VFX, UI 스타일링 |
-| `agent-art-anim` | haiku | 애니메이션 BP, 몽타주, 블렌드 스페이스 |
-
-### Workflow
-
-1. `/multi-agent [기능 설명]` — 오케스트레이터가 도메인 분류 + 에이전트 할당
-2. **프로그래머**: worktree 생성 (브랜치: `agent/prog-<role>/<feature>`), 별도 터미널/세션에서 `agent-prog-*` 서브에이전트 호출 (병렬)
-3. **기획자/아트**: 오케스트레이터가 같은 세션에서 `Task(subagent_type: "agent-design-*" / "agent-art-*", ...)` 로 직접 spawn
-4. `/merge-agents` — 프로그래머 머지 → 기획 검증 → 아트 검증
-
-### 머지/검증 순서 (3단계)
-
-**Phase 1: 프로그래머 머지** (순차)
-1. `agent-design-docs` (코드 충돌 없음)
-2. `agent-prog-ui` (최소 외부 의존성)
-3. `agent-prog-anim` (AnimInstance, Character 의존)
-4. `agent-prog-object` (중간 결합도)
-5. `agent-prog-character` (enum 소유, API 제공)
-6. `agent-prog-ai` (최고 결합도, 마지막)
-→ 각 단계 후 `agent-build-verify` 실행
-
-**Phase 2: 기획자 검증** (MCP, 머지 불필요)
-- `agent-design-balance`: `get_property` 로 값 확인
-- `agent-design-level`: `get_level_actors` 로 배치 확인
-
-**Phase 3: 아트 검증** (MCP, 머지 불필요)
-- `agent-art-visual`: 머티리얼 적용 확인
-- `agent-art-vfx`: VFX 확인
-- `agent-art-anim`: 애니메이션 확인
-→ `capture_viewport` 로 시각 검증
-
-### AOSGameMode.h Enum 변경 게이트
-
-`EAOSTeam`, `EAOSLane`, `EAOSGameState` enum은 모든 AOS 파일이 의존합니다.
-enum 변경이 필요하면 **반드시 main에 먼저 커밋한 후** 에이전트 브랜치를 생성하세요.
-
-### 도메인 간 조율
-
-하드코딩 값 발견, 새 컴포넌트 슬롯 필요 등 도메인 간 요청은 `CROSS_DOMAIN_REQUESTS.md`에 등록합니다.
-
-### 조율 파일
-
-- `.claude/coordination/INTERFACE_CONTRACTS.md` — 에이전트 간 안정 인터페이스 + Blueprint 프로퍼티 계약
-- `.claude/coordination/AGENT_STATUS.md` — 활성 에이전트 세션 추적 (worktree/MCP 구분)
-- `.claude/coordination/CROSS_DOMAIN_REQUESTS.md` — 도메인 간 변경 요청 추적
-- `.claude/coordination/ASSET_OWNERSHIP.md` — Content/ 에셋 소유권 매핑
-
-## Dedicated Server 환경
-
-이 프로젝트는 **Dedicated Server (DS)** 로 실행됩니다. 모든 에이전트는 아래 사실을 전제로 작업해야 합니다.
-
-### 실행 위치 표
-
-| 시스템 | DS (서버) | 각 클라이언트 |
-|--------|:--------:|:------------:|
-| **GameMode** (`AAOSGameMode`) | ✅ 유일 인스턴스 | ❌ `GetAuthGameMode()` = null |
-| **GameState** (`AAOSGameState`) | ✅ 권한 (Authority) | ✅ 리플리케이션된 읽기 전용 복제본 |
-| **AIController** (`AAOSAIController`) | ✅ 모든 AI 인스턴스 | ❌ 없음 |
-| **PlayerController** (`AAOSPlayerController`) | ✅ 각 접속자의 서버사이드 PC | ✅ 로컬 PC (LocalPlayerController) |
-| **Character/Structure** | ✅ 스폰/파괴 권한 | ✅ 리플리케이션된 복제본 |
-| **UI 위젯·카메라** | ❌ 생성 금지 | ✅ `IsLocalPlayerController()` 블록 내에서만 |
-| **VFX/사운드/머티리얼 렌더** | ❌ 렌더 파이프라인 없음 | ✅ 시각/청각 출력 |
-
-### 핵심 규칙
-
-1. **`HasAuthority()` 가드** — 상태 변경(HP, 스폰, 파괴, 라운드 전환 등)은 반드시 서버에서만 실행
-2. **`IsLocalPlayerController()` 가드** — 모든 `CreateWidget` / `AddToViewport` / 카메라 생성 앞에 필수
-3. **`GetAuthGameMode()` 사용 금지 (클라이언트 로직)** — 클라이언트는 null을 받으므로 **GameState** 경유
-4. **디버그 출력**: `GEngine->AddOnScreenDebugMessage()`, `DrawDebugLine()` 등은 DS에서 렌더 없음 → NetMode 체크 또는 클라이언트 RPC 경유
-5. **리플리케이션 패턴**: `UPROPERTY(ReplicatedUsing = OnRep_*)` + `DOREPLIFETIME(...)` + `OnRep_*()` 콜백 세트
-6. **클라 → 서버 요청**: `UFUNCTION(Server, Reliable)` + `Server_*_Implementation`
-7. **서버 → 모든 클라 방송**: `UFUNCTION(NetMulticast, Reliable)` 또는 Replicated 프로퍼티 + OnRep
-
-### 클라이언트 UI가 서버 상태를 읽는 흐름
-
-```
-[서버] GameMode 상태 변경
-   ↓
-[서버] GameState::ServerSet*() → Replicated 프로퍼티 갱신
-   ↓
-[네트워크 리플리케이션]
-   ↓
-[클라이언트] GameState::OnRep_*() 콜백
-   ↓
-[클라이언트] Dynamic Multicast Delegate 브로드캐스트
-   ↓
-[클라이언트] PlayerController → Widget::UpdateXxx()
-```
-
-**안티패턴**: 클라이언트 코드에서 `GetWorld()->GetAuthGameMode<AAOSGameMode>()->GetCurrentRound()` — 클라이언트에서 null crash.
-**올바른 패턴**: `GetWorld()->GetGameState<AAOSGameState>()->GetCurrentRound()`
-
-### PIE 테스트
-
-- 반드시 **Play As Dedicated Server** 또는 Listen Server 2-Client 모드로 테스트
-- 단일 프로세스(Single Process)는 DS 환경을 정확히 재현하지 못함
 
 ## Language Notes
+문서/주석/로그는 한·영 혼용. 사용자 요청 시 기술 설명의 한국어 번역 제공.
 
-- **User messages**: Often in English asking for Korean translations
-- **Code comments**: Mix of English and Korean
-- **Documentation**: Primarily Korean
-- **Logs**: Mix of English and Korean
-- **When working with this user**: Provide Korean translations of technical explanations when requested
+## 문서 인덱스
+- [`Guides/01_GameOverview/PROJECT_REFERENCE.md`](Guides/01_GameOverview/PROJECT_REFERENCE.md) — **전체 상세 레퍼런스** (이 파일 모든 섹션의 풀버전 + historical)
+- [`Guides/01_GameOverview/GAME_VISION.md`](Guides/01_GameOverview/GAME_VISION.md) — 게임 비전/로드맵
+- [`Guides/05_ProgressLog/TIMELINE.md`](Guides/05_ProgressLog/TIMELINE.md) — 작업 타임라인
+- [`Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`](Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md) / [`AI_3D_ASSET_PIPELINE.md`](Guides/03_Implementation/AI_3D_ASSET_PIPELINE.md)
+- [`Guides/DOCUMENTATION_INDEX.md`](Guides/DOCUMENTATION_INDEX.md) — 전체 문서 마스터 인덱스

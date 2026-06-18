@@ -21,7 +21,8 @@ $ARGUMENTS
 ## 빌드 명령
 
 ```powershell
-powershell -Command "& 'C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat' TDProject Win64 Development -Project='D:\TDProject\TDProject.uproject'"
+# 엔진 경로는 머신마다 다르므로 환경변수 $env:UE_ROOT 사용 (CLAUDE.md 빌드 명령과 동일)
+& "$env:UE_ROOT\Engine\Build\BatchFiles\Build.bat" TDProject Win64 Development -Project="E:\Unreal Project\TDProject\TDProject.uproject"
 ```
 
 ## 수행할 작업
