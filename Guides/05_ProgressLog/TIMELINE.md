@@ -1117,3 +1117,32 @@
 - 매 턴 로드 컨텍스트 **87% 감소** + 모든 must-follow 불변식·live 함정은 인라인 유지(회귀 방지). 깊은 작업 전 PROJECT_REFERENCE 의 해당 섹션 읽기 유도
 - 신규: `Guides/01_GameOverview/PROJECT_REFERENCE.md`. 변경: `CLAUDE.md`(슬림 재작성)
 - 남은 작업 = (d) 불변식 PostToolUse 가드레일 훅 — 단, settings 훅 편집은 classifier 차단 예상([[feedback-settings-local-classifier-block]]) → 수동 적용 안내 방식 될 것
+
+---
+
+## 2026-06-19 — 하네스 (d): 불변식 PostToolUse 가드레일 훅 (산문 규칙 → 기계 강제)
+
+**작업 내용**
+- 진단의 "가드레일 미코드화" 결함 해소 — CLAUDE.md 의 산문 불변식을 편집 즉시 자동 검사
+- 신규 `.claude/hooks/check_cpp_invariants.py` — Edit/Write/MultiEdit 직후 편집한 `.h/.cpp` 를 검사해 위반 의심 시 에이전트에게 경고(stderr + exit 2 = PostToolUse 피드백). **차단 아닌 넛지**
+- 3가지 검사 (CLAUDE.md Memory/DS 규칙 매핑):
+  - `[.h]` `TArray<U*/A*>` 멤버에 `UPROPERTY()` 누락 → GC 크래시
+  - `[.cpp]` `CreateWidget`/`AddToViewport` 인데 `IsLocalPlayerController` 가드가 파일에 없음 → DS 위젯 크래시
+  - `[.cpp]` `SpawnActor`/`Destroy()` 인데 `HasAuthority` 가 파일에 없음 → 서버 권한 누락(저신뢰)
+- 배선 스니펫(사용자가 `.claude/settings.json`(공유 커밋)에 붙여넣기): `PostToolUse` matcher `Edit|Write|MultiEdit` → `python "$CLAUDE_PROJECT_DIR/.claude/hooks/check_cpp_invariants.py"`
+
+**문제점 / 난관**
+- 멤버 포인터 vs 지역 변수 구분이 grep 으로 어려움 → 오탐 위험(예: `.cpp` 의 `TArray<AActor*>` 지역 변수). **멤버 검사를 `.h` 한정**으로 좁혀 회피(멤버 선언은 헤더에만)
+- "상태 변경" 은 grep 으로 일반 검출 불가 → SpawnActor/Destroy 라는 **구체 호출 + HasAuthority 부재**로 좁힘(과거 MapManager 클라 중복 스폰 버그 패턴과 일치, 저신뢰 표기)
+- 첫 테스트가 git bash MSYS 경로(`/tmp`, `/e/`)를 Windows 네이티브 python 이 못 열어 false-pass → Windows 경로로 재검증
+- Windows cp949 콘솔에서 한글/emoji 출력 깨짐 → stdin/stderr **UTF-8 고정**(`sys.stdin.buffer`/`sys.stderr.buffer`)
+
+**해결 방법**
+- 휴리스틱이라 **차단(block) 아닌 경고(exit 2 → 에이전트 피드백)** 로 설계 — 에이전트가 읽고 수정 or 무시 판단
+- 검증: 실제 올바른 헤더(`AOSAIController.h`) 통과(오탐 0) + 합성 위반 헤더/`.cpp` 검출 + 가드 있는 `.cpp` 통과 + 비-cpp 무시, 4케이스 통과
+
+**결과**
+- 산문 규칙이 **편집 즉시·빌드 없이·기계적으로** 강제됨(런타임 크래시로만 발견되던 것을 줄 쓰는 순간 포착). Claude Code 도구 편집에만 발동(사람 수동 편집엔 미발동)
+- 스크립트 완성·검증. **배선(.claude/settings.json)은 사용자 1회 붙여넣기 필요**(훅 install 은 classifier 차단). 적용은 다음 세션부터(훅은 세션 시작 시 로드)
+- AI 하네스 엔지니어링 (a)~(d) 4단계 완료. 후속 테스트/가드 확장은 같은 패턴으로 누적
+- 관련: [[feedback-settings-local-classifier-block]], 검사 스크립트 `.claude/hooks/check_cpp_invariants.py`
