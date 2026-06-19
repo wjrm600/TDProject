@@ -75,7 +75,7 @@ $ARGUMENTS
 
 ## ⚠️ Dedicated Server (DS) 환경
 
-이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
+이 프로젝트는 **Dedicated Server(DS) 전제로 설계**됩니다 — 권한/리플리케이션 규약은 항상 따르되, 테스트는 **PIE(Play As Dedicated)/Listen Server** 로 한다(별도 DS 빌드 타깃 없음).
 
 ### 빌드 검증 시 확인할 DS 관련 패턴
 빌드 성공 후에도 다음 런타임 위험 패턴을 소스에서 검색하여 리포트:
@@ -100,6 +100,6 @@ $ARGUMENTS
    - 패턴: 상태 변경 함수에서 `HasAuthority()` 체크 없음
    - 위험: 클라이언트에서도 상태 변경 시도 → 리플리케이션 충돌
 
-### 빌드 타겟 확인
-- `TDProject.Target.cs` + `TDProjectServer.Target.cs` 존재 여부 확인
-- DS 빌드: `-Target=TDProjectServer` 옵션으로 별도 빌드 필요
+### 빌드 타깃
+- 현재 타깃은 `TDProject.Target.cs`(게임/클라) + `TDProjectEditor.Target.cs` **만** 존재.
+- **별도 DS 빌드 타깃(`TDProjectServer`)은 없음** — DS 는 아키텍처 규약이고 테스트는 PIE(Play As Dedicated)/Listen Server. 따라서 DS 전용 빌드 검증 단계는 없다.

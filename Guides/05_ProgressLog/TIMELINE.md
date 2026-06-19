@@ -1193,3 +1193,44 @@
 - **첫 무인 피드백** 확보 — push 마다 사람 트리거 없이 불변식 자동 검사. 진단의 "가드레일 미코드화 + CI 없음" 두 갭 동시 진전. PostToolUse 훅(에이전트 편집만)을 보완 — 사람 수동 편집·다른 기여자까지 push 시점에 포착
 - 신규 `.github/workflows/cpp-invariants.yml` + `check_cpp_invariants.py` 이중모드화
 - 후속: self-hosted 러너로 Automation 테스트(드래프트·골드) 무인 실행 / 더 많은 테스트 추가
+
+---
+
+## 2026-06-19 — 하네스 위생: worktree 정크 정리 + AGENT_STATUS drift 교정 (진단 갭 3)
+
+**작업 내용**
+- 진단의 "오케스트레이션 조율 stale + worktree 정크" 갭 정리
+- `.claude/worktrees/prog-ui-test`(레포 전체 복제본 worktree) 제거, `pensive-kirch-aa3735`(git 미등록 고아 디렉터리) 삭제 → `.claude/worktrees/` 비움
+- `AGENT_STATUS.md` 재구성: 수동 표 → "git 이 단일 진실"(`git worktree list`/`branch`/`branch --merged`) 명시 + 미해결 dangling 브랜치 기록
+
+**문제점 / 난관**
+- "정크"라던 worktree 의 브랜치 `agent/prog-ui/hp-bar-percent`(`ceae1a3` "HP 바 퍼센트 텍스트")가 **main 에 미머지** — 삭제 전 확인이 데이터 손실을 막음
+- AGENT_STATUS 가 이 작업을 "완료(2026-04-29)"로 적었으나 실제론 미머지 → 수동 추적표 drift 의 실사례
+
+**해결 방법**
+- worktree(디스크 복제본)만 `git worktree remove` 로 제거하고 **브랜치(커밋)는 보존** → cruft 정리하되 미머지 작업 손실 0
+- AGENT_STATUS 를 git 권위 기반으로 재작성 + dangling 브랜치를 "미해결(머지 or 삭제)"로 명시
+
+**결과**
+- `.claude/worktrees/` 정리 완료, AGENT_STATUS 현실 일치 → 진단 갭 3 해소
+- **사용자 결정 대기**: `agent/prog-ui/hp-bar-percent` 머지할지 삭제할지
+- 진단 갭 4(DS doctrine)만 남음 (결정 필요)
+
+---
+
+## 2026-06-19 — 하네스 위생: DS doctrine 현실화(방향 B) + dangling 브랜치 삭제 (진단 갭 4)
+
+**작업 내용**
+- 진단 갭 4 해소 — 문서가 단언하던 "Dedicated Server + `TDProjectServer.Target.cs` 별도 빌드"가 현실(타깃 부재)과 어긋남 → **사용자 결정 = 방향 B**(DS 는 아키텍처 규약, 테스트는 PIE/Listen, 별도 DS 타깃 없음)로 문서를 참으로 교정
+- 3개 문서 수정: `CLAUDE.md`(DS 섹션 오프닝), `agent-build-verify.md`(실행 전제 + "빌드 타깃"에서 phantom `TDProjectServer` 제거), `PROJECT_REFERENCE.md`(DS 섹션 오프닝)
+- dangling 브랜치 `agent/prog-ui/hp-bar-percent`(미머지 `ceae1a3`) **삭제**(사용자 결정 — reflog 로 한동안 복구 가능)
+
+**문제점 / 난관**
+- DS 규칙(HasAuthority/IsLocalPlayerController 가드)은 코드가 충실히 따르나 실제 cooked DS 빌드 타깃은 부재 → 문서만 "DS 로 실행"이라 단언(거짓 컨텍스트 = 에이전트 오행동 위험)
+
+**해결 방법**
+- "DS 로 실행" → "DS **전제로 설계**(규약), 테스트는 PIE/Listen, 별도 타깃 없음"으로 일치. 권한/리플리케이션 규칙 자체는 유지(멀티플레이 정합성)
+
+**결과**
+- 컨텍스트가 현실과 일치 → 에이전트가 phantom 타깃을 쫓지 않음. **진단 6축 + 잔여 갭 전부 처리 완료**
+- 후속(선택): 실제 DS 출시 필요해지면 그때 `TDProjectServer.Target.cs` 신설(방향 A 전환)

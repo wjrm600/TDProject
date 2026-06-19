@@ -1587,7 +1587,7 @@ enum 변경이 필요하면 **반드시 main에 먼저 커밋한 후** 에이전
 
 ## Dedicated Server 환경
 
-이 프로젝트는 **Dedicated Server (DS)** 로 실행됩니다. 모든 에이전트는 아래 사실을 전제로 작업해야 합니다.
+이 프로젝트는 **Dedicated Server(DS) 전제로 설계**됩니다(아키텍처 규약 — 모든 에이전트 전제). ⚠️ 단 **별도 DS 빌드 타깃(`TDProjectServer`)은 없음**: 실제 테스트는 **PIE(Play As Dedicated Server) / Listen Server 2-Client** 로 한다. 아래 표/규칙은 그 전제하에 항상 적용된다.
 
 ### 실행 위치 표
 

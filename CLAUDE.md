@@ -150,7 +150,7 @@ AAOSAIController::~AAOSAIController() { WaypointQueue.Empty(); ControlledCharact
 
 ## Dedicated Server 환경 (필수)
 
-이 프로젝트는 **DS** 로 실행. 모든 에이전트 전제.
+이 프로젝트는 **DS(Dedicated Server) 전제로 설계** — 아래 권한/로컬PC 가드 규칙은 매 작업 적용(멀티플레이 정합성). ⚠️ 단 **별도 DS 빌드 타깃(`TDProjectServer`)은 없음**: 테스트는 **PIE(Play As Dedicated Server) / Listen Server 2-Client**(규칙 7). 실제 cooked DS 빌드는 미구성.
 
 | 시스템 | DS(서버) | 클라이언트 |
 |--------|:--------:|:----------:|
