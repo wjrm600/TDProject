@@ -818,7 +818,7 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 
 	// Slice 0: 처치한 팀(= 죽은 캐릭터의 반대 팀)에 골드 지급.
 	// killer 추적 없이 단순화 — 팀 대 팀 구도라 반대 팀이 처치자.
-	const EAOSTeam KillerTeam = (CharacterTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+	const EAOSTeam KillerTeam = GetOpposingTeam(CharacterTeam);
 	AwardGold(KillerTeam, GoldPerCharacterKill);
 
 	// 양 팀 모두 캐릭터가 없으면 라운드 종료 (3초 딜레이)
@@ -845,6 +845,11 @@ void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)
 // Slice 0: 골드 적립
 // ============================================================
 
+EAOSTeam AAOSGameMode::GetOpposingTeam(EAOSTeam Team)
+{
+	return (Team == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+}
+
 void AAOSGameMode::AwardGold(EAOSTeam Team, int32 Amount)
 {
 	if (!HasAuthority() || Amount == 0)
@@ -870,7 +875,7 @@ void AAOSGameMode::OnStructureDestroyedAwardGold(AAOSStructure* DestroyedStructu
 
 	// 파괴한 팀 = 구조물 소유 팀의 반대.
 	const EAOSTeam StructureTeam = DestroyedStructure->GetOwnerTeam();
-	const EAOSTeam DestroyerTeam = (StructureTeam == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
+	const EAOSTeam DestroyerTeam = GetOpposingTeam(StructureTeam);
 	AwardGold(DestroyerTeam, GoldPerStructureKill);
 }
 

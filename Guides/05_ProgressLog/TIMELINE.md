@@ -1146,3 +1146,28 @@
 - 스크립트 완성·검증. **배선(.claude/settings.json)은 사용자 1회 붙여넣기 필요**(훅 install 은 classifier 차단). 적용은 다음 세션부터(훅은 세션 시작 시 로드)
 - AI 하네스 엔지니어링 (a)~(d) 4단계 완료. 후속 테스트/가드 확장은 같은 패턴으로 누적
 - 관련: [[feedback-settings-local-classifier-block]], 검사 스크립트 `.claude/hooks/check_cpp_invariants.py`
+
+---
+
+## 2026-06-19 — 하네스 (A): 골드 경제 테스트 + GetOpposingTeam 추출 (피드백 루프 확장 ②)
+
+**작업 내용**
+- (b) 패턴의 **두 번째 Automation Test** — 골드 경제 산식 검증으로 에이전트 주도 피드백 루프 범위 확장
+- 신규 `Source/TDProject/AOS/Tests/AOSGoldEconomyTest.cpp` ("TDProject.AOS.GoldEconomy") — 4종 검사:
+  ① `GetOpposingTeam` 정확성 + 대칭성(반대의 반대=자기) ② 보상 수치(처치50/구조물150/패시브100, CDO 리플렉션) ③ 설계 불변식(구조물>캐릭터>0, 패시브>0) ④ 산식 합성(Team1 처치→Team2 보상)
+- "테스트되게 설계": 골드 awarding 은 GameMode/GameState 액터 메서드(월드/권한 필요)라 순수 단위테스트 불가 → 산식 핵심인 "반대 팀" 매핑을 `static AAOSGameMode::GetOpposingTeam(EAOSTeam)` 으로 추출 + 골드 경로 중복 ternary 2곳(KillerTeam/DestroyerTeam) 통합
+
+**문제점 / 난관**
+- 골드 산식이 정적 `GetDraftSequence`(b) 와 달리 **액터 메서드에 묶여 월드 의존** → 그대로는 월드 없이 못 돈다
+- 보상 수치(`GoldPer*Kill` 등)가 **protected** → 외부 테스트에서 직접 접근 불가
+- 실제 런타임 GameMode 는 BP(`TDProj_GM`)라 C++ CDO 와 값이 다를 수 있음
+
+**해결 방법**
+- **"테스트되게 설계" 원칙** — 순수 로직(반대 팀)을 static 함수로 추출(=동시에 DRY; 코드 전반 6곳 중복 중 골드 경로 2곳 통합, AIController/BanPick 4곳은 후속 cleanup 여지)
+- protected 수치는 `FindFProperty<FIntProperty>` + `GetPropertyValue_InContainer` **리플렉션**으로 CDO 에서 읽음(rename 시 -1 → 실패로 검출)
+- 테스트 대상이 **C++ 코드 기본값**임을 주석 명시(BP override 는 데이터 → MCP get_property 영역으로 구분)
+
+**결과**
+- 에이전트 주도 테스트 **2개로 확장**(드래프트 + 골드). 산식·반대팀 매핑 회귀가 빌드 후 1명령으로 검출
+- GameMode.h/.cpp 수정 + 신규 테스트 .cpp → **풀 리빌드 후 `Automation RunTests TDProject.AOS` 실행 검증 필요**
+- 후속: 웨이포인트 큐 순서·아이템 귀속 테스트 / 남은 반대팀 ternary 4곳 통합 / (B) CI 로 무인 실행

@@ -176,6 +176,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
 	void OnStructureDestroyedAwardGold(AAOSStructure* DestroyedStructure);
 
+	// 팀 → 반대 팀 (Team1↔Team2). "처치자/파괴자 = 죽은 쪽의 반대 팀" 골드 산식의 핵심 매핑.
+	// static 순수 함수 → 월드 없이 단위 테스트 가능(AOSGoldEconomyTest). 중복되던 inline ternary 통합.
+	static EAOSTeam GetOpposingTeam(EAOSTeam Team);
+
 	// Slice 0: 팀에 골드 지급/차감 (서버 권한). GameState 경유.
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
 	void AwardGold(EAOSTeam Team, int32 Amount);
