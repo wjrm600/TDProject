@@ -1171,3 +1171,25 @@
 - 에이전트 주도 테스트 **2개로 확장**(드래프트 + 골드). 산식·반대팀 매핑 회귀가 빌드 후 1명령으로 검출
 - GameMode.h/.cpp 수정 + 신규 테스트 .cpp → **풀 리빌드 후 `Automation RunTests TDProject.AOS` 실행 검증 필요**
 - 후속: 웨이포인트 큐 순서·아이템 귀속 테스트 / 남은 반대팀 ternary 4곳 통합 / (B) CI 로 무인 실행
+
+---
+
+## 2026-06-19 — 하네스 (B): 가드레일 CI (엔진 없이 도는 첫 "무인" 피드백)
+
+**작업 내용**
+- 진단에서 비어있던 `.github/workflows/` 를 채움 — push/PR 시 변경된 .h/.cpp 를 (d) 가드레일에 자동 통과시키는 GitHub Actions(`cpp-invariants.yml`). 위반 시 job 실패. `workflow_dispatch` 로 수동 실행도 가능
+- (d) 스크립트(`check_cpp_invariants.py`)를 **이중 모드로 리팩토링** — 단일 `check_file()` 로직을 훅 모드(stdin JSON → exit 2)와 CLI 모드(파일 인자 → exit 1, CI 용)가 공유(DRY, drift 방지)
+
+**문제점 / 난관**
+- UE Automation 테스트(b/A) CI 는 러너에 엔진 100GB+ 필요 → 무료 러너 불가 → 1단계는 "엔진 없이 되는" 순수 파이썬 가드레일 검사로 시작(테스트 실행 CI 는 self-hosted 러너 후속)
+- 로컬 검증 중 **CLI 성공 메시지 print 가 Windows cp949 콘솔에서 em-dash 인코딩 크래시**(UnicodeEncodeError) 발견 → 경고 경로처럼 `stdout.buffer` UTF-8 로 통일 (테스트가 자기 작업의 버그를 잡아준 사례 = 피드백 루프 효용)
+- 새 브랜치 첫 push 시 `github.event.before` 0-SHA → 직전 커밋 폴백 처리
+
+**해결 방법**
+- 검사 로직 단일화(`check_file`) + 진입점 분기(`run_hook`/`run_cli`) → 훅·CI 가 동일 규칙 공유
+- 로컬 검증 4종 통과: 실제 커밋 변경파일 통과(오탐0) / 합성 위반 exit1 / 혼합 exit1 / 훅 모드 exit2 회귀
+
+**결과**
+- **첫 무인 피드백** 확보 — push 마다 사람 트리거 없이 불변식 자동 검사. 진단의 "가드레일 미코드화 + CI 없음" 두 갭 동시 진전. PostToolUse 훅(에이전트 편집만)을 보완 — 사람 수동 편집·다른 기여자까지 push 시점에 포착
+- 신규 `.github/workflows/cpp-invariants.yml` + `check_cpp_invariants.py` 이중모드화
+- 후속: self-hosted 러너로 Automation 테스트(드래프트·골드) 무인 실행 / 더 많은 테스트 추가

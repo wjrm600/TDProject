@@ -1,0 +1,66 @@
+# AI 하네스 (B): C++ 불변식 가드레일 CI — 엔진 없이 도는 첫 "무인" 피드백.
+#
+# push / PR 시 변경된 .h/.cpp 만 골라 .claude/hooks/check_cpp_invariants.py (CLI 모드)에 넘긴다.
+# 위반(UPROPERTY 누락 / DS 위젯 가드 부재 / SpawnActor·Destroy 권한 부재)이 있으면 job 실패.
+#
+# PostToolUse 훅(에이전트 편집만 잡음)과 상호보완 — 이쪽은 사람 수동 편집·다른 기여자까지
+# push 시점에 포착. 순수 파이썬(stdlib)이라 UE 엔진 불필요 → GitHub 무료 러너로 동작.
+# (Automation 테스트 실행 CI 는 엔진이 필요해 self-hosted 러너가 따로 있어야 함 — 후속.)
+
+name: C++ Invariants Guardrail
+
+on:
+  push:
+    paths:
+      - '**.h'
+      - '**.hpp'
+      - '**.cpp'
+      - '**.cc'
+  pull_request:
+    paths:
+      - '**.h'
+      - '**.hpp'
+      - '**.cpp'
+      - '**.cc'
+  workflow_dispatch:   # Actions 탭에서 수동 실행 가능 (직전 커밋 HEAD~1..HEAD 검사)
+
+jobs:
+  guardrail:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for diff, no LFS)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Run C++ invariant guardrail on changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          # 새 브랜치 첫 push 등으로 BASE 가 0...0 이거나 없으면 직전 커밋으로 폴백
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            BASE="$(git rev-parse "${HEAD}^" 2>/dev/null || echo "$HEAD")"
+          fi
+          echo "Diff base=$BASE  head=$HEAD"
+
+          mapfile -t FILES < <(git diff --name-only "$BASE" "$HEAD" -- '*.h' '*.hpp' '*.cpp' '*.cc' | grep -v '/Intermediate/' || true)
+
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "변경된 C++ 파일 없음 — 검사 건너뜀"
+            exit 0
+          fi
+
+          echo "검사 대상 ${#FILES[@]}개:"
+          printf '  %s\n' "${FILES[@]}"
+          echo "----"
+          python3 .claude/hooks/check_cpp_invariants.py "${FILES[@]}"
