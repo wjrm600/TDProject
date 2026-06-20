@@ -28,6 +28,7 @@
 #include "Styling/SlateColor.h"
 #include "Styling/SlateBrush.h"
 #include "Styling/CoreStyle.h"
+#include "AOSUIStyle.h"
 
 namespace
 {
@@ -57,24 +58,23 @@ namespace
 		return F;
 	}
 
-	// 초상화 없는(플레이스홀더) 유닛용 고유 컬러 타일 — 인덱스로 황금비 색상 분산.
+	// 초상화 없는(플레이스홀더) 유닛용 컬러 타일 — AOSUIStyle 의 파스텔(저채도/고명도) 분산.
 	FLinearColor PlaceholderColor(int32 Index)
 	{
-		const float Hue01 = FMath::Frac(static_cast<float>(Index) * 0.61803398875f);
-		return FLinearColor::MakeFromHSV8(
-			static_cast<uint8>(Hue01 * 255.f), /*S*/ 130, /*V*/ 135);
+		return AOSUIStyle::PlaceholderColor(Index);
 	}
 
-	// ── 라이트 테마 팔레트 (레퍼런스 — 밝은 배경 + 어두운 텍스트) ──
-	const FLinearColor kBgLight(0.85f, 0.86f, 0.89f, 1.f);      // 전체 배경
-	const FLinearColor kPanelLight(0.95f, 0.95f, 0.97f, 1.f);   // 패널/카드 바탕
-	const FLinearColor kCardEmpty(0.78f, 0.79f, 0.83f, 1.f);    // 빈 슬롯
-	const FLinearColor kBorderLight(0.62f, 0.63f, 0.68f, 1.f);  // 얇은 테두리
-	const FLinearColor kTextDark(0.10f, 0.11f, 0.14f, 1.f);     // 본문 텍스트
-	const FLinearColor kTextGray(0.42f, 0.43f, 0.49f, 1.f);     // 보조 텍스트
-	const FLinearColor kLockInBlue(0.16f, 0.45f, 0.86f, 1.f);   // LOCK IN 버튼(활성)
-	const FLinearColor kLockInIdle(0.66f, 0.67f, 0.71f, 1.f);   // LOCK IN 버튼(비활성)
-	const FLinearColor kBanRed(0.82f, 0.22f, 0.22f, 1.f);       // 밴 X 표시 / 팀 무관 장식 레드
+	// ── 팔레트: 전부 AOSUIStyle(공유 토큰)로 위임 — 화이트+파스텔 블렌드, 값 중앙화(중복 제거).
+	//    이름(k*)은 호출부 보존 위해 유지하되 정의는 AOSUIStyle 단일 진실 (CS-접두와 이름이 달라 충돌 없음).
+	const FLinearColor kBgLight    = AOSUIStyle::BgBase;      // 전체 배경(near-white)
+	const FLinearColor kPanelLight = AOSUIStyle::CardWhite;   // 패널/카드 바탕(흰색)
+	const FLinearColor kCardEmpty  = AOSUIStyle::PanelSoft;   // 빈 슬롯
+	const FLinearColor kBorderLight= AOSUIStyle::BorderSoft;  // 얇은 테두리
+	const FLinearColor kTextDark   = AOSUIStyle::TextSlate;   // 본문 텍스트(슬레이트)
+	const FLinearColor kTextGray   = AOSUIStyle::TextMuted;   // 보조 텍스트
+	const FLinearColor kLockInBlue = AOSUIStyle::Accent;      // LOCK IN 버튼(활성)
+	const FLinearColor kLockInIdle = AOSUIStyle::AccentIdle;  // LOCK IN 버튼(비활성)
+	const FLinearColor kBanRed     = AOSUIStyle::BanRed;      // 밴 X / 장식 강조
 
 	// 그리드 최대 표시 높이 = 5행. 행 높이 ≈ 카드(58+보더4)=62 + 이름(11+패딩2)=13 + 랩패딩6 ≈ 81 → 81×5 ≈ 405 + 여유
 	constexpr float kGridMaxHeight = 410.f;
@@ -91,9 +91,7 @@ UTexture2D* UAOSBanPickWidget::TryLoadTexture(const TCHAR* AssetPath)
 
 FLinearColor UAOSBanPickWidget::TeamColor(EAOSTeam Team)
 {
-	return (Team == EAOSTeam::Team1)
-		? FLinearColor(0.85f, 0.27f, 0.27f, 1.f)   // 팀1 = 레드
-		: FLinearColor(0.30f, 0.55f, 0.95f, 1.f);  // 팀2 = 블루
+	return AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1);   // 파스텔 코랄(팀1) / 블루(팀2)
 }
 
 UTexture2D* UAOSBanPickWidget::GetPortrait(int32 RosterIndex) const
