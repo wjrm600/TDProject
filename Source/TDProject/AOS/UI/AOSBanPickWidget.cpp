@@ -27,6 +27,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Styling/SlateColor.h"
 #include "Styling/SlateBrush.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Styling/CoreStyle.h"
 #include "AOSUIStyle.h"
 
@@ -710,8 +711,10 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 			UBorder* Card = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(),
 				*FString::Printf(TEXT("BPCard_%d"), i));
 			Card->SetVisibility(ESlateVisibility::HitTestInvisible); // 클릭은 루트가 히트테스트로 처리
-			Card->SetBrushColor(kBorderLight);   // RefreshCards 가 상태별 틴트
-			Card->SetPadding(FMargin(2.f));
+			// 소프트 카드: 둥근 흰 프레임 + 얇은 소프트 보더 (RefreshCards 가 상태별로 보더 색/두께 교체)
+			Card->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::CardRadius,
+				AOSUIStyle::BorderSoft, 1.f));
+			Card->SetPadding(FMargin(4.f));
 
 			USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			CardSize->SetWidthOverride(58.f);
@@ -996,15 +999,15 @@ void UAOSBanPickWidget::RefreshCards()
 			CardImages[i]->SetColorAndOpacity(Tint);
 		}
 
-		// 프레임 틴트: 상태별 (텍스처 프레임/컬러 림 공통)
+		// 소프트 카드: 흰 채움 유지 + 상태별 보더(색/두께)로 표현
 		if (CardBorders[i])
 		{
-			FLinearColor FrameTint = kBorderLight;                                 // 기본 = 라이트 테두리
-			if (i == PendingIndex)                               FrameTint = FLinearColor(1.00f, 0.78f, 0.20f, 1.f); // 미리보기 = 골드
-			else if (GS->IsUnitBanned(i))                        FrameTint = FLinearColor(0.42f, 0.16f, 0.16f, 1.f); // 밴 = 암적
-			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team1)) FrameTint = FLinearColor(0.95f, 0.35f, 0.35f, 1.f); // T1 픽 = 적
-			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team2)) FrameTint = FLinearColor(0.40f, 0.60f, 1.00f, 1.f); // T2 픽 = 청
-			CardBorders[i]->SetBrushColor(FrameTint);
+			FLinearColor Outline = AOSUIStyle::BorderSoft; float Width = 1.f;       // 기본 = 소프트 보더
+			if (i == PendingIndex)                               { Outline = FLinearColor(1.00f, 0.78f, 0.20f, 1.f); Width = 2.5f; } // 미리보기 = 골드 ring
+			else if (GS->IsUnitBanned(i))                        { Outline = AOSUIStyle::BanRed;            Width = 2.f; }            // 밴
+			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team1)) { Outline = AOSUIStyle::TeamAccent(true);  Width = 2.f; }            // T1 픽 = 코랄
+			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team2)) { Outline = AOSUIStyle::TeamAccent(false); Width = 2.f; }            // T2 픽 = 블루
+			CardBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::CardRadius, Outline, Width));
 		}
 	}
 }
