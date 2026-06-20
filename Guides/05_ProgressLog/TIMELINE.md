@@ -1349,3 +1349,23 @@
 **결과**
 - 잠재 use-after-free 트랩 제거 + GC 불변식 1건 충족. 잔여 참조 0, 순삭 −52/+2. 풀 리빌드 컴파일 통과 (커밋 `cc90f23`)
 - **교훈**: `TMap<K, TArray<UObject*>>` 같은 중첩 컨테이너는 bare UPROPERTY 불가 → "런타임용 UPROPERTY 없음" 주석은 태만이 아니라 UHT 제약. 진짜 해법은 USTRUCT 래퍼 또는 (가능하면) 평면 컨테이너화
+
+---
+
+## 2026-06-20 — TeamSpawnPoints USTRUCT 래퍼화 (마지막 GC 불변식 구멍 마감)
+
+**작업 내용**
+- 위 항목에서 보류했던 `TeamSpawnPoints` 중첩 컨테이너의 GC 추적을 USTRUCT 래퍼로 마감 (커밋 `9b64eee`)
+
+**문제점**
+- `TeamSpawnPoints`(`TMap<EAOSTeam, TArray<AAOSSpawnPoint*>>`)는 UObject* 를 담는데 중첩 컨테이너라 bare UPROPERTY 불가(UHT 미지원) → GC 추적 밖 (CLAUDE.md "모든 UObject* 배열 UPROPERTY 필수" 위반)
+- 실위험은 낮음(스폰포인트는 게임 중 비파괴)이나, GameMode 런타임 포인터 컨테이너 중 유일하게 남은 불변식 구멍
+
+**해결 방법**
+- 내부 `TArray` 를 `FAOSSpawnPointList` USTRUCT 로 한 겹 래핑(기존 `FAOSLaneDeployPlan` 선례와 동일 패턴) → 맵 값이 단일 레벨 구조체가 되어 `UPROPERTY()` 가능, 내부 배열 GC 추적
+- 멤버: `TMap<…, TArray<A*>>` → `UPROPERTY() TMap<…, FAOSSpawnPointList>`
+- 사용처 6곳 element access 를 `.SpawnPoints` 경유로 갱신(`.Contains`/`.Add` 키 연산은 유지)
+
+**결과**
+- GameMode 런타임 UObject* 컨테이너 **GC 불변식 전부 충족**(`AllSpawnPoints`·`TeamSpawnPoints` ✅, `CharacterDeployments`는 enum이라 무관). 동작 변화 없음, 풀 리빌드 컴파일 통과 (커밋 `9b64eee`)
+- 분석→개선 세션에서 파생된 위생 작업 마무리: 중첩 컨테이너의 정석 GC 패턴(USTRUCT 래퍼)을 코드베이스에 정착
