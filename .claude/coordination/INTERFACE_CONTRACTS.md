@@ -73,7 +73,7 @@ void ReceiveDamage(float DamageAmount);
 // 이 enum 값을 변경하면 모든 AOS 파일에 영향
 enum class EAOSTeam : uint8 { Team1, Team2 };
 enum class EAOSLane : uint8 { Top, Mid, Bottom };
-enum class EAOSGameState : uint8 { MainMenu, Lobby, RoundPreparation, RoundRunning, Settlement };
+enum class EAOSGameState : uint8 { MainMenu, Lobby, RoundPreparation, RoundRunning, Settlement, BanPick }; // BanPick 은 끝에 append (값 시프트 방지)
 
 // 구조물 타입 (AOSStructure.h에 정의, Object 소유)
 enum class EStructureType : uint8 { CommandCenter, Tower };

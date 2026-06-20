@@ -42,7 +42,7 @@ bool IsAlive() const;
 ```cpp
 enum class EAOSTeam : uint8 { Team1, Team2 };
 enum class EAOSLane : uint8 { Top, Mid, Bottom };
-enum class EAOSGameState : uint8 { Preparation, GameRunning, GameEnded };
+enum class EAOSGameState : uint8 { MainMenu, Lobby, RoundPreparation, RoundRunning, Settlement, BanPick }; // BanPick 은 끝에 append (값 시프트 방지)
 EAOSGameState GetAOSGameState() const;
 void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
 ```
