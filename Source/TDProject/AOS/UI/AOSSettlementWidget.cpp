@@ -118,10 +118,16 @@ void UAOSSettlementWidget::OnReturnClicked()
 		return;
 	}
 
-	AAOSGameMode* GameMode = Cast<AAOSGameMode>(World->GetAuthGameMode());
-	if (GameMode)
+	// 위젯은 클라이언트 전용 → DS 클라이언트에선 GetAuthGameMode() 가 nullptr 라
+	// 기존엔 if(GameMode) 가드에 막혀 "메인 메뉴로" 버튼이 무반응이었다 (CLAUDE.md DS 안티패턴).
+	// 서버(리슨서버 호스트)면 GameMode 의 권위 값을, 클라면 기본 메인메뉴 맵을 사용해 ClientTravel 한다.
+	// ⚠️ 기본값은 AOSGameMode::MainMenuMapName (AOSGameMode.h) 과 동기 유지할 것.
+	FName MapName(TEXT("/Game/AOS/Lvl_MainMenu"));
+	if (AAOSGameMode* GameMode = Cast<AAOSGameMode>(World->GetAuthGameMode()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴 맵으로 전환: %s"), *GameMode->GetMainMenuMapName().ToString());
-		UGameplayStatics::OpenLevel(this, GameMode->GetMainMenuMapName());
+		MapName = GameMode->GetMainMenuMapName();
 	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴 맵으로 전환: %s"), *MapName.ToString());
+	UGameplayStatics::OpenLevel(this, MapName);
 }
