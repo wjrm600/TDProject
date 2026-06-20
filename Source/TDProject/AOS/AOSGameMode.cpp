@@ -718,29 +718,6 @@ void AAOSGameMode::CacheTowerReferences()
 		return;
 	}
 
-	// 각 라인의 타워들을 캐시
-	for (int32 Lane = 0; Lane < 3; ++Lane)
-	{
-		EAOSLane LaneType = static_cast<EAOSLane>(Lane);
-
-		// Team1 타워
-		TArray<AAOSStructure*> Team1Towers = MapManager->GetTowersInLane(LaneType, EAOSTeam::Team1);
-		if (Team1Towers.Num() > 0)
-		{
-			LaneTowers.Add(LaneType, Team1Towers);
-		}
-
-		// Team2 타워
-		TArray<AAOSStructure*> Team2Towers = MapManager->GetTowersInLane(LaneType, EAOSTeam::Team2);
-		for (AAOSStructure* Tower : Team2Towers)
-		{
-			if (LaneTowers.Contains(LaneType))
-			{
-				LaneTowers[LaneType].Add(Tower);
-			}
-		}
-	}
-
 	// 커맨드 센터 캐시
 	AAOSStructure* Team1Center = MapManager->GetCommandCenter(EAOSTeam::Team1);
 	AAOSStructure* Team2Center = MapManager->GetCommandCenter(EAOSTeam::Team2);
@@ -766,28 +743,6 @@ void AAOSGameMode::CacheTowerReferences()
 AAOSStructure* AAOSGameMode::GetCommandCenter(EAOSTeam Team)
 {
 	return CommandCenters.FindRef(Team);
-}
-
-// 특정 라인의 팀별 타워 목록 반환
-TArray<AAOSStructure*> AAOSGameMode::GetTowersByLane(EAOSLane Lane, EAOSTeam Team)
-{
-	TArray<AAOSStructure*> Result;
-
-	if (!LaneTowers.Contains(Lane))
-	{
-		return Result;
-	}
-
-	// 해당 라인의 모든 타워 중 팀에 맞는 것만 필터링
-	for (AAOSStructure* Tower : LaneTowers[Lane])
-	{
-		if (Tower && Tower->GetOwnerTeam() == Team)
-		{
-			Result.Add(Tower);
-		}
-	}
-
-	return Result;
 }
 
 void AAOSGameMode::OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter)

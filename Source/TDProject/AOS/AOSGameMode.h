@@ -165,9 +165,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
 	AAOSStructure* GetCommandCenter(EAOSTeam Team);
 
-	UFUNCTION(BlueprintCallable, Category = "AOS|Structures")
-	TArray<AAOSStructure*> GetTowersByLane(EAOSLane Lane, EAOSTeam Team);
-
 	// 캐릭터 사망 시 호출
 	UFUNCTION(BlueprintCallable, Category = "AOS|Characters")
 	void OnCharacterDestroyed(AAOSCharacter* DestroyedCharacter);
@@ -349,10 +346,8 @@ protected:
 	// 라인별 배치 정보 (런타임용, UPROPERTY 없음)
 	TMap<EAOSTeam, TArray<EAOSLane>> CharacterDeployments;
 
-	// 라인별 타워들 (런타임용, UPROPERTY 없음)
-	TMap<EAOSLane, TArray<AAOSStructure*>> LaneTowers;
-
-	// 스폰 포인트 (런타임용, UPROPERTY 없음)
+	// 스폰 포인트 (런타임용). UObject* 배열이라 GC 추적 위해 UPROPERTY 필수 (CLAUDE.md 불변식).
+	UPROPERTY()
 	TArray<AAOSSpawnPoint*> AllSpawnPoints;
 	TMap<EAOSTeam, TArray<AAOSSpawnPoint*>> TeamSpawnPoints;
 
