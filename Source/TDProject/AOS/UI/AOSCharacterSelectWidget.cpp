@@ -25,11 +25,12 @@
 #include "AOSShopWidget.h"
 #include "AOSGameState.h"
 #include "AOSPlayerState.h"
+#include "AOSUIStyle.h"
 
 // ─────────────────────────────────────────────────────────────
-// 라운드 준비 창 디자인 — 벤픽 창(UAOSBanPickWidget)과 동일한 라이트 테마.
-//   ※ 색 상수/헬퍼는 AOSBanPickWidget.cpp 의 사본(코드 중복) — cpp-only/저위험/Live Coding 우선.
-//     후속 리팩토링으로 공유 헤더(AOSUIStyle.h) 추출 가능(단 신규 파일은 풀 빌드 필요).
+// 라운드 준비 창 디자인 — 벤픽 창(UAOSBanPickWidget)과 동일한 화이트+파스텔 테마.
+//   ※ 색 토큰은 공유 헤더 AOSUIStyle.h 로 위임(단일 진실). CS* 이름은 호출부 보존용 별칭
+//     (CS 접두라 벤픽 k* 와 유니티 빌드 충돌 없음).
 // ─────────────────────────────────────────────────────────────
 namespace
 {
@@ -39,16 +40,16 @@ namespace
 	const TCHAR* CSLineTaperHPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_LineTaperH.T_BanPick_LineTaperH");
 	const TCHAR* CSWingSidePath  = TEXT("/Game/AOS/UI/Assets/T_BanPick_WingSide.T_BanPick_WingSide");
 
-	// ── 라이트 테마 팔레트 (벤픽과 동일) ──
-	const FLinearColor CSBgLight(0.85f, 0.86f, 0.89f, 1.f);      // 전체 배경
-	const FLinearColor CSPanelLight(0.95f, 0.95f, 0.97f, 1.f);   // 패널/카드 바탕
-	const FLinearColor CSCardEmpty(0.78f, 0.79f, 0.83f, 1.f);    // 빈 슬롯
-	const FLinearColor CSBorderLight(0.62f, 0.63f, 0.68f, 1.f);  // 얇은 테두리
-	const FLinearColor CSTextDark(0.10f, 0.11f, 0.14f, 1.f);     // 본문 텍스트
-	const FLinearColor CSTextGray(0.42f, 0.43f, 0.49f, 1.f);     // 보조 텍스트
-	const FLinearColor CSLockInBlue(0.16f, 0.45f, 0.86f, 1.f);   // 준비(LOCK IN) 버튼(활성)
-	const FLinearColor CSLockInIdle(0.66f, 0.67f, 0.71f, 1.f);   // 준비 버튼(완료/비활성)
-	const FLinearColor CSBanRed(0.82f, 0.22f, 0.22f, 1.f);       // 팀 무관 장식 레드
+	// ── 팔레트: AOSUIStyle(공유 토큰)로 위임 — 화이트+파스텔, 벤픽과 동일 단일 진실(값 중앙화) ──
+	const FLinearColor CSBgLight     = AOSUIStyle::BgBase;       // 전체 배경(near-white)
+	const FLinearColor CSPanelLight  = AOSUIStyle::CardWhite;    // 패널/카드 바탕(흰색)
+	const FLinearColor CSCardEmpty   = AOSUIStyle::PanelSoft;    // 빈 슬롯
+	const FLinearColor CSBorderLight = AOSUIStyle::BorderSoft;   // 얇은 테두리
+	const FLinearColor CSTextDark    = AOSUIStyle::TextSlate;    // 본문 텍스트(슬레이트)
+	const FLinearColor CSTextGray    = AOSUIStyle::TextMuted;    // 보조 텍스트
+	const FLinearColor CSLockInBlue  = AOSUIStyle::Accent;       // 준비(LOCK IN) 버튼(활성)
+	const FLinearColor CSLockInIdle  = AOSUIStyle::AccentIdle;   // 준비 버튼(완료/비활성)
+	const FLinearColor CSBanRed      = AOSUIStyle::BanRed;       // 장식 강조
 
 	// 배치 슬롯 상태색 (라이트)
 	const FLinearColor kSlotFilled(0.80f, 0.90f, 0.82f, 1.f);   // 배정됨 — 연한 그린
