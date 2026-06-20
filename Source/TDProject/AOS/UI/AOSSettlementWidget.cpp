@@ -7,7 +7,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "AOSGameMode.h"
-#include "Kismet/GameplayStatics.h"
+#include "AOSPlayerController.h"
 
 bool UAOSSettlementWidget::Initialize()
 {
@@ -112,22 +112,13 @@ void UAOSSettlementWidget::SetDraw()
 
 void UAOSSettlementWidget::OnReturnClicked()
 {
-	UWorld* World = GetWorld();
-	if (!World)
+	// 위젯은 클라이언트 전용. 단순 OpenLevel(ClientTravel)이면 그 클라만 서버에서 끊겨 standalone 으로
+	// 빠지고, 이후 "게임 시작"이 서버에 닿지 못해 재매칭이 불가능해진다 (매칭 실패 증상).
+	// → 소유 PlayerController 의 Server RPC 로 서버에 요청 → 서버가 전원을 메인메뉴맵으로 ServerTravel.
+	//   (게임 시작 시 GameMode 의 ServerTravel(GameMapName) 과 대칭 — 모두 서버 연결을 유지해 재매칭 가능.)
+	if (AAOSPlayerController* PC = Cast<AAOSPlayerController>(GetOwningPlayer()))
 	{
-		return;
+		UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴로 → Server_ReturnToMainMenu 요청"));
+		PC->Server_ReturnToMainMenu();
 	}
-
-	// 위젯은 클라이언트 전용 → DS 클라이언트에선 GetAuthGameMode() 가 nullptr 라
-	// 기존엔 if(GameMode) 가드에 막혀 "메인 메뉴로" 버튼이 무반응이었다 (CLAUDE.md DS 안티패턴).
-	// 서버(리슨서버 호스트)면 GameMode 의 권위 값을, 클라면 기본 메인메뉴 맵을 사용해 ClientTravel 한다.
-	// ⚠️ 기본값은 AOSGameMode::MainMenuMapName (AOSGameMode.h) 과 동기 유지할 것.
-	FName MapName(TEXT("/Game/AOS/Lvl_MainMenu"));
-	if (AAOSGameMode* GameMode = Cast<AAOSGameMode>(World->GetAuthGameMode()))
-	{
-		MapName = GameMode->GetMainMenuMapName();
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[Settlement] 메인 메뉴 맵으로 전환: %s"), *MapName.ToString());
-	UGameplayStatics::OpenLevel(this, MapName);
 }

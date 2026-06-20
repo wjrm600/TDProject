@@ -246,6 +246,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void HandleDrawRound();
 
+	// 정산 후 "메인 메뉴로" — 전원을 메인메뉴 맵으로 ServerTravel (게임 시작 ServerTravel 과 대칭).
+	// 한 클라만 OpenLevel(ClientTravel)로 빠지면 서버 연결이 끊겨 재매칭 불가 → 반드시 서버 주도 ServerTravel.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
+	void ServerReturnToMainMenu();
+
 	// 게임 상태 변경 델리게이트
 	UPROPERTY(BlueprintAssignable, Category = "AOS|Game")
 	FOnGameStateChanged OnGameStateChanged;

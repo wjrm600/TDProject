@@ -1422,6 +1422,26 @@ void AAOSGameMode::ServerSetPlayerReady(AAOSPlayerState* PlayerState, bool bRead
 	}
 }
 
+void AAOSGameMode::ServerReturnToMainMenu()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 정산 단계에서만 허용 — rogue 클라가 진행 중 매치를 중단시키지 못하도록.
+	if (AOSGameState != EAOSGameState::Settlement)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ServerReturnToMainMenu 무시 — 현재 상태가 Settlement 아님"));
+		return;
+	}
+
+	// 전원을 메인메뉴 맵으로 ServerTravel (게임 시작 ServerTravel(GameMapName) 과 대칭).
+	// 모든 클라가 서버 연결을 유지한 채 메인메뉴로 복귀 → 다시 "게임 시작" 매칭 가능.
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 메인 메뉴로 복귀 → ServerTravel(%s)"), *MainMenuMapName.ToString());
+	GetWorld()->ServerTravel(MainMenuMapName.ToString(), false /*bAbsolute*/);
+}
+
 bool AAOSGameMode::AreAllPlayersReady()
 {
 	const AAOSGameState* AOSGS = Cast<AAOSGameState>(GameState);

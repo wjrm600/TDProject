@@ -1043,6 +1043,16 @@ void AAOSPlayerController::Server_RequestStartRound_Implementation()
 	}
 }
 
+// 정산창 "메인 메뉴로" RPC 구현 — 서버 주도 ServerTravel (전원 메인메뉴 복귀 → 재매칭 가능)
+void AAOSPlayerController::Server_ReturnToMainMenu_Implementation()
+{
+	if (AAOSGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AAOSGameMode>() : nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Server_ReturnToMainMenu → GameMode ServerTravel"));
+		GM->ServerReturnToMainMenu();
+	}
+}
+
 // Server RPC 구현 - 유닛 아이템 구매 (서버가 자기 팀 골드로 검증)
 void AAOSPlayerController::Server_BuyItemForUnit_Implementation(int32 UnitId, FName ItemRowName)
 {

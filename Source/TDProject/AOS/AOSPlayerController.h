@@ -113,6 +113,10 @@ public:
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_RequestStartRound();
 
+	// 정산창 "메인 메뉴로" — 클라가 서버에 요청 → 서버가 전원 메인메뉴맵으로 ServerTravel (재매칭 가능)
+	UFUNCTION(Server, Reliable, Category = "AOS|Network")
+	void Server_ReturnToMainMenu();
+
 	// 유닛 아이템 구매 요청 (클라 → 서버). 상점 UI 가 호출. 서버가 골드/단계 검증.
 	UFUNCTION(Server, Reliable, Category = "AOS|Network")
 	void Server_BuyItemForUnit(int32 UnitId, FName ItemRowName);
