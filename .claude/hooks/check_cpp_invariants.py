@@ -84,6 +84,18 @@ def check_file(fp):
                 f"(서버 전용 권한 누락 의심, 저신뢰)"
             )
 
+    # ── Check 4 (.cpp, path-scoped): UI/위젯 파일이 GetAuthGameMode 호출 → 클라에서 null ──
+    # 위젯/UI 코드는 클라이언트 전용(IsLocalPlayerController 가드 하에 생성)인데, GetAuthGameMode()
+    # 는 DS 클라이언트에서 nullptr 반환 → 버튼/로직이 조용히 죽거나 null deref.
+    # CLAUDE.md 안티패턴: "클라 로직에서 GetAuthGameMode() 금지 → GameState 경유".
+    # 서버 RPC 가 섞인 PlayerController 는 정당 사용이 많아 제외하고 UI 파일로만 path-scope.
+    is_ui = ("/UI/" in norm) or ("widget" in name.lower())
+    if is_source and is_ui and re.search(r"\bGetAuthGameMode\b", text):
+        warnings.append(
+            f"{name}  위젯/UI 코드에서 GetAuthGameMode() 사용 — 클라이언트에서 nullptr "
+            f"(DS 안티패턴) → GameState 경유로 변경 검토"
+        )
+
     return warnings
 
 
