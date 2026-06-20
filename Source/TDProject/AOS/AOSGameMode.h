@@ -23,6 +23,17 @@ struct FAOSLaneDeployPlan
 	TArray<int32> UnitIds;
 };
 
+// 팀별 스폰포인트 목록 래퍼. TMap<…, TArray<A*>> 중첩 컨테이너는 UHT 가 UPROPERTY 미지원이라
+// 구조체로 한 겹 감싸 내부 TArray 에 UPROPERTY 부여 → GC 추적 (CLAUDE.md 불변식).
+USTRUCT()
+struct FAOSSpawnPointList
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<AAOSSpawnPoint*> SpawnPoints;
+};
+
 // 에디터에서 등록하는 캐릭터 Blueprint 정보
 USTRUCT(BlueprintType)
 struct FCharacterRosterEntry
@@ -349,7 +360,9 @@ protected:
 	// 스폰 포인트 (런타임용). UObject* 배열이라 GC 추적 위해 UPROPERTY 필수 (CLAUDE.md 불변식).
 	UPROPERTY()
 	TArray<AAOSSpawnPoint*> AllSpawnPoints;
-	TMap<EAOSTeam, TArray<AAOSSpawnPoint*>> TeamSpawnPoints;
+	// 팀별 스폰포인트 (FAOSSpawnPointList 래퍼로 GC 추적 — 중첩 컨테이너 UPROPERTY 우회).
+	UPROPERTY()
+	TMap<EAOSTeam, FAOSSpawnPointList> TeamSpawnPoints;
 
 	// 맵 매니저 참조
 	AAOSMapManager* MapManager;

@@ -541,12 +541,12 @@ void AAOSGameMode::RegisterSpawnPoint(AAOSSpawnPoint* SpawnPoint)
 	EAOSTeam Team = SpawnPoint->GetTeam();
 	if (!TeamSpawnPoints.Contains(Team))
 	{
-		TeamSpawnPoints.Add(Team, TArray<AAOSSpawnPoint*>());
+		TeamSpawnPoints.Add(Team, FAOSSpawnPointList());
 	}
-	TeamSpawnPoints[Team].Add(SpawnPoint);
+	TeamSpawnPoints[Team].SpawnPoints.Add(SpawnPoint);
 
 	// 팀 내에서 라인/인덱스 순으로 정렬
-	TeamSpawnPoints[Team].Sort([](const AAOSSpawnPoint& A, const AAOSSpawnPoint& B)
+	TeamSpawnPoints[Team].SpawnPoints.Sort([](const AAOSSpawnPoint& A, const AAOSSpawnPoint& B)
 	{
 		if (A.GetLane() != B.GetLane())
 		{
@@ -563,7 +563,7 @@ AAOSSpawnPoint* AAOSGameMode::GetNearestSpawnPoint(EAOSTeam Team, EAOSLane Lane)
 		return nullptr;
 	}
 
-	TArray<AAOSSpawnPoint*>& SpawnPoints = TeamSpawnPoints[Team];
+	TArray<AAOSSpawnPoint*>& SpawnPoints = TeamSpawnPoints[Team].SpawnPoints;
 
 	// 해당 팀의 해당 라인에서 사용 가능한 첫 번째 스폰 포인트 찾기
 	for (AAOSSpawnPoint* SpawnPoint : SpawnPoints)
@@ -605,7 +605,7 @@ void AAOSGameMode::SpawnCharactersForRound()
 			TArray<AAOSSpawnPoint*> LaneSpawnPoints;
 			if (TeamSpawnPoints.Contains(CurrentTeam))
 			{
-				for (AAOSSpawnPoint* SP : TeamSpawnPoints[CurrentTeam])
+				for (AAOSSpawnPoint* SP : TeamSpawnPoints[CurrentTeam].SpawnPoints)
 				{
 					if (SP && SP->GetLane() == CurrentLane)
 						LaneSpawnPoints.Add(SP);
@@ -1015,7 +1015,7 @@ void AAOSGameMode::TransitionToRoundPreparation()
 		for (auto& KV : TeamSpawnPoints)
 		{
 			TMap<EAOSLane, int32> LaneCounts;
-			for (AAOSSpawnPoint* SP : KV.Value)
+			for (AAOSSpawnPoint* SP : KV.Value.SpawnPoints)
 			{
 				if (SP) LaneCounts.FindOrAdd(SP->GetLane())++;
 			}
