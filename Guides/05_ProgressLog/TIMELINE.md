@@ -1328,3 +1328,24 @@
 **결과**
 - 전원이 서버 연결을 유지한 채 메인메뉴 복귀 → 준비 플래그 리셋 → "게임 시작" 재매칭 정상 (Listen Server 2-Client 검증 완료, 커밋 `e88ceed`)
 - **교훈**: DS 구조에서 "메뉴/로비 복귀" 는 클라 `OpenLevel`(ClientTravel=접속 해제)이 아니라 **서버 `ServerTravel`**(전원 동반)이어야 세션 연속성·재매칭이 유지된다
+
+---
+
+## 2026-06-20 — GameMode dead code(GetTowersByLane/LaneTowers) 제거 + AllSpawnPoints UPROPERTY (GC 불변식)
+
+**작업 내용**
+- 가드레일(`check_cpp_invariants` Check 1)이 `AOSGameMode.h` 런타임 포인터 멤버를 잡은 것을 점검 → 정리 (커밋 `cc90f23`)
+
+**문제점**
+- `LaneTowers`(`TMap<EAOSLane, TArray<AAOSStructure*>>`)가 UPROPERTY 미부여. 타워는 게임 중 파괴되므로 파괴 시 raw 포인터가 nullptr 이 아니라 **dangling** → `GetTowersByLane()` 의 `if (Tower && ...)` 가드를 통과 → **잠재 use-after-free**
+- `AllSpawnPoints`(`TArray<AAOSSpawnPoint*>`)도 UPROPERTY 누락 — CLAUDE.md "모든 UObject* 배열 UPROPERTY 필수" 위반
+- 발견: `GetTowersByLane` 가 C++ 호출부 0 / Blueprint 참조 0 인 **dead code** (선언+정의만 존재). 유일 reader 라 dangling 위험은 현재 도달 불가였으나 트랩으로 잔존
+
+**해결 방법**
+- `GetTowersByLane()` 선언+정의, `LaneTowers` 멤버, 이를 채우던 `CacheTowerReferences()` 캐시 루프 일괄 삭제 (동일 기능은 정본 `AOSMapManager::GetTowersInLane()` 가 담당 → 공백 없음)
+- `AllSpawnPoints` 에 `UPROPERTY()` 부여 → 파괴 시 자동 nullptr, 가드레일 경고 해소
+- `TeamSpawnPoints`(중첩 `TMap<…, TArray<A*>>`)는 UHT 가 nested container UPROPERTY 미지원이라 bare 부여 불가 → 완전 준수엔 USTRUCT 래퍼 필요(저위험·별건 보류)
+
+**결과**
+- 잠재 use-after-free 트랩 제거 + GC 불변식 1건 충족. 잔여 참조 0, 순삭 −52/+2. 풀 리빌드 컴파일 통과 (커밋 `cc90f23`)
+- **교훈**: `TMap<K, TArray<UObject*>>` 같은 중첩 컨테이너는 bare UPROPERTY 불가 → "런타임용 UPROPERTY 없음" 주석은 태만이 아니라 UHT 제약. 진짜 해법은 USTRUCT 래퍼 또는 (가능하면) 평면 컨테이너화
