@@ -44,6 +44,10 @@ def check_file(fp):
     except Exception:
         return []
 
+    # 라인 주석(//...) 제거본으로 검사 → "주석 속 언급"으로 인한 false positive 방지.
+    #   (간이 strip: 문자열 내부 // 는 드물어 무시 → 놓치면 false negative 라 nudge 로선 안전한 방향.
+    #    블록주석 /* */ 은 미처리.) 예: "// CreateWidget 단계에서…" 같은 설명 주석이 check 2 를 오발동시키던 문제.
+    lines = [ln.split("//", 1)[0] for ln in lines]
     text = "\n".join(lines)
     name = os.path.basename(fp)
     is_header = ext in (".h", ".hpp")

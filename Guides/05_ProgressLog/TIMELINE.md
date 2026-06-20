@@ -1234,3 +1234,24 @@
 **결과**
 - 컨텍스트가 현실과 일치 → 에이전트가 phantom 타깃을 쫓지 않음. **진단 6축 + 잔여 갭 전부 처리 완료**
 - 후속(선택): 실제 DS 출시 필요해지면 그때 `TDProjectServer.Target.cs` 신설(방향 A 전환)
+
+---
+
+## 2026-06-19 — 하네스 (B) 도그푸딩: 가드레일 CI 가 실사용 false positive 포착 → 튜닝
+
+**작업 내용**
+- 벤픽 UI 리디자인 증분 2 push(`13860c9`)에서 (B) 가드레일 CI(`cpp-invariants.yml`)가 **실패** — `AOSBanPickWidget.cpp` 의 check 2(CreateWidget/AddToViewport without IsLocalPlayerController) 발동
+- 진단: **false positive** — 매치가 688번째 줄 **주석** 한 곳뿐(`// …CreateWidget 단계에서…`). 위젯 본인은 AddToViewport 미호출(PlayerController 가 IsLocalPlayerController 가드와 함께 호출)
+- `check_cpp_invariants.py` 튜닝: 검사 전 **라인 주석(`//...`) strip** → 주석 속 키워드 오발동 제거
+
+**문제점 / 난관**
+- 휴리스틱 가드레일이 주석 속 키워드를 코드로 오인 ((d) 작성 시 예고했던 false positive 클래스가 실제로 발생)
+
+**해결 방법**
+- `lines = [ln.split("//", 1)[0] for ln in lines]` 로 라인 주석 제거본을 검사 (문자열 내 `//` 는 드물어 무시 — 놓치면 false negative 라 nudge 로선 안전한 방향; 블록주석 `/* */` 미처리)
+- 4케이스 재검증: 증분2 파일 통과 / 진짜 AddToViewport 호출 여전히 검출 / 주석만 통과 / UPROPERTY 누락 여전히 검출
+
+**결과**
+- 가드레일 정확도 ↑(주석 오탐 클래스 제거 + 실제 검출 보존). 향후 C++ push 동종 오탐 방지
+- **하네스가 실사용을 통해 스스로 개선된 사례** — (B) CI 가 자기 몫(무인 포착)을 했고, 그 피드백으로 (d) 스크립트를 다듬음. 진단의 피드백 루프가 닫힌 실증
+- 참고: `13860c9` 의 빨간 X 는 옛 스크립트 기준이라 잔존(과거 기록), 다음 C++ push 부터 green
