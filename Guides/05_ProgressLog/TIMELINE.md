@@ -1305,3 +1305,26 @@
 **결과**
 - 정산 후 메인 메뉴 복귀가 클라이언트에서 정상 동작 (커밋 `e321529`)
 - Check 4 는 가드레일이 동종 안티패턴(위젯 GetAuthGameMode)을 향후 자동 포착하게 함 — 단 훅 파일 편집은 auto-mode classifier 가 자기수정으로 차단 → 스니펫 수동 적용 대기
+
+---
+
+## 2026-06-20 — 정산 "메인 메뉴로" 재매칭 불가 수정 (OpenLevel→ServerTravel)
+
+**작업 내용**
+- 위 `e321529`(OpenLevel 방식) 검증 중, "메인 메뉴로" 자체는 동작하나 **그 상태에서 다시 "게임 시작"을 누르면 매칭이 안 되는** 후속 버그 발견 → ServerTravel 방식으로 재수정 (커밋 `e88ceed`)
+
+**문제점**
+- 매칭 흐름 = "DS 접속 유지 + 양쪽 `Server_SetReady` → `GameMode::ServerTravel(GameMapName)`" (서버 주도, 전원 동반 이동)
+- 그런데 `e321529` 의 `OpenLevel(MainMenuMapName)` 은 **ClientTravel** — 그 클라이언트 하나만 DS 접속을 끊고 standalone 으로 메인메뉴 로드. 서버에서 빠졌으니 이후 "게임 시작" 의 `Server_SetReady` RPC 가 서버에 닿지 못해 재매칭 불가
+- 즉 1차 수정이 "버튼 무반응"을 "재매칭 불가"로 증상만 이동시킨 셈
+
+**해결 방법**
+- "메인 메뉴로" 를 **서버 주도 ServerTravel** 로 전환 — 게임 시작 `ServerTravel(GameMapName)` 과 대칭
+- `AOSGameMode::ServerReturnToMainMenu()`: `HasAuthority`+`Settlement` 가드 후 `ServerTravel(MainMenuMapName)` (rogue 클라의 진행 중 매치 중단 방지)
+- `AOSPlayerController::Server_ReturnToMainMenu()` RPC: 클라 → 서버 라우팅 → GameMode 호출
+- `AOSSettlementWidget::OnReturnClicked()`: `OpenLevel` 제거 → 소유 PC 의 RPC 호출
+- 신규 Server RPC codegen 으로 **풀 리빌드 필요**(핫 리로드 비호환)
+
+**결과**
+- 전원이 서버 연결을 유지한 채 메인메뉴 복귀 → 준비 플래그 리셋 → "게임 시작" 재매칭 정상 (Listen Server 2-Client 검증 완료, 커밋 `e88ceed`)
+- **교훈**: DS 구조에서 "메뉴/로비 복귀" 는 클라 `OpenLevel`(ClientTravel=접속 해제)이 아니라 **서버 `ServerTravel`**(전원 동반)이어야 세션 연속성·재매칭이 유지된다
