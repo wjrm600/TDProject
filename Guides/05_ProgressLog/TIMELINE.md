@@ -1369,3 +1369,25 @@
 **결과**
 - GameMode 런타임 UObject* 컨테이너 **GC 불변식 전부 충족**(`AllSpawnPoints`·`TeamSpawnPoints` ✅, `CharacterDeployments`는 enum이라 무관). 동작 변화 없음, 풀 리빌드 컴파일 통과 (커밋 `9b64eee`)
 - 분석→개선 세션에서 파생된 위생 작업 마무리: 중첩 컨테이너의 정석 GC 패턴(USTRUCT 래퍼)을 코드베이스에 정착
+
+---
+
+## 2026-06-20 — SessionStart 훅: 세션 시작 시 멀티에이전트 drift 자동 요약
+
+**작업 내용**
+- 외부 레퍼런스(Donchitos)에서 가져온 세션 시작 훅 아이디어 적용 (커밋 `c7f35c6`)
+- cold-start 세션이 즉시 프로젝트 동적 상태를 인지하도록 `SessionStart` 훅 추가
+
+**문제점 / 동기**
+- 매 세션은 cold start — 하네스가 주입하는 건 대부분 정적(CLAUDE.md/메모리/git 스냅샷 1장)
+- 정적 파일이 담을 수 없는 point-in-time 상태(머지 안 된 `agent/*` 브랜치, 방치 worktree, 미푸시 커밋)가 조용히 drift → AGENT_STATUS.md 수동 표가 실제로 4개월 방치된 전례
+
+**해결 방법**
+- `session_start.py`: git 브랜치/미커밋/미푸시 + `agent/*` 브랜치 머지여부 + worktree drift 를 요약해 stdout 으로 주입 (비차단, 항상 exit 0)
+- `settings.json` 에 `SessionStart` 배선
+- ⚠️ 출력 인코딩 함정: Windows 에서 텍스트모드 write 시 cp949 로 나가 하네스(UTF-8 해석)에서 한글 mojibake → `sys.stdout.buffer.write(...encode("utf-8"))` 로 UTF-8 바이트 직접 출력해 해결 (check_cpp_invariants `_emit` 과 동일 패턴)
+
+**결과**
+- 새 대화/재개 시 멀티에이전트 drift(잔존 브랜치·worktree)가 첫머리에 자동 경고됨. clean 이면 "clean" 표시 (커밋 `c7f35c6`)
+- 분석 세션에서 도출한 개선 항목(세션 시작 훅) 적용 완료. 데스크탑 앱에서도 동작(터미널 전용인 statusline 과 달리 SessionStart 는 클라이언트 무관)
+- **교훈**: Windows 훅 stdout 한글은 반드시 UTF-8 바이트 직접 write — 텍스트모드는 cp949 로 새어 mojibake
