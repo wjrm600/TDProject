@@ -563,8 +563,8 @@ void UAOSBanPickWidget::PopulateBanRow(EAOSTeam Team)
 		Box->SetHeightOverride(40.f);
 
 		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Frame->SetBrushColor(kBorderLight);
-		Frame->SetPadding(FMargin(1.f));
+		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius, AOSUIStyle::BorderSoft, 1.f));
+		Frame->SetPadding(FMargin(2.f));
 		UBorder* Inner = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		Inner->SetBrushColor(kCardEmpty);
 		Inner->SetPadding(FMargin(0.f));
@@ -612,11 +612,12 @@ void UAOSBanPickWidget::PopulatePickRow(EAOSTeam Team)
 	for (int32 i = 0; i < PicksPerTeam; ++i)
 	{
 		// 레퍼런스 카드: [초상화 영역] + "SELECTED HERO" + 이름(CHOOSE HERO) + 슬롯탭(R1/B1)
-		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());   // 팀색 테두리(RefreshSlots 가 틴트)
-		Frame->SetBrushColor(FLinearColor(TC.R * 0.6f, TC.G * 0.6f, TC.B * 0.6f, 1.f));
-		Frame->SetPadding(FMargin(1.5f));
+		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());   // 둥근 흰 카드 + 팀 파스텔 보더(RefreshSlots 가 상태별 교체)
+		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius,
+			AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1), 1.5f));
+		Frame->SetPadding(FMargin(6.f));
 		UBorder* Inner = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Inner->SetBrushColor(kPanelLight);
+		Inner->SetBrushColor(FLinearColor(1.f, 1.f, 1.f, 0.f));   // 투명 — 둥근 Frame 의 흰 카드면을 그대로 사용
 		Inner->SetPadding(FMargin(4.f));
 		UVerticalBox* CardVB = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		Inner->SetContent(CardVB);
@@ -653,7 +654,7 @@ void UAOSBanPickWidget::PopulatePickRow(EAOSTeam Team)
 		UTextBlock* TabT = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		TabT->SetText(FText::FromString(FString::Printf(TEXT("%s%d"), *Prefix, i + 1)));
 		TabT->SetFont(MakeFont(11));
-		TabT->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		TabT->SetColorAndOpacity(FSlateColor(AOSUIStyle::TeamDeep(Team == EAOSTeam::Team1)));   // 파스텔 탭 위 진한 팀색 텍스트(대비)
 		TabT->SetJustification(ETextJustify::Center);
 		Tab->SetContent(TabT);
 		if (UVerticalBoxSlot* S = CardVB->AddChildToVerticalBox(Tab)) { S->SetHorizontalAlignment(HAlign_Fill); S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f)); }
@@ -1079,13 +1080,14 @@ void UAOSBanPickWidget::RefreshSlots()
 					PickNames[i]->SetColorAndOpacity(FSlateColor(bActive ? TeamColor(Team) : kTextGray));
 				}
 			}
-			// 슬롯 테두리: 활성=골드 / 채워짐=팀색 / 빈=팀색 옅게
+			// 슬롯 테두리: 둥근 흰 카드 유지 + 상태별 보더(활성=골드 / 채워짐=팀 파스텔 / 빈=소프트)
 			if (PickBorders.IsValidIndex(i) && PickBorders[i])
 			{
-				FLinearColor BC = bActive ? FLinearColor(1.0f, 0.78f, 0.20f, 1.f)
-					: bFilled ? TC
-					          : FLinearColor(TC.R * 0.55f + 0.25f, TC.G * 0.55f + 0.25f, TC.B * 0.55f + 0.25f, 1.f);
-				PickBorders[i]->SetBrushColor(BC);
+				const FLinearColor Outline = bActive ? FLinearColor(1.0f, 0.78f, 0.20f, 1.f)
+					: bFilled ? AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1)
+					          : AOSUIStyle::BorderSoft;
+				const float Width = bActive ? 2.5f : bFilled ? 2.f : 1.f;
+				PickBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius, Outline, Width));
 			}
 		}
 	};
