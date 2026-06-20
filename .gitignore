@@ -53,6 +53,9 @@ __pycache__/
 # Claude Code 머신별 로컬 설정 (permission/hook 경로가 머신마다 다름 — 추적 X)
 .claude/settings.local.json
 
+# 에이전트 spawn 감사 로그 (PreToolUse 훅이 런타임 생성, 머신별 로컬 — 추적 X)
+.claude/coordination/AGENT_SPAWN_LOG.md
+
 # Temporary files
 *.tmp
 *.bak
