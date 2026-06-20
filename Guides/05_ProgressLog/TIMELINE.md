@@ -1285,3 +1285,23 @@
 - 벤픽 + 라운드 준비 + 상점 3창이 화이트+파스텔로 통일 — "임시 UI" 느낌 탈피
 - 후속 폴리시(선택): CharacterSelect 카드/슬롯 둥근화, hover 떠오름, 프리뷰 배경 격리, 상점 유닛/아이템 버튼 카드화
 - 관련 계획: `C:\Users\wjrm7\.claude\plans\joyful-wibbling-rocket.md`
+
+---
+
+## 2026-06-20 — 정산창 "메인 메뉴로" 버튼 클라 무반응 수정 (DS 안티패턴) + 가드레일 Check 4 설계
+
+**작업 내용**
+- 외부 레퍼런스(Donchitos/Claude-Code-Game-Studios) 멀티에이전트 시스템과 본 프로젝트 시스템을 비교 분석 → 도출한 개선 3종 진행 중 발견된 실버그 수정
+- `check_cpp_invariants.py` 가드레일에 **Check 4**(경로 한정) 설계: "UI/위젯 `.cpp` 가 `GetAuthGameMode()` 호출 → 클라 nullptr(DS 안티패턴)". 전체 Source 프로토타입 스캔 결과 **오탐 0 / 실제 후보 1건**
+- 그 1건 = `UAOSSettlementWidget::OnReturnClicked()` → 수정 커밋 `e321529`
+
+**문제점**
+- 위젯은 클라이언트 전용인데 OnReturnClicked 이 `GetAuthGameMode()` 로 메인메뉴 맵 이름을 얻음 → DS 클라이언트에선 nullptr → `if(GameMode)` 가드에 막혀 "메인 메뉴로" 버튼이 아무 동작 안 함(크래시 아님, dead button)
+
+**해결 방법**
+- 서버(리슨서버 호스트)면 GameMode 의 권위 값, 클라면 기본 맵(`/Game/AOS/Lvl_MainMenu`) fallback 으로 ClientTravel
+- 헤더/UPROPERTY 무변경 `.cpp` 단독 수정 → 핫 리로드 호환. 기본값은 `AOSGameMode::MainMenuMapName` 과 동기 유지(주석 명시)
+
+**결과**
+- 정산 후 메인 메뉴 복귀가 클라이언트에서 정상 동작 (커밋 `e321529`)
+- Check 4 는 가드레일이 동종 안티패턴(위젯 GetAuthGameMode)을 향후 자동 포착하게 함 — 단 훅 파일 편집은 auto-mode classifier 가 자기수정으로 차단 → 스니펫 수동 적용 대기
