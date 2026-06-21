@@ -11,6 +11,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "Engine/DataTable.h"
+#include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
 #include "GameFramework/PlayerState.h"
@@ -932,18 +933,32 @@ void AAOSGameMode::ApplyUnitItemsToCharacter(EAOSTeam Team, int32 UnitId, AAOSCh
 	for (const FName& RowName : Owned)
 	{
 		const FAOSItemRow* Row = ItemTable->FindRow<FAOSItemRow>(RowName, TEXT("ApplyUnitItems"));
-		if (!Row || !Row->StatEffect)
+		if (!Row)
 		{
 			continue;
 		}
 
-		FGameplayEffectContextHandle Ctx = ASC->MakeEffectContext();
-		Ctx.AddSourceObject(this);
-		FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(Row->StatEffect, 1.0f, Ctx);
-		if (Spec.IsValid())
+		// 스탯 효과 (Infinite GE) — 스탯 전용/복합 아이템
+		if (Row->StatEffect)
 		{
-			ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
-			Applied++;
+			FGameplayEffectContextHandle Ctx = ASC->MakeEffectContext();
+			Ctx.AddSourceObject(this);
+			FGameplayEffectSpecHandle Spec = ASC->MakeOutgoingSpec(Row->StatEffect, 1.0f, Ctx);
+			if (Spec.IsValid())
+			{
+				ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+				Applied++;
+			}
+		}
+
+		// 무기 메시 (선택) — 캐릭터 손 소켓에 부착. 여러 무기 아이템 시 마지막이 우선.
+		if (!Row->WeaponMesh.IsNull())
+		{
+			if (UStaticMesh* WM = Row->WeaponMesh.LoadSynchronous())
+			{
+				Character->EquipWeapon(WM);
+				Applied++;
+			}
 		}
 	}
 

@@ -9,6 +9,7 @@
 
 class UGameplayEffect;
 class UTexture2D;
+class UStaticMesh;
 class AAOSCharacter;
 
 /**
@@ -38,6 +39,14 @@ struct TDPROJECT_API FAOSItemRow : public FTableRowBase
 	/** 착용 시 적용할 GameplayEffect — Infinite Duration + 속성 Additive 권장 (BP_GE_Item_*) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Item")
 	TSubclassOf<UGameplayEffect> StatEffect;
+
+	/**
+	 * 착용 시 캐릭터 손 소켓에 부착할 무기 메시 (선택).
+	 * 설정 시 ApplyUnitItemsToCharacter 가 캐릭터 무기를 이 메시로 교체(EquipWeapon).
+	 * 비워두면 캐릭터 기본 무기(DefaultWeaponMesh) 유지. 스탯 전용 아이템은 비워둠.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Item")
+	TSoftObjectPtr<UStaticMesh> WeaponMesh = nullptr;
 
 	/** 상점 UI 아이콘 (선택) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Item")

@@ -17,6 +17,8 @@ class UGameplayAbility;
 class UDataTable;
 class UWidgetComponent;
 class UAOSHealthBarWidget;
+class UStaticMeshComponent;
+class UStaticMesh;
 struct FOnAttributeChangeData;
 
 /**
@@ -149,6 +151,25 @@ public:
 	// State.Rooted 태그가 Duration 동안 부여되어 StateTree task 가 RUNNING 유지 → AI 홀드.
 	void ApplyCastRoot(float Duration);
 
+	// === Weapon Attachment (무기 부착 시스템 — 데이터 주도 소켓) ===
+	// 무기는 별도 StaticMesh 로 캐릭터 손 소켓(WeaponSocketName)에 부착된다 (몸만 만든 메시 + 무기 분리 전제).
+	// 서버가 EquipWeapon() 으로 메시 지정 → EquippedWeaponMesh 복제 → 클라가 OnRep 으로 시각화 (DS 정합).
+
+	// 캐릭터 기본 무기 (예: 알렉스의 검). BP CDO 에서 지정. 스폰 시 자동 장착(서버).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Weapon")
+	TObjectPtr<UStaticMesh> DefaultWeaponMesh;
+
+	// 무기 부착 소켓 이름 (캐릭터별 손 소켓; 기본 "weapon_r"). 스켈레톤에 해당 소켓이 있어야 부착됨.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "AOS|Weapon")
+	FName WeaponSocketName = FName("weapon_r");
+
+	// 서버 전용: 무기 메시 장착(nullptr 전달 시 해제). EquippedWeaponMesh 복제 → 클라 OnRep.
+	UFUNCTION(BlueprintCallable, Category = "AOS|Weapon")
+	void EquipWeapon(UStaticMesh* WeaponMesh);
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Weapon")
+	UStaticMeshComponent* GetWeaponMeshComponent() const { return WeaponMeshComponent; }
+
 protected:
 	// 팀 및 라인 정보 — DS 클라가 팀을 알아야 HP 바 색상을 칠할 수 있으므로 Replicated
 	UPROPERTY(ReplicatedUsing = OnRep_Team, BlueprintReadWrite, Category = "AOS|Character")
@@ -175,6 +196,21 @@ protected:
 	// 이동 속도
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Character")
 	float MovementSpeed = 600.0f;
+
+	// 무기 메시 컴포넌트 — WeaponSocketName 소켓에 부착 (코스메틱, NoCollision).
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|Weapon")
+	TObjectPtr<UStaticMeshComponent> WeaponMeshComponent;
+
+	// 현재 장착 무기 메시 — 복제. 서버 EquipWeapon → 클라 OnRep_EquippedWeapon.
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon, BlueprintReadOnly, Category = "AOS|Weapon")
+	TObjectPtr<UStaticMesh> EquippedWeaponMesh;
+
+	// Weapon 리플리케이션 콜백 (클라) — 복제된 무기 메시를 시각화
+	UFUNCTION()
+	void OnRep_EquippedWeapon();
+
+	// 무기 메시/소켓 부착을 WeaponMeshComponent 에 실제 반영 (서버+클라 공통)
+	void RefreshWeaponMesh();
 
 	// HP 바 위젯
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|UI")

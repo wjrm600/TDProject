@@ -16,6 +16,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/WidgetComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/DataTable.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -52,6 +54,14 @@ AAOSCharacter::AAOSCharacter()
 	HealthBarComponent->SetWidgetClass(UAOSHealthBarWidget::StaticClass());
 	HealthBarComponent->SetTwoSided(true);  // 뒤에서 봐도 렌더 + 깜빡임 완화
 	HealthBarComponent->SetBlendMode(EWidgetBlendMode::Masked);  // 알파 테스트 → 반투명 정렬 깜빡임 제거
+
+	// --- Weapon: 무기 메시 컴포넌트 (코스메틱, 손 소켓 부착) ---
+	// 생성자에선 기본 소켓("weapon_r")으로 attach 시도 — 실제 부착은 RefreshWeaponMesh 에서 재평가.
+	WeaponMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
+	WeaponMeshComponent->SetupAttachment(GetMesh(), WeaponSocketName);
+	WeaponMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);  // 캐릭터 통과 원칙 — 무기는 비주얼 전용
+	WeaponMeshComponent->SetGenerateOverlapEvents(false);
+	WeaponMeshComponent->SetVisibility(false);  // 메시 장착 전까지 숨김
 
 	// --- GAS Phase 1: ASC + AttributeSet 부착 ---
 	AbilitySystemComponent = CreateDefaultSubobject<UAOSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -190,6 +200,8 @@ void AAOSCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	// Phase 2: CurrentHealth 멤버 제거 — Health 는 AttributeSet 가 ReplicatedUsing 처리
 	// HP 바 팀 색상용 — DS 클라가 팀을 알아야 함
 	DOREPLIFETIME(AAOSCharacter, Team);
+	// 무기 비주얼 — DS 클라가 손에 든 무기를 그려야 함
+	DOREPLIFETIME(AAOSCharacter, EquippedWeaponMesh);
 }
 
 void AAOSCharacter::OnRep_Team()
@@ -420,6 +432,12 @@ void AAOSCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	SetupCharacterDefaults();
+
+	// 무기 부착: 서버에서 기본 무기 장착 → EquippedWeaponMesh 복제 → 클라 시각화 (DS)
+	if (HasAuthority() && DefaultWeaponMesh)
+	{
+		EquipWeapon(DefaultWeaponMesh);
+	}
 
 	// GAS Phase 1: 클라이언트 사이드 ASC 초기화
 	// (서버는 PossessedBy 에서 호출, 클라이언트는 ASC 가 리플리케이션된 직후 BeginPlay 에서 호출)
@@ -726,5 +744,52 @@ void AAOSCharacter::SetupCharacterDefaults()
 	{
 		GetMesh()->SetAnimInstanceClass(AnimBPClass);
 		UE_LOG(LogTemp, Warning, TEXT("[Character] 애니메이션 설정: %s"), *AnimBPClass->GetName());
+	}
+}
+
+// === Weapon Attachment (무기 부착 시스템) ===
+
+void AAOSCharacter::EquipWeapon(UStaticMesh* WeaponMesh)
+{
+	// 서버 권한에서만 상태 변경 (DS) — 복제로 클라 동기화
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	EquippedWeaponMesh = WeaponMesh;
+	RefreshWeaponMesh();  // 서버(리슨서버 포함) 즉시 반영; 전용서버는 렌더 없음
+}
+
+void AAOSCharacter::OnRep_EquippedWeapon()
+{
+	// 클라: 복제된 무기 메시를 시각화
+	RefreshWeaponMesh();
+}
+
+void AAOSCharacter::RefreshWeaponMesh()
+{
+	if (!WeaponMeshComponent)
+	{
+		return;
+	}
+
+	WeaponMeshComponent->SetStaticMesh(EquippedWeaponMesh);
+	WeaponMeshComponent->SetVisibility(EquippedWeaponMesh != nullptr);
+
+	// 손 소켓에 부착 (스켈레톤에 WeaponSocketName 소켓이 있어야 함 — 없으면 origin 유지 + 경고)
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (MeshComp->DoesSocketExist(WeaponSocketName))
+		{
+			WeaponMeshComponent->AttachToComponent(
+				MeshComp, FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponSocketName);
+		}
+		else if (EquippedWeaponMesh)
+		{
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Weapon] %s: 소켓 '%s' 가 스켈레톤에 없음 — 무기가 origin 에 부착됨. 스켈레톤에 소켓 추가 필요."),
+				*GetName(), *WeaponSocketName.ToString());
+		}
 	}
 }
