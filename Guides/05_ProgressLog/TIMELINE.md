@@ -1391,3 +1391,29 @@
 - 새 대화/재개 시 멀티에이전트 drift(잔존 브랜치·worktree)가 첫머리에 자동 경고됨. clean 이면 "clean" 표시 (커밋 `c7f35c6`)
 - 분석 세션에서 도출한 개선 항목(세션 시작 훅) 적용 완료. 데스크탑 앱에서도 동작(터미널 전용인 statusline 과 달리 SessionStart 는 클라이언트 무관)
 - **교훈**: Windows 훅 stdout 한글은 반드시 UTF-8 바이트 직접 write — 텍스트모드는 cp949 로 새어 mojibake
+
+---
+
+## 2026-06-21 — Alex 릴리스 품질: 무기 소켓 부착 시스템 + 마스터 머티리얼 + Dragonbound 대검
+
+**작업 내용**
+- 알렉스를 출시 품질 "골든 슬라이스"로 끌어올리는 1차 작업(무기·머티리얼). 커밋 `c7eafab`
+- (1) 데이터 주도 무기 소켓 부착 시스템(C++), (2) 캐릭터 마스터 머티리얼 + PBR, (3) Meshy Dragonbound 대검 임포트 + Blender MCP 파이프라인
+
+**문제점**
+- 캐릭터를 "몸만" 제작 → 무기 부착 인프라 전무. 아이템 시스템(`FAOSItemRow`)은 스탯(GE)만 처리, 비주얼 무기 없음
+- 텍스처 품질: `char1_accurig` 가 디퓨즈+오파시티만 — 마스터 머티리얼·노멀/러프니스/메탈릭·팀컬러 없음
+- 대검 임포트 후 다수 함정: 200cm 과대 크기 / 피벗 중앙(손 관통) / 스무딩그룹 경고 / 텍스처 체크무늬
+
+**해결 방법**
+- 무기: `AOSCharacter` 에 `WeaponMesh` 컴포넌트 + `EquipWeapon()` + `EquippedWeaponMesh` 복제(OnRep, DS 정합). `FAOSItemRow.WeaponMesh` + GameMode `ApplyUnitItemsToCharacter` 연동. `char1_accurig_Skeleton` 에 `weapon_r` 소켓(hand_r). **규약 확립: 무기 메시는 손잡이 피벗 + 단일 축 칼날 → 소켓=손잡이, 소켓 방향=칼날.**
+- 머티리얼: `M_Character_Master`(Normal/Roughness/Metallic + TeamColor 틴트 + DamageFlash, `used_with_skeletal_mesh`) + `MI_Alex`. 원본이 Opaque 라 Masked→Opaque 교정.
+- 대검: Blender MCP `execute_blender_code` 로 export 자동화(`bpy.ops.export_scene.fbx`, smoothing=Face 로 스무딩 경고 해결, bake_space_transform, FBX_SCALE_ALL). 피벗 재설정은 `GeometryScript_AssetUtils.copy_mesh_from/to_static_mesh` + `MeshTransforms.translate_mesh`. 스케일은 컴포넌트 0.8.
+
+**결과**
+- Alex 가 오른손에 PBR 대검 장착(복제 검증), 마스터 머티리얼로 20캐릭터 공유 기반 마련. 풀 리빌드 통과(사용자). 커밋 `c7eafab`
+- **교훈 1(머티리얼)**: 파이썬으로 머티리얼 그래프를 만들면 **MCP `compile_material` 필수** — 미컴파일 시 기본(체크무늬) 폴백. 텍스처 샘플 `sampler_type` = 텍스처 압축 일치 필수(`TC_MASKS↔SAMPLERTYPE_MASKS`, `TC_NORMALMAP↔NORMAL`). 메탈릭/러프니스를 MASKS인데 LINEAR_COLOR 로 둬서 체크무늬 발생 → 교정.
+- **교훈 2(크래시)**: Python `MaterialEditingLibrary.recompile_material` 동기 호출 금지 — `BuildTextureStreamingData`→`CollectGarbage`→Python GC 훅(`PyGC_Collect`) access violation 으로 에디터 크래시(작업 유실). 컴파일은 MCP `compile_material`(브리지가 타임아웃 관리)로.
+- **교훈 3(저장)**: MCP 에셋 변경마다 즉시 `save_asset` — 크래시 대비.
+- **교훈 4(Blender)**: Blender MCP 로 export 자동화 가능. 단 `bpy.ops.object.select_all` 등은 컨텍스트 부족으로 실패 → 데이터 API(`select_set`) + `temp_override(window=...)` 우회.
+- **교훈 5(피벗/스케일)**: 프로시저럴 박스·Meshy 메시는 피벗이 중앙 → 손잡이 정렬엔 Blender origin 설정이 정석(단 reimport 시 UE 측 재피벗 원복). `build_scale3d` 는 Nanite/bounds 미반영 → 스케일은 컴포넌트/소켓으로.
