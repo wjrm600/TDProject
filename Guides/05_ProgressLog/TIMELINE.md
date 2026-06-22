@@ -1417,3 +1417,23 @@
 - **교훈 3(저장)**: MCP 에셋 변경마다 즉시 `save_asset` — 크래시 대비.
 - **교훈 4(Blender)**: Blender MCP 로 export 자동화 가능. 단 `bpy.ops.object.select_all` 등은 컨텍스트 부족으로 실패 → 데이터 API(`select_set`) + `temp_override(window=...)` 우회.
 - **교훈 5(피벗/스케일)**: 프로시저럴 박스·Meshy 메시는 피벗이 중앙 → 손잡이 정렬엔 Blender origin 설정이 정석(단 reimport 시 UE 측 재피벗 원복). `build_scale3d` 는 Nanite/bounds 미반영 → 스케일은 컴포넌트/소켓으로.
+
+---
+
+## 2026-06-21 — A3 사망 래그돌: PhysicsAsset 폭발 미해결 → 보류
+
+**작업 내용**
+- `AAOSCharacter::StartRagdoll`(PhysicsAsset 있으면 `Ragdoll` 프로파일 + `SetAllBodiesSimulatePhysics`)을 실제 동작시키기 위해 `char1_accurig` 용 PhysicsAsset 생성/할당 시도
+
+**문제점**
+- 에디터 자동생성 PA(`char1_accurig_Physics`, 24바디)는 **AccuRig 트위스트 본(`cc_base_*_upperarmtwist/forearmtwist/thightwist/calftwist`)에 바디가 붙음** → 비인접 바디끼리 긴 제약 → 시뮬 시 폭발
+- MCP 로 인접 주요 본만 클린 재구축(`char1_accurig_PhysicsAsset`, 12바디 11제약)했으나 **여전히 시뮬 폭발**. Disable Collision(에디터)·캡슐 반경 축소(`configure_physics_body`)로도 미해결
+- MCP/Python 한계 확인: `create_physics_asset` 는 **빈 래퍼만**(바디 자동생성 X), **inter-body collision disable·바디 치수 조회 API 없음**, `PhysicsAssetFactory` 도 Python 비노출
+
+**해결 방법**
+- 폭발 원인 미확정(캡슐 겹침/충돌·메시 스케일·degenerate 바디 가설) + ROI 저하 → **사용자 보류 결정**
+- `char1_accurig.physics_asset = None` 해제 → `StartRagdoll` 이 PhysicsAsset 없음 fallback(메시 hide)을 타 = 사망 시 DeathMontage 후 자연 소멸, **폭발 없음**. PA 2개는 재방문용으로 보존(미커밋)
+
+**결과**
+- 래그돌 보류, 게임 진행 무방(폴리시 기능). 메시는 직전 커밋 상태와 동일(None) → 신규 커밋 불필요. 재시작점·단서는 메모리 `project_ragdoll_deferred` 에 기록
+- **교훈**: MCP 는 PhysicsAsset **바디 자동생성·충돌 매트릭스 편집을 지원 안 함** → 래그돌 바디/충돌 튜닝은 PA 에디터(정점 피팅 자동생성)가 정석. AccuRig/CC 스켈레톤은 트위스트 본 때문에 자동생성이 불안정 → 재방문 시 주요 본 기반(`char1_accurig_PhysicsAsset`)에서 캡슐/충돌 진단
