@@ -579,6 +579,48 @@ unreal.EditorAssetLibrary.save_asset(char_skel_path, False)
 
 ---
 
+## 11. 커스텀 애니메이션 워크플로 (Blender 왕복) — A4 검증완료 2026-06-21
+
+기존 마켓/Mixamo 애니를 Blender로 수정·과장해 캐릭터 시그니처 동작을 만드는 **하이브리드 워크플로**. 검증: `AM_Alex_R`(= `Boss_Attack_Uppercut_RM` 래핑) → Blender 척추 lean 수정 → **무왜곡 왕복** 확인.
+
+**전제**: Alex 스킬 애니는 **마네킹 스켈레톤(`SK_Mannequin_UE4_WithWeapon_Skeleton`)** 위에 있고 char1_accurig엔 호환 스켈레톤으로 재생됨 → 애니 수정/임포트는 **마네킹 스켈레톤 기준**. 몽타주(`AM_Alex_*`)는 Anim Sequence를 래핑(소스는 `get_dependencies`로 확인).
+
+**1) UE 애니 → FBX export** (Python/MCP)
+```python
+t=unreal.AssetExportTask(); t.set_editor_property('object', anim_seq)
+t.set_editor_property('filename', out_fbx); t.set_editor_property('automated', True)
+t.set_editor_property('exporter', unreal.AnimSequenceExporterFBX())
+unreal.Exporter.run_asset_export_task(t)
+```
+
+**2) Blender 임포트 — ⭐핵심⭐**
+```python
+bpy.ops.import_scene.fbx(filepath=src, automatic_bone_orientation=False)   # ← False 필수
+```
+⚠️ `automatic_bone_orientation=True`(기본)면 Blender가 본을 재정렬 → 재export 시 UE 본 축과 어긋나 **메시 심각 왜곡**(동작은 맞는데 몸이 꼬임 — A4 1차 실패 원인). `False`로 UE 본 축 보존(Blender에서 본이 못생겨 보여도 포즈 편집은 정상).
+
+**3) Blender 편집** — 포즈모드/data API로 키프레임 수정(예: 마무리 척추 lean). 본은 `rotation_mode='QUATERNION'`(FBX 기본) 유지하며 `pb.rotation_quaternion @ offset` 후 `keyframe_insert`. ops는 컨텍스트 부족으로 실패 → `temp_override(window=...)` + data API.
+
+**4) Blender export** — ⚠️ **씬 프레임 범위 = 액션 범위로 먼저 맞출 것**(`scene.frame_end=int(action.frame_range[1])`) — 안 하면 기본 250프레임까지 정지 프레임이 붙어 길이가 늘어남(6.4s→8.3s 버그).
+```python
+bpy.ops.export_scene.fbx(filepath=out, object_types={'ARMATURE'}, add_leaf_bones=False,
+  bake_anim=True, axis_forward='-Z', axis_up='Y', primary_bone_axis='Y', secondary_bone_axis='X')
+```
+
+**5) UE 재임포트** (`FbxImportUI`, anim)
+```python
+ui=unreal.FbxImportUI(); ui.set_editor_property('import_mesh', False)
+ui.set_editor_property('import_animations', True); ui.set_editor_property('skeleton', mannequin_skel)
+ui.set_editor_property('mesh_type_to_import', unreal.FBXImportType.FBXIT_ANIMATION)
+```
+- 검증: `sequence_length`가 원본과 일치하는지(예 6.43s). **시각 확인 필수** — 본 왜곡은 데이터로 안 잡히고 재생 메시로만 보임.
+
+**6) 몽타주 배선** — ⚠️ 몽타주 슬롯 애니 교체는 **Python 비노출**(`slot_animation_tracks` 접근 불가) → **몽타주 에디터에서 수동**으로 새 Anim Sequence를 슬롯에 드래그/Replace. 또는 `SkillMontages` TMap(GameplayTag 키)에 새 몽타주 할당. `AOSAnimNotify_AttackHit`를 타격 프레임에 배치(데미지 타이밍).
+
+> **함정 3종**: ① import `automatic_bone_orientation=False`(왜곡 방지 핵심) ② export 전 씬 프레임 범위=액션 범위 ③ 몽타주 슬롯 편집은 에디터 수동. 본 이름은 마네킹=AccuRig 공통(pelvis/spine/upperarm/hand…)이라 리타겟 불필요.
+
+---
+
 ## 12. 참고 링크
 
 - ComfyUI-3D-Pack: https://github.com/MrForExample/ComfyUI-3D-Pack

@@ -1437,3 +1437,25 @@
 **결과**
 - 래그돌 보류, 게임 진행 무방(폴리시 기능). 메시는 직전 커밋 상태와 동일(None) → 신규 커밋 불필요. 재시작점·단서는 메모리 `project_ragdoll_deferred` 에 기록
 - **교훈**: MCP 는 PhysicsAsset **바디 자동생성·충돌 매트릭스 편집을 지원 안 함** → 래그돌 바디/충돌 튜닝은 PA 에디터(정점 피팅 자동생성)가 정석. AccuRig/CC 스켈레톤은 트위스트 본 때문에 자동생성이 불안정 → 재방문 시 주요 본 기반(`char1_accurig_PhysicsAsset`)에서 캡슐/충돌 진단
+
+---
+
+## 2026-06-21 — A4 하이브리드 커스텀 애니 워크플로 확립 (Blender 왕복)
+
+**작업 내용**
+- 기존 마켓/Mixamo 애니를 Blender로 수정·과장해 캐릭터 시그니처 동작을 만드는 워크플로를 `AM_Alex_R`(= 마켓 `Boss_Attack_Uppercut_RM` 래핑)로 검증 + 문서화
+- 전체 사이클: UE 애니 → FBX export → Blender 임포트/편집 → 재export → UE 재임포트 (척추 백벤드 데모로 편집 반영 확인)
+
+**문제점**
+- 1차 왕복에서 **메시 심각 왜곡**(동작은 맞는데 몸이 꼬임) — Blender 임포트 `automatic_bone_orientation=True`(기본)가 본을 재정렬해 재export 시 UE 본 축과 어긋남
+- 길이 6.4s→8.3s 로 늘어남 — Blender가 씬 기본 프레임범위(1-250)를 export, 액션(1-194) 뒤에 정지 프레임 추가
+- 몽타주 슬롯 애니 교체가 Python 비노출(`slot_animation_tracks` 접근 불가)
+
+**해결 방법**
+- **import `automatic_bone_orientation=False`** ← UE 본 축 보존 = 왜곡 해결 (핵심). Blender에서 본이 못생겨 보여도 포즈 편집 정상
+- export 전 `scene.frame_end = action.frame_range[1]` 로 프레임범위를 액션에 맞춤
+- 몽타주 슬롯 교체는 에디터 수동(슬롯에 Anim Sequence 드래그). 본 이름 마네킹=AccuRig 공통이라 리타겟 불필요(스킬 애니는 마네킹 스켈레톤, char1엔 호환 스켈레톤 재생)
+
+**결과**
+- Blender 애니 왕복 파이프라인 **무왜곡 확립** + `AI_3D_ASSET_PIPELINE.md` §11 에 6단계+함정 3종 문서화. 20캐릭터·향후 모든 커스텀 애니 재사용 가능 (이 커밋)
+- **교훈**: UE↔Blender 애니 왕복 핵심 = **import `automatic_bone_orientation=False`**. 데이터(sequence_length)는 맞아도 본 왜곡은 데이터로 안 잡히고 **재생 메시 시각 확인으로만** 드러남 → 첫 1개는 반드시 눈으로 검증
