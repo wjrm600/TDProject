@@ -113,4 +113,17 @@ void UAOSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     static const FGameplayTag CastingTag =
         FGameplayTag::RequestGameplayTag(FName("State.Casting"), /*bErrorIfNotFound=*/true);
     bIsCasting = ASC->HasMatchingGameplayTag(CastingTag);
+
+    // State.Rooted — 루트 스킬(E/R: bAllowMovementDuringCast=false)이 ApplyCastRoot 로 부여.
+    // 루트모션 몽타주(예: AM_Alex_R 도약 슬램)는 CharacterMovement 의 Velocity 를 만들어
+    // Speed>0 → bIsMoving=true 가 되고, ABP 의 Blend Poses by bool(bIsMoving)이 상하체 분리로
+    // 전환해 하체에 달리기 locomotion 이 섞인다. 루트 중에는 이동 입력이 없으므로(=정지 의도)
+    // bIsMoving 을 false 로 강제 → ABP 가 전신 스킬 포즈(UpperFull)를 선택한다.
+    static const FGameplayTag RootedTag =
+        FGameplayTag::RequestGameplayTag(FName("State.Rooted"), /*bErrorIfNotFound=*/true);
+    if (ASC->HasMatchingGameplayTag(RootedTag))
+    {
+        bIsMoving = false;
+        Direction = 0.f;
+    }
 }

@@ -1485,3 +1485,23 @@
 - Alex 첫 풀 커스텀 시그니처 애니 완성(도약-슬램-착지 충격-굴신), 루트 모션·몽타주 연결까지. 향후 캐릭터 시그니처 동작 제작 레퍼런스
 - **교훈(최重要)**: **다른 비율 스켈레톤으로의 애니 리타깃은 루트/골반 외 모든 본이 "회전 전용"이어야 한다.** 절대 본 translation(특히 IK를 matrix로 굽는 경우)을 키로 구우면 타겟 스켈레톤 비율 차이로 **메시가 폭발**. 골반/루트 수직 이동만 상대 오프셋 허용
 - **교훈(블라인드 한계)**: 소스 스켈레톤(보스, 다리 2m)과 타겟(Alex)의 비율이 달라 Blender 본만으론 최종 모습 판독 불가 → **실제 메시가 있는 UE에서만 정확 검증**(폭발/부유는 UE에서야 드러남)
+
+---
+
+## 2026-06-26 — R 루트모션 시 상하체 분리 오작동 수정 (루트모션 Velocity → bIsMoving 오판)
+
+**작업 내용**
+- 루트모션을 켠 R(`AS_Alex_R_Slam`) 발동 시 하체에 달리기 locomotion 이 섞여 "달리면서 내려찍는" 모양으로 나오던 문제 수정
+
+**문제점**
+- ABP 상하체 분리는 `Blend Poses by bool(bIsMoving)` 로 전신/분리를 선택: 정지=전신 스킬(UpperFull), 이동=상체 스킬+하체 locomotion(UpperSplit)
+- R 은 `bAllowMovementDuringCast=false` 라 `ApplyCastRoot` 로 정지시키지만, **루트모션 몽타주가 CharacterMovement 의 Velocity 를 만들어** `Speed>0` → `bIsMoving=true` 로 뒤집힘 → ABP 가 상하체 분리(UpperSplit)로 전환 → 하체가 달리기
+- 루트모션을 끄면 Velocity=0 이라 정지=전신 재생이라 증상 없음 → **루트모션 켤 때만 발현** (그래서 진단이 헷갈림)
+
+**해결 방법**
+- `AOSAnimInstance::NativeUpdateAnimation`: `State.Rooted`(E/R 이 `ApplyCastRoot` 로 부여) 보유 시 `bIsMoving=false`(+`Direction=0`) 강제 → ABP 가 의도대로 전신 스킬(UpperFull) 선택. 루트모션이 만든 "가짜 속도"를 로코모션으로 오인하지 않게 함
+- `.cpp` 본문만 변경(헤더/UPROPERTY 무변) = **핫 리로드(Live Coding) 호환**. 루트모션 쓰는 모든 루트 스킬(E/R 및 향후)에 자동 적용
+
+**결과**
+- R 도약 슬램이 전진(루트모션)하면서도 다리가 풀바디 슬램(크라우치→점프→착지)으로 정상 재생. PIE 확인 완료 ("잘 되고 있어") (이 커밋)
+- **교훈**: 루트모션 몽타주는 CharacterMovement Velocity 를 만들어 `Speed`/`bIsMoving` 기반 로코모션 판정을 오염시킨다. "정지 의도"인 루트(`State.Rooted`) 스킬은 ABP 상하체 분리와 충돌하지 않도록 **AnimInstance 에서 `bIsMoving` 을 명시적으로 눌러야** 한다 (루트모션 ON 일 때만 드러나는 함정)
