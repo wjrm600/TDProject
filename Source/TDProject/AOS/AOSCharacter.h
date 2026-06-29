@@ -112,6 +112,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ToolTip = "GameplayTag 기반 스킬 몽타주 매핑 (Phase 4)"))
 	TMap<FGameplayTag, TObjectPtr<UAnimMontage>> SkillMontages;
 
+	// === 로코모션 시퀀스 (캐릭터별 — 공유 ABP 데이터 주도) ===
+	// 공유 ABP_AOSCharacter 의 시퀀스 플레이어가 UAOSAnimInstance 의 미러 변수(IdleAnim/RunAnim)에
+	// 바인딩한다 → 캐릭터별로 BP_Char_* 에서 이 슬롯만 지정하면 ABP 추가/복제 없이 다른 모션 재생.
+	// ⚠️ 마네킹 스켈레톤(SK_Mannequin_UE4_WithWeapon_Skeleton) 시퀀스를 지정할 것 (ABP 가 마네킹 기반).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ToolTip = "Idle 루프 시퀀스 (마네킹 스켈레톤)"))
+	TObjectPtr<UAnimSequenceBase> IdleAnim;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ToolTip = "Run 루프 시퀀스 (마네킹 스켈레톤)"))
+	TObjectPtr<UAnimSequenceBase> RunAnim;
+
 	// 사망 몽타주 종료 후 ragdoll 상태로 유지할 시간 (초). 이 시간 후 액터 destroy.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|Animation", meta = (ClampMin = "0.0", ToolTip = "사망 몽타주 종료 후 ragdoll 정착 시간 (초)"))
 	float RagdollSettleDuration = 2.0f;
@@ -128,6 +138,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
 	UAnimMontage* GetSkillMontage(FGameplayTag SkillTag) const;
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimSequenceBase* GetIdleAnim() const { return IdleAnim; }
+
+	UFUNCTION(BlueprintPure, Category = "AOS|Animation")
+	UAnimSequenceBase* GetRunAnim() const { return RunAnim; }
 
 	// === Multicast RPCs (Phase 3.5) ===
 	UFUNCTION(NetMulticast, Reliable)

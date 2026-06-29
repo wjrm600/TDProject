@@ -3,6 +3,7 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameplayTagContainer.h"
+#include "Animation/AnimSequenceBase.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constructor
@@ -29,6 +30,10 @@ void UAOSAnimInstance::NativeInitializeAnimation()
     {
         // IAbilitySystemInterface::GetAbilitySystemComponent() 호출
         CachedASC = OwningCharacter->GetAbilitySystemComponent();
+
+        // 로코모션 시퀀스 미러 (캐릭터별 데이터 → ABP 변수). 런타임에 안 바뀌므로 init 에서 캐시.
+        IdleAnim = OwningCharacter->GetIdleAnim();
+        RunAnim = OwningCharacter->GetRunAnim();
     }
 }
 
@@ -73,6 +78,10 @@ void UAOSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     {
         bIsFalling = CMC->IsFalling();
     }
+
+    // 로코모션 시퀀스 미러 (캐릭터별 데이터 → ABP 변수). 값은 안 바뀌지만 init race 방어로 매 틱 갱신.
+    IdleAnim = OwningCharacter->GetIdleAnim();
+    RunAnim = OwningCharacter->GetRunAnim();
 
     // ------------------------------------------------------------------
     // GAS 태그 미러 갱신

@@ -6,6 +6,7 @@
 
 class AAOSCharacter;
 class UAbilitySystemComponent;
+class UAnimSequenceBase;
 
 /**
  * AOS 캐릭터용 커스텀 AnimInstance.
@@ -45,6 +46,17 @@ public:
     /** 낙하/점프 중 여부. */
     UPROPERTY(BlueprintReadOnly, Category = "AOS|Anim")
     bool bIsFalling = false;
+
+    // -------------------------------------------------------------------------
+    // 로코모션 시퀀스 (캐릭터별) — OwningCharacter 에서 미러.
+    // 공유 ABP_AOSCharacter 의 시퀀스 플레이어가 이 변수에 바인딩 → ABP 1개로 캐릭터별 모션.
+    // (마네킹 스켈레톤 시퀀스. nullptr 면 ABP 의 기본/폴백 시퀀스가 재생되도록 둔다.)
+    // -------------------------------------------------------------------------
+    UPROPERTY(BlueprintReadOnly, Category = "AOS|Anim")
+    TObjectPtr<UAnimSequenceBase> IdleAnim = nullptr;
+
+    UPROPERTY(BlueprintReadOnly, Category = "AOS|Anim")
+    TObjectPtr<UAnimSequenceBase> RunAnim = nullptr;
 
     // -------------------------------------------------------------------------
     // GAS 태그 미러 — AnimGraph 트랜지션 단순화용.

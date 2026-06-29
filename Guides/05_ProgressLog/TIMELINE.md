@@ -1588,3 +1588,27 @@
 **결과**
 - 직립 준비자세 idle 완성, 사용자 확정. 2.0s 루프·원점·전프레임 접지(4.39) (이 커밋)
 - **교훈**: 비대칭 자동리그 idle 은 **모캡 다리 + 절차 상체** 하이브리드가 정답. 사용자 시각 피드백 루프(PIE)로 팔/검 각도 수렴. 소스 루트모션의 arm.location 잔재 주의([[project_anim_retarget_rotation_only]])
+
+---
+
+## 2026-06-29 — Alex Move (대검 끌며 달리기) + 로코모션 스켈레톤 라우팅 발견
+
+**작업 내용**
+- Alex 전용 달리기 신규 제작(`AS_Alex_Move`, 0.9s/27f in-place 루프, 루트모션 OFF) — 다리=Boss_Run 사이클, 상체=Idle 검-드래그. 골반 bob ~15cm + 좌우 sway(무게감), 검 ±9° 흔들림
+- 하체 좌우 미러 + 상체 정면 교정 + 어깨/팔/손목 PIE 미세조정으로 수렴
+
+**문제점/난관**
+- 달리기 모캡 소스 부재(RawAssets 전부 전투). 다리 절차 저작=무릎 과신전 금지 → 사용자 선택으로 **Boss_Run_F_InP 리타깃**
+- ABP_AOSCharacter 가 **마네킹 스켈레톤(`SK_Mannequin_UE4_WithWeapon_Skeleton`) 기반**, Boss_Idle/Boss_Run 직접 참조. char1 은 마네킹을 **호환 스켈레톤(단방향)** 으로 등록 → char1 임포트 시퀀스가 ABP 애셋 선택기에 안 뜸(Idle 연결이 막혀있던 진짜 원인)
+- Idle 상체를 그대로 전사하니 **상체가 ~50° 비틀림**(정면 안 봄): Idle 척추의 하반신-yaw counter-rotate 가 정면 골반 위에선 상쇄대상 없이 잔존
+- 미러/접지: 마네킹 스켈레톤 직접 측정 접지값이 −4(비율차 ~8.4cm 오프셋)라 char1 렌더값과 혼동
+
+**해결 방법**
+- **Boss_Run 스켈레톤 = char1 작업 아마추어와 rest 0.0° 동일** → `matrix_basis` 직접 복사(델타 불필요). 실제 사이클 1–28f(29/30 패딩). 하체=Boss_Run / 상체=Idle f1 정적 분할
+- **로코모션은 마네킹 스켈레톤에 임포트**(Boss_Run 과 동일 경로 → char1 호환 재생). 보정값은 FBX 로컬에 베이크돼 char1 렌더 4.5cm 접지. 검증은 **char1 임시 임포트본으로 실측**(마네킹 측정은 비율차로 오해 소지)
+- 상체 정면 = spine_01-03 에 −50.1° 분산. 하체 좌우 미러는 델타-미러(검 오른손 유지). 발 접지 골반 7.29cm 드롭
+- `system_control execute_python` 로 Boss_Run → FBX 익스포트(`AnimSequenceExporterFBX`)
+
+**결과**
+- 대검 끌며 달리기 완성, 사용자 확정("잘 된 거 같아"). 정면·접지·in-place·루프 OK
+- **교훈(B2 직결)**: ① **로코모션 시퀀스=마네킹 스켈레톤 / 스킬 몽타주=char1** (ABP 가 마네킹 기반·호환 단방향). ② Idle 상체를 다른 골반에 전사하면 **counter-yaw 잔존→정면 재교정** 필수. ③ 호환-스켈레톤 애니 접지 검증은 **렌더 스켈레톤(char1) 기준 실측**. [[project_anim_locomotion_skeleton_routing]] [[project_anim_retarget_rotation_only]]
