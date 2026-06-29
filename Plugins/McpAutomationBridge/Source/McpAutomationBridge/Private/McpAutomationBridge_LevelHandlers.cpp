@@ -89,6 +89,16 @@
 #define MCP_HAS_LEVELEDITOR_SUBSYSTEM 0
 #endif
 
+// --- TDProject local fix (vendored plugin) ---------------------------------
+// 이 TU 의 create_new_level(World Partition 분기 등)이 MSVC C4702(unreachable code)
+// 를 다수 유발한다. Development(최적화 ON)에서는 가려지지만 DebugGame/Debug(최적화 OFF)
+// 에서는 드러나고, UE 의 warnings-as-errors(/WX) 때문에 빌드가 실패한다.
+// UBT 플래그(/wd4702)는 /WX 보다 앞서 배치되어 무력하므로(검증함), 컴파일러가 직접
+// 처리하는 소스 pragma 로 끈다(pragma 는 /WX 보다 항상 우선). 14.38/14.44 툴셋 공통 발생.
+#if defined(_MSC_VER)
+#pragma warning(disable: 4702)
+#endif
+
 namespace {
 bool IsSafeLevelConsoleToken(const FString& Value) {
   const FString Trimmed = Value.TrimStartAndEnd();
