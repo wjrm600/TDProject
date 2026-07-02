@@ -579,7 +579,7 @@ unreal.EditorAssetLibrary.save_asset(char_skel_path, False)
 
 ---
 
-## 11. 커스텀 애니메이션 워크플로 (Blender 왕복) — A4 검증완료 2026-06-21
+## 11B. 커스텀 애니메이션 워크플로 (Blender 왕복) — A4 검증완료 2026-06-21
 
 기존 마켓/Mixamo 애니를 Blender로 수정·과장해 캐릭터 시그니처 동작을 만드는 **하이브리드 워크플로**. 검증: `AM_Alex_R`(= `Boss_Attack_Uppercut_RM` 래핑) → Blender 척추 lean 수정 → **무왜곡 왕복** 확인.
 
@@ -604,8 +604,10 @@ bpy.ops.import_scene.fbx(filepath=src, automatic_bone_orientation=False)   # ←
 **4) Blender export** — ⚠️ **씬 프레임 범위 = 액션 범위로 먼저 맞출 것**(`scene.frame_end=int(action.frame_range[1])`) — 안 하면 기본 250프레임까지 정지 프레임이 붙어 길이가 늘어남(6.4s→8.3s 버그).
 ```python
 bpy.ops.export_scene.fbx(filepath=out, object_types={'ARMATURE'}, add_leaf_bones=False,
-  bake_anim=True, axis_forward='-Z', axis_up='Y', primary_bone_axis='Y', secondary_bone_axis='X')
+  bake_anim=True, bake_anim_use_all_actions=False, bake_anim_use_nla_strips=False,
+  axis_forward='-Z', axis_up='Y', primary_bone_axis='Y', secondary_bone_axis='X')
 ```
+⚠️ `bake_anim_use_all_actions=True`(기본)면 blend 안의 **모든 액션이 테이크로 export** → UE 임포트 시 `<이름>root_<액션명>` 정크 시퀀스가 여러 개 생김 (Alex_Death 1차 임포트 실측). 활성 액션만 export 하도록 반드시 둘 다 False.
 
 **5) UE 재임포트** (`FbxImportUI`, anim)
 ```python
@@ -614,10 +616,31 @@ ui.set_editor_property('import_animations', True); ui.set_editor_property('skele
 ui.set_editor_property('mesh_type_to_import', unreal.FBXImportType.FBXIT_ANIMATION)
 ```
 - 검증: `sequence_length`가 원본과 일치하는지(예 6.43s). **시각 확인 필수** — 본 왜곡은 데이터로 안 잡히고 재생 메시로만 보임.
+- char1 스켈레톤 타깃 임포트 시 `본 인덱스를 얻을 수 없음: *_twist_01_*` RuntimeError 발생 — char1 에 twist 본이 없어서 해당 트랙이 드롭되는 것. **비치명**(애셋은 정상 생성)이나 예외로 던져지므로 임포트 후 코드는 try/except 로 감쌀 것.
+- **에디터 꺼진 상태 임포트**: `-run=pythonscript -nullrhi` 커맨드릿은 FBX 임포트에서 **Slate 어설션 크래시**(`CurrentApplication.IsValid()`) — 임포트만은 `UnrealEditor-Cmd.exe <proj> -ExecutePythonScript=<py> -unattended -nosplash`(에디터 풀 부팅, RHI 필요) 사용. export/load 같은 비 UI 작업은 커맨드릿으로 충분.
 
 **6) 몽타주 배선** — ⚠️ 몽타주 슬롯 애니 교체는 **Python 비노출**(`slot_animation_tracks` 접근 불가) → **몽타주 에디터에서 수동**으로 새 Anim Sequence를 슬롯에 드래그/Replace. 또는 `SkillMontages` TMap(GameplayTag 키)에 새 몽타주 할당. `AOSAnimNotify_AttackHit`를 타격 프레임에 배치(데미지 타이밍).
 
 > **함정 3종**: ① import `automatic_bone_orientation=False`(왜곡 방지 핵심) ② export 전 씬 프레임 범위=액션 범위 ③ 몽타주 슬롯 편집은 에디터 수동. 본 이름은 마네킹=AccuRig 공통(pelvis/spine/upperarm/hand…)이라 리타겟 불필요.
+
+---
+
+## 11C. 애니 시각 피드백 루프 (Anim_Pipeline) — 2026-07-02 확립
+
+**Claude 가 애니 결과를 스스로 보고 판정하는 루프.** 뷰포트 스크린샷(화면 그랩 — 창 가려지면 검은 화면, 병행 작업 차단)은 폐기, **창 없는 헤드리스 Blender 렌더**로 대체. 도구·사용법·판독 가이드·함정 전체 = [`Mcp_Tools/Anim_Pipeline/README.md`](../../Mcp_Tools/Anim_Pipeline/README.md).
+
+```
+Blender 편집(라이브 MCP 면 save_mainfile() 먼저)
+  → python Mcp_Tools/Anim_Pipeline/render_anim_preview.py --blend <blend> --qa
+  → Claude 가 sheet_*.png(타이밍)/keyposes.png(포즈) Read 판독 + qa_report.txt
+  → 수정 반복 (상한 5회) → --mp4 로 사용자 확인 → §11B 절차로 UE 임포트
+```
+
+- 렌더: 본 프록시 메시 자동 생성(스킨 메시 없는 blend 대응), 3뷰 직교(front/side/tq), 무기 본 블레이드 연장 표시, 지면 슬래브. 전체 <10초.
+- 수치 QA(`bl_anim_qa.py`): 팝핑/무릎 과신전/길이 정합 = FAIL 게이트, 발 슬라이드/골반 드리프트 = 기본 WARN(인플레이스·사망 모션은 구조상 정상 — 루프 로코모션 검사 시 strict 승격).
+- 소스 후보 비교: `--fbx` 로 FBX 직접 프리뷰 (예: AnimStarterPack Death_1/2/3 비교 후 베이스 선정).
+- 레퍼런스 우선 원칙: 스크래치 저작 금지 — 기존 팩 리타깃(마네킹 계열 rest 동일 = matrix_basis 직접 복사) 또는 웹 레퍼런스 키포즈(`extract_ref_poses.py`) 기반.
+- 첫 적용 사례: `AS_Alex_Death` (Death_3 리타깃 + 3회 루프, QA PASS) — 상세 교훈은 [`ANIMATION_REQUEST_TEMPLATE.md`](ANIMATION_REQUEST_TEMPLATE.md) Death 항목.
 
 ---
 

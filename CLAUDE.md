@@ -215,4 +215,5 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - [`Guides/01_GameOverview/GAME_VISION.md`](Guides/01_GameOverview/GAME_VISION.md) — 게임 비전/로드맵
 - [`Guides/05_ProgressLog/TIMELINE.md`](Guides/05_ProgressLog/TIMELINE.md) — 작업 타임라인
 - [`Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`](Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md) / [`AI_3D_ASSET_PIPELINE.md`](Guides/03_Implementation/AI_3D_ASSET_PIPELINE.md)
+- [`Mcp_Tools/Anim_Pipeline/README.md`](Mcp_Tools/Anim_Pipeline/README.md) — **애니 시각 피드백 루프** (헤드리스 콘택트 시트 렌더 + 수치 QA — 애니 작업 시 이 루프 사용)
 - [`Guides/DOCUMENTATION_INDEX.md`](Guides/DOCUMENTATION_INDEX.md) — 전체 문서 마스터 인덱스

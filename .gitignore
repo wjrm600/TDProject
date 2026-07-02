@@ -63,6 +63,9 @@ __pycache__/
 # RAG 벡터 DB (로컬 생성, 커밋 불필요)
 Mcp_Tools/chroma_db/
 
+# 애니 프리뷰 렌더 산출물 (render_anim_preview.py 가 재생성 — 추적 X)
+Mcp_Tools/Anim_Pipeline/Previews/
+
 # 대용량 마켓플레이스/임포트 에셋 팩 (GitHub 100MB 파일 제한 + 저장소 비대화)
 # 이 팩들은 각 머신에서 별도 import/다운로드 필요. Git LFS 도입 전까지 제외.
 # - ParagonKwang: ~2.4GB (Paragon 캐릭터 — Alex 스킬 애니 소스)

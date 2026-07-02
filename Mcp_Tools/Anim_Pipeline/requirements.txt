@@ -1,0 +1,4 @@
+# 외부(시스템) Python 의존 — Blender 내부 스크립트(bl_*.py)는 bpy 만 사용
+Pillow>=10.0
+imageio>=2.31
+imageio-ffmpeg>=0.4.9  # MP4 레퍼런스 추출용 (ffmpeg exe 번들, PATH 불필요)
