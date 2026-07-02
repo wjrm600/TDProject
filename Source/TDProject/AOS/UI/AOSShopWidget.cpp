@@ -8,6 +8,7 @@
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Components/Border.h"
+#include "Components/Image.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Components/HorizontalBox.h"
@@ -24,6 +25,8 @@ void UAOSShopUnitButton::BuildButtonUI(const FText& UnitName, int32 /*OwnedItemC
 {
 	Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),
 		*FString::Printf(TEXT("ShopUnitBtn_%d"), UnitListIndex));
+	Button->SetStyle(AOSUIStyle::KitButtonStyle(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::CardWhite));
 	WidgetTree->RootWidget = Button;
 	Button->OnClicked.AddDynamic(this, &UAOSShopUnitButton::HandleClicked);
 
@@ -53,6 +56,8 @@ void UAOSShopItemButton::BuildButtonUI(const FText& DisplayName)
 {
 	Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),
 		*FString::Printf(TEXT("ShopItemBtn_%s"), *RowName.ToString()));
+	Button->SetStyle(AOSUIStyle::KitButtonStyle(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::CardWhite));
 	WidgetTree->RootWidget = Button;
 	Button->OnClicked.AddDynamic(this, &UAOSShopItemButton::HandleClicked);
 
@@ -123,12 +128,20 @@ void UAOSShopWidget::BuildShopUI()
 {
 	// 전체화면 반투명 배경 (팝업 dim + 입력 차단)
 	RootBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ShopRootBg"));
-	RootBg->SetBrushColor(FLinearColor(AOSUIStyle::BgBase.R, AOSUIStyle::BgBase.G, AOSUIStyle::BgBase.B, 0.97f));   // 라이트 팝업 dim(near-white)
+	RootBg->SetBrushColor(FLinearColor(AOSUIStyle::BgBase.R, AOSUIStyle::BgBase.G, AOSUIStyle::BgBase.B, 0.90f));   // 라이트 팝업 dim(near-white)
 	RootBg->SetPadding(FMargin(120.0f, 70.0f));
 	WidgetTree->RootWidget = RootBg;
 
+	// 팝업 패널 (텍스처 키트 9-slice — 없으면 흰 카드 폴백)
+	UBorder* PanelBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ShopPanel"));
+	PanelBorder->SetBrush(AOSUIStyle::KitBrush(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Panel.T_UI_Shop_Panel"),
+		0.18f, AOSUIStyle::CardWhite));   // slice_margin = ui_kit_manifest 계약
+	PanelBorder->SetPadding(FMargin(56.0f, 48.0f));
+	RootBg->SetContent(PanelBorder);
+
 	UVerticalBox* ContentBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ShopContent"));
-	RootBg->SetContent(ContentBox);
+	PanelBorder->SetContent(ContentBox);
 
 	// ── 헤더: [뒤로] 타이틀(Fill) | 타이머 | 골드 | [닫기] ──
 	UHorizontalBox* Header = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("ShopHeader"));
@@ -138,6 +151,8 @@ void UAOSShopWidget::BuildShopUI()
 
 	// 뒤로가기 버튼 (아이템 페이지에서만 표시)
 	BackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopBack"));
+	BackButton->SetStyle(AOSUIStyle::KitButtonStyle(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::AccentIdle));
 	BackButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnBackClicked);
 	{
 		UTextBlock* BackLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopBackLabel"));
@@ -175,6 +190,8 @@ void UAOSShopWidget::BuildShopUI()
 	GoldHS->SetPadding(FMargin(0, 0, 18, 0));
 
 	CloseButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopClose"));
+	CloseButton->SetStyle(AOSUIStyle::KitButtonStyle(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::AccentIdle));
 	CloseButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnCloseClicked);
 	{
 		UTextBlock* CloseLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopCloseLabel"));
@@ -185,6 +202,16 @@ void UAOSShopWidget::BuildShopUI()
 	}
 	UHorizontalBoxSlot* CloseHS = Header->AddChildToHorizontalBox(CloseButton);
 	CloseHS->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
+
+	// 헤더 아래 장식 디바이더 (텍스처 키트 — 없으면 얇은 라인 폴백)
+	UImage* HeaderDivider = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ShopHeaderDivider"));
+	HeaderDivider->SetBrush(AOSUIStyle::KitBrush(
+		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Divider.T_UI_Shop_Divider"),
+		0.f, AOSUIStyle::BorderSoft));
+	HeaderDivider->SetDesiredSizeOverride(FVector2D(768.f, 26.f));
+	UVerticalBoxSlot* DividerVS = ContentBox->AddChildToVerticalBox(HeaderDivider);
+	DividerVS->SetPadding(FMargin(0, 0, 0, 10));
+	DividerVS->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
 	// ── View1: 유닛 선택 (WrapBox) ──
 	UnitPickerBox = WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ShopUnitPicker"));

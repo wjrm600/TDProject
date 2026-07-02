@@ -9,8 +9,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Texture2D.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/SlateBrush.h"
+#include "Styling/SlateTypes.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace AOSUIStyle
 {
@@ -53,4 +57,42 @@ namespace AOSUIStyle
 	inline constexpr float SlotRadius       = 8.f;
 	inline constexpr float DividerThickness = 3.f;
 	inline constexpr float HoverLerpSpeed   = 12.f;  // hover/선택 트랜지션 보간 속도(1/s)
+
+	// ── 텍스처 키트 (Mcp_Tools/Asset_Pipeline/ui_kit_manifest.json 계약) ──
+	// 텍스처가 있으면 DrawAs=Box(9-slice, Margin=slice_margin) 브러시, 없으면 솔리드
+	// 폴백 — 텍스처 미존재 상태에서도 PIE 가 항상 동작해야 한다 (BanPick 패턴).
+	inline FSlateBrush KitBrush(const TCHAR* TexPath, float SliceMargin, const FLinearColor& Fallback)
+	{
+		FSlateBrush Brush;
+		if (UTexture2D* Tex = Cast<UTexture2D>(
+				StaticLoadObject(UTexture2D::StaticClass(), nullptr, TexPath)))
+		{
+			Brush.SetResourceObject(Tex);
+			Brush.ImageSize = FVector2D(Tex->GetSizeX(), Tex->GetSizeY());
+			Brush.DrawAs = SliceMargin > 0.f ? ESlateBrushDrawType::Box
+			                                 : ESlateBrushDrawType::Image;
+			Brush.Margin = FMargin(SliceMargin);
+			Brush.TintColor = FLinearColor::White;
+		}
+		else
+		{
+			Brush.DrawAs = ESlateBrushDrawType::Image;
+			Brush.TintColor = Fallback;
+		}
+		return Brush;
+	}
+
+	// 버튼 3상태 (BasePath / BasePath_Hover / BasePath_Pressed) → FButtonStyle
+	inline FButtonStyle KitButtonStyle(const FString& BasePath, float SliceMargin, const FLinearColor& Fallback)
+	{
+		FButtonStyle Style;
+		Style.SetNormal(KitBrush(*BasePath, SliceMargin, Fallback));
+		Style.SetHovered(KitBrush(*(BasePath + TEXT("_Hover")), SliceMargin,
+		                          Fallback * 1.1f));
+		Style.SetPressed(KitBrush(*(BasePath + TEXT("_Pressed")), SliceMargin,
+		                          Fallback * 0.85f));
+		Style.SetNormalPadding(FMargin(14.f, 7.f));
+		Style.SetPressedPadding(FMargin(14.f, 9.f, 14.f, 5.f));
+		return Style;
+	}
 }

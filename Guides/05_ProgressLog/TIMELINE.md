@@ -1612,3 +1612,52 @@
 **결과**
 - 대검 끌며 달리기 완성, 사용자 확정("잘 된 거 같아"). 정면·접지·in-place·루프 OK
 - **교훈(B2 직결)**: ① **로코모션 시퀀스=마네킹 스켈레톤 / 스킬 몽타주=char1** (ABP 가 마네킹 기반·호환 단방향). ② Idle 상체를 다른 골반에 전사하면 **counter-yaw 잔존→정면 재교정** 필수. ③ 호환-스켈레톤 애니 접지 검증은 **렌더 스켈레톤(char1) 기준 실측**. [[project_anim_locomotion_skeleton_routing]] [[project_anim_retarget_rotation_only]]
+
+---
+
+## 2026-07-03 — 애니 시각 피드백 루프(Anim_Pipeline) 구축 + Alex Death 파일럿
+
+**작업 내용**
+- 애니 제작 속도 병목("Claude 가 결과를 못 봐서 사용자 PIE 왕복 의존") 해소를 위한 자가 시각검증 파이프라인 신설: `Mcp_Tools/Anim_Pipeline/` (render_anim_preview / bl_render_preview / bl_anim_qa / make_contact_sheet / extract_ref_poses)
+- **창 없는 헤드리스 Blender 렌더**로 콘택트 시트(3뷰)·키포즈·MP4 생성 → Claude 가 Read 로 판독. 뷰포트 스크린샷(화면 그랩 — 창 가려지면 검은 화면 + 병행 작업 차단) 폐기. 전체 렌더 <10초, 사용자 병행 작업 안전
+- 수치 QA: 발 슬라이드(크립 순변위)/무릎 과신전/팝핑/길이 정합/루프 정합/골반 드리프트 자동 검출
+- 파일럿: `AS_Alex_Death` 신규 제작 — AnimStarterPack Death_1/2/3 을 시트로 비교 → **Death_3(전방 크럼플)** 베이스 확정 → 리타깃 + 3회 자가 피드백 루프 → char1 스켈레톤 임포트(length=1.933s 검증)
+
+**문제점 / 난관**
+- 아마추어(본)는 F12 렌더에 안 나옴 → 본 프록시 메시 자동 생성으로 우회. 프록시 굵기를 월드 단위로 계산해 UE FBX 오브젝트 스케일(0.01)과 100배 어긋나는 회귀도 있었음(로컬 환산으로 수정)
+- QA 오탐 캘리브레이션: 접지 표준편차/누적경로 방식은 인플레이스 런지의 의도적 스텝·제자리 진동을 슬라이드로 오탐 → **크립 순변위** 방식으로 재설계 + 승인작(Alex_Q) PASS·고의 파손본 FAIL 대조 검증
+- 검-눕히기 보정을 프레임별 재계산하면 블레이드 수직 특이점에서 보정축 플립 → hand_r 팝(49°/f). **정착 프레임에서 델타 1회 계산 후 상수 램프 적용**으로 해결
+- 에디터 꺼진 상태 임포트: `-run=pythonscript -nullrhi` 커맨드릿은 FBX 임포트에서 Slate 어설션 크래시 → `-ExecutePythonScript`(에디터 풀 부팅)로 우회. Blender export 기본값(`bake_anim_use_all_actions=True`)이 모든 액션을 테이크로 내보내 UE 에 정크 시퀀스 생성 → 단일 액션 export 로 수정
+
+**해결 방법**
+- Blender 5.1 실측: 헤드리스 Workbench/EEVEE/Cycles 전부 <1s 동작(`BLENDER_EEVEE_NEXT` id 무효), 동영상은 `image_settings.media_type='VIDEO'` 신 API
+- 판독성 개선 반복: IK/루트 본 제외, 좌우 색 구분(파랑=_l/빨강=_r/노랑=무기), head 구체, 지면 슬래브, 무기 본 블레이드 연장(+bbox 포함)
+- Death 리타깃: 마네킹 계열 rest 0.00° 동일 → matrix_basis 직접 복사(30본, 골반만 loc), 손가락+weapon 은 Idle 파지 고정
+
+**결과**
+- Claude 가 애니를 스스로 보고 수정하는 루프 확립 (레퍼런스 수급도 Claude 담당: 기존 팩 리타깃 → 웹 스틸 → 자가 루프 3단). 문서화 = `Mcp_Tools/Anim_Pipeline/README.md` + `AI_3D_ASSET_PIPELINE.md §11C` + 템플릿 갱신
+- `AS_Alex_Death`(1.93s, 전방 크럼플, QA PASS) 임포트 완료. **사용자 잔여 단계**: ① `AM_Death` 슬롯에 `AS_Alex_Death` 수동 드래그(Python 비노출) ② PIE 사망 확인 (MP4 = `Mcp_Tools/Anim_Pipeline/Previews/Alex_Death/preview.mp4`)
+
+---
+
+## 2026-07-03 — UI 텍스처 키트 파이프라인 (ControlNet 하이브리드) + 상점 팝업 텍스처화
+
+**작업 내용**
+- 솔리드/절차 드로잉 UI 의 퀄리티 상한 해소 — **매니페스트 기반 텍스처 키트** 신설: `ui_kit_manifest.json`(스타일 토큰 단일 진실) + `gen_ui_kit.py`(배치 생성) + `draw_controls.py`(PIL 절차 도면) + `ui_postprocess.py`(대칭/마스크/3상태/9-slice 검증) + `import_ui_kit.py`(UE 배치 임포트)
+- **ControlNet 하이브리드**: 지오메트리(9-slice 마진·대칭·라운드)는 PIL 도면이 잠그고 텍스처 디테일만 AI — 기존 `gen_controlnet.py`(scribble) 그래프 재사용
+- 스타일 게이트: 보드 2안(화이트+파스텔 격상 vs 다크 판타지 골드) 생성 → **사용자 선택 = A안(화이트+파스텔)** — 기존 AOSUIStyle 3창 리디자인과 연속
+- 파일럿: 상점 세트 4종(Panel/Button 3상태/Divider/Tooltip) 생성·선정·임포트 + `AOSUIStyle.h` 에 `KitBrush`/`KitButtonStyle` 헬퍼 + `AOSShopWidget.cpp` 배선(패널 9-slice 보더, 버튼 4종, 헤더 디바이더)
+
+**문제점 / 난관**
+- 9-slice 알파에 rembg 를 쓰면 직선 엣지가 파먹혀 slice 가 깨짐 → 절차 도면과 동일 지오메트리에서 마스크를 결정적으로 유도(`mask_from_rounded_rect`)
+- 생성 후보 중 절반쯤이 중앙에 장식/가짜 UI 목업 — `validate_nine_slice`(중앙 스트레치 영역 픽셀 분산)가 자동으로 걸러냄 (수동 판독 부담 급감)
+- 버튼 hover/pressed 를 별도 생성하면 상태 간 형태가 튐 → 마스터 1장에서 밝기/채도 파생(`derive_states`)
+
+**해결 방법**
+- ComfyUI 재기동(포터블 경로 문서화) + ControlNet 모델 인벤토리 확인(P0-4 해소)
+- 임포트는 에디터 꺼진 상태에서 `-ExecutePythonScript`(풀 부팅) 경로 사용 — 커맨드릿은 Slate 크래시
+
+**결과**
+- 상점 팝업 텍스처화 완료 (텍스처 미존재 시 솔리드 폴백 유지 = 계약 보존). 절차 문서 = `Guides/03_Implementation/UI_TEXTURE_KIT.md`
+- **사용자 잔여 단계**: ① 빌드 (AOSUIStyle.h 헤더 추가 + AOSShopWidget.cpp — Live Coding 가능 예상, 실패 시 풀 빌드) ② PIE 상점 열어 텍스처 렌더/9-slice 무왜곡(해상도 변경) 확인
+- 백로그: 벤픽 장식 ControlNet 격상(경로 유지라 C++ 무변경), HP바/라운드결과/메인메뉴 순차 적용

@@ -1,0 +1,55 @@
+{
+  "style_prefix": "premium mobile game UI design, light theme, soft white and cream base, pastel coral and powder blue accents, elegant thin ornamental details, rounded corners, subtle soft shadows, clean minimal, high-end polish, flat vector style, game UI asset",
+  "neg": "text, letters, watermark, signature, photo, 3d render, dark background, black, cluttered, busy, multiple panels, grid of objects, blurry, lowres, jpeg artifacts",
+  "ckpt": "dreamshaperXL_lightningDPMSDE.safetensors",
+  "sampler": {"steps": 8, "cfg": 2.0, "sampler_name": "dpmpp_sde", "scheduler": "karras"},
+  "components": [
+    {
+      "name": "Shop_Panel",
+      "kind": "panel9",
+      "size": [768, 768],
+      "final_size": [512, 512],
+      "prompt": "ornate decorative UI panel frame, pastel coral and powder blue filigree border, plain flat white card interior, empty very light center area",
+      "control": {"draw": "panel_frame", "strength": 0.85,
+                  "args": {"margin_frac": 0.18, "radius_frac": 0.06}},
+      "post": ["symmetrize_x", "mask_rounded:0.06", "validate9:0.18"],
+      "slice_margin": 0.18,
+      "ue_name": "T_UI_Shop_Panel"
+    },
+    {
+      "name": "Shop_Button",
+      "kind": "button3",
+      "size": [768, 384],
+      "final_size": [384, 192],
+      "prompt": "elegant rounded UI button, powder blue pastel gradient plate with thin coral border and soft glossy top highlight, empty center",
+      "control": {"draw": "button_plate", "strength": 0.85,
+                  "args": {"radius_frac": 0.28}},
+      "post": ["symmetrize_x", "mask_rounded:0.28", "states"],
+      "slice_margin": 0.30,
+      "ue_name": "T_UI_Shop_Button"
+    },
+    {
+      "name": "Shop_Divider",
+      "kind": "bar",
+      "size": [1024, 128],
+      "final_size": [768, 96],
+      "prompt": "thin elegant horizontal divider line with small pastel coral diamond ornament in the center, soft white background",
+      "control": {"draw": "divider_bar", "strength": 0.8, "args": {}},
+      "post": ["symmetrize_x", "mask_full"],
+      "slice_margin": 0.0,
+      "ue_name": "T_UI_Shop_Divider"
+    },
+    {
+      "name": "Shop_Tooltip",
+      "kind": "panel9",
+      "size": [640, 384],
+      "final_size": [320, 192],
+      "prompt": "small clean UI tooltip panel, soft white card with thin powder blue border, subtle shadow, empty center",
+      "control": {"draw": "tooltip_frame", "strength": 0.85,
+                  "args": {"margin_frac": 0.12, "radius_frac": 0.10}},
+      "post": ["mask_rounded:0.10", "validate9:0.12"],
+      "slice_margin": 0.12,
+      "ue_name": "T_UI_Shop_Tooltip"
+    }
+  ]
+}
