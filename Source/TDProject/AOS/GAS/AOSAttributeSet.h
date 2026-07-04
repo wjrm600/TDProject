@@ -69,6 +69,19 @@ public:
 	FGameplayAttributeData MoveSpeed;
 	ATTRIBUTE_ACCESSORS(UAOSAttributeSet, MoveSpeed)
 
+	// --- 크리티컬 ---
+	// CritChance: 크리티컬 확률 [0..1] (기본 0.15). GA_Attack 이 활성화 시 roll → Crit 섹션 재생.
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Attributes",
+		ReplicatedUsing = OnRep_CritChance)
+	FGameplayAttributeData CritChance;
+	ATTRIBUTE_ACCESSORS(UAOSAttributeSet, CritChance)
+
+	// CritDamage: 크리티컬 데미지 배수 (기본 2.0 = 2배). 크리 시 데미지 *= CritDamage.
+	UPROPERTY(BlueprintReadOnly, Category = "AOS|Attributes",
+		ReplicatedUsing = OnRep_CritDamage)
+	FGameplayAttributeData CritDamage;
+	ATTRIBUTE_ACCESSORS(UAOSAttributeSet, CritDamage)
+
 	// --- 메타 속성 (리플리케이션 안 함, GE 입력 전용) ---
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Attributes")
 	FGameplayAttributeData Damage;
@@ -92,4 +105,10 @@ protected:
 
 	UFUNCTION()
 	void OnRep_MoveSpeed(const FGameplayAttributeData& OldMoveSpeed);
+
+	UFUNCTION()
+	void OnRep_CritChance(const FGameplayAttributeData& OldCritChance);
+
+	UFUNCTION()
+	void OnRep_CritDamage(const FGameplayAttributeData& OldCritDamage);
 };

@@ -160,7 +160,27 @@ void UGA_SkillBase::ActivateAbility(
 	UAnimMontage* SkillMontage = (Char && SkillIdentityTag.IsValid())
 		? Char->GetSkillMontage(SkillIdentityTag) : nullptr;
 
-	if (!bAllowMovementDuringCast && Char)
+	// 4.7. Launch (점프 스킬) — LaunchCharacter 로 띄운다. 적/전방으로 수평 + 수직 발사.
+	//    Paragon 점프 애니는 in-place(pelvis만 점프, root 고정)라 루트모션 대신 속도로 캡슐을 띄운다.
+	//    ⚠️ launch 스킬은 아래 cast root(StopMovementImmediately)를 건너뛴다 — 안 그러면 launch 속도가 즉시 0 이 됨.
+	if (bLaunchOnActivate && Char)
+	{
+		FVector LaunchDir = Char->GetActorForwardVector();
+		if (AActor* LaunchTarget = ResolveSingleTarget(TriggerEventData))
+		{
+			FVector ToTarget = LaunchTarget->GetActorLocation() - Char->GetActorLocation();
+			ToTarget.Z = 0.0f;
+			if (!ToTarget.IsNearlyZero())
+			{
+				LaunchDir = ToTarget.GetSafeNormal();
+			}
+		}
+		const FVector LaunchVel = LaunchDir * LaunchForwardSpeed + FVector(0.0f, 0.0f, LaunchZSpeed);
+		Char->LaunchCharacter(LaunchVel, /*bXYOverride=*/true, /*bZOverride=*/true);
+	}
+
+	// launch 스킬은 root 를 건너뛴다 (공중 이동을 살리기 위해).
+	if (!bAllowMovementDuringCast && Char && !bLaunchOnActivate)
 	{
 		const float RootDur = ResolveRootDuration(SkillMontage);
 		if (RootDur > 0.0f)

@@ -1661,3 +1661,34 @@
 - 상점 팝업 텍스처화 완료 (텍스처 미존재 시 솔리드 폴백 유지 = 계약 보존). 절차 문서 = `Guides/03_Implementation/UI_TEXTURE_KIT.md`
 - **사용자 잔여 단계**: ① 빌드 (AOSUIStyle.h 헤더 추가 + AOSShopWidget.cpp — Live Coding 가능 예상, 실패 시 풀 빌드) ② PIE 상점 열어 텍스처 렌더/9-slice 무왜곡(해상도 변경) 확인
 - 백로그: 벤픽 장식 ControlNet 격상(경로 유지라 C++ 무변경), HP바/라운드결과/메인메뉴 순차 적용
+
+---
+
+## 2026-07-04 — 절차적 애니 폐기 → ParagonKwang IK Retarget 전면 전환 (로코모션 8방향 + 전투 + 크리/점프)
+
+**작업 내용**
+- **방향 전환(사용자 확정)**: 절차적(from-scratch) 애니 저작은 품질 한계 명확 → 폐기. **Epic ParagonKwang(대검 히어로) 애셋을 UE IK Retargeter로 char1(Alex)에 리타깃**해 사용. "전부 Kwang으로 통일 재제작 + char1로 통일(ABP 재구축)".
+- **IK Retargeter 파운데이션**(`/Game/AOS/Anim/Retarget/`): `IK_Kwang`·`IK_char1`(auto-gen 체인, root=pelvis)·`RTG_Kwang_char1`(6-op 표준 스택, 19코어 체인 EXACT 매핑). 20캐릭터 재사용 골든 경로.
+- **로코모션**: Kwang Jog/Idle 12종 리타깃 → **8방향 스트레이프 블렌드스페이스** `BS_Alex_Locomotion`(X=Direction[-180,180]·Y=Speed[0,600], 10샘플) + **`ABP_Alex`(char1 네이티브, AOSAnimInstance 리페어런트)** 신설. Q세트(`Ability_Q_*`, 검 든 자세) 채택. PIE 8방향 이동 작동 확인.
+- **전투 11종 리타깃 + 매핑**: 기본공격 `A/B`(랜덤)+크리 `D`, Q=`Jump_Start`+`PrimaryAttack_Air`, E=`Ability_R_Intro`+`Ability_R`, R=`LaunchPad`+`PrimaryAttack_C`, W=`Cast`, Death=`Death_Bwd`. 스킬 몽타주 Q/E/R/W 클립 교체(사용자).
+- **C++**: 크리티컬 시스템(`CritChance`/`CritDamage` 속성) + `GA_Attack` 랜덤 A/B 섹션·크리 D 섹션·크리 데미지 배수 + `GA_SkillBase` LaunchCharacter(`bLaunchOnActivate`/`LaunchZSpeed`/`LaunchForwardSpeed`, launch 스킬은 cast root 스킵).
+
+**문제점 / 난관**
+- 요약의 "char1과 115공통본"은 오측 — 실측 **공통 60본**(전신 코어 완비, cc_base 트위스트/얼굴/metacarpal은 상이). 발·손가락 rest dot 0.83~0.93.
+- MCP `add_blend_sample`는 **X(sampleValue)만** 설정, Y 무시 → 2D 블렌드스페이스 불가. `sample_data`/`composite_sections`/`notifies`/`slot_anim_tracks` 전부 Python **protected**(읽기·쓰기 제한).
+- MCP `create_montage`는 **빈 껍데기**(len 0) 생성 → 몽타주 내용 채우기 자동화 불가.
+- Paragon 애니는 **in-place**(pelvis만 점프, root 고정) → 리타깃 루트모션 생성(`GENERATE_FROM_TARGET_PELVIS`)이 **지상 전용이라 수직 점프 root Z=0** → 루트모션 점프 불가.
+- 무기 방향 어긋남: char1(AccuRig) `hand_r` 로컬축 ≠ Kwang/마네킹 → `weapon_r` 소켓 회전 재보정 필수(본 roll이 칼날 방향 결정).
+- MCP `create_animation_blueprint`가 `parentClass` 무시하고 기본 AnimInstance로 생성.
+
+**해결 방법**
+- IK Rig = `IKRigController.apply_auto_generated_retarget_definition()`(마네킹 템플릿 자동인식). 배치 = `IKRetargetBatchOperation.duplicate_and_retarget([AssetData], src_mesh, tgt_mesh, rtg)` (출력 `/Game/<이름>` → `rename_asset` 이동).
+- 2D 블렌드스페이스 = `bs.set_editor_property("sample_data", [BlendSample...])` 직접 대입 + MCP `force_rebuild_blend_space`(그리드 생성 + 참조 ABP 재컴파일). ABP = `BlueprintEditorLibrary.reparent_blueprint(abp, unreal.AOSAnimInstance)`.
+- 몽타주 = 기존 AM_Alex_Q/E/R/W 재활용(사용자 클립 교체). Attack 섹션은 MCP `add_montage_section`(assetPath 필요)으로 분할.
+- 점프 = 루트모션 대신 **LaunchCharacter(속도)** — Paragon 원본 방식과 일치, 가변 타겟 도달, 네트워크 단순. launch 스킬은 root 스킵.
+- 자가검증 = `bl_render_uefbx.py`(UE anim FBX `export_preview_mesh=True` → Blender workbench 렌더). Direction 규약 Fwd0/Right+90/Left−90/Bwd±180 코드 확인.
+
+**결과**
+- 로코모션 8방향 PIE 작동 확인(사용자 "잘되고 있어"). 전투 11종 리타깃+렌더 검증+매핑 완료. 크리/랜덤공격/점프 C++ 6파일 작성.
+- **사용자 잔여 단계**: ① 풀 리빌드(신규 속성) ② `AM_Alex_Attack` 섹션 `Default→AttackA` 리네임 + 각 Next=None ③ `AOSAnimNotify_AttackHit` 클래스 노티파이 배치 ④ `BP_GA_Alex_Q/R` launch 값 ⑤ `AM_Death` → `AS_Alex_Death_Kwang` 교체.
+- **교훈(B2 직결)**: 절차적 IK 폐기·프로 mocap 리타깃이 정답. Kwang 스켈레톤은 char1 호환(마네킹 혈통)이라 대검 라이브러리 전체 재사용 가능. 몽타주/섹션/노티파이 내용 저작은 여전히 에디터 수동(Python protected). [[project_kwang_ik_retarget_pipeline]] [[project_anim_locomotion_skeleton_routing]]

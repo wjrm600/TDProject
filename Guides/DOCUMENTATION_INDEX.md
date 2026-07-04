@@ -90,6 +90,10 @@ Guides/
 - **내용**: `UGA_SkillBase` 데이터 주도식 패턴으로 **새 스킬 1개를 5~10분 안에 추가**하는 절차 — BP 자산 2개 + 태그 2개 + 몽타주 매핑. 패턴별 UPROPERTY 치트시트(Self/SingleEnemy/AoE_Sphere/Periodic), 특이 데미지식 BP override, 흔한 함정 8가지
 - **추천 대상**: `design-balance` 에이전트, 새 캐릭터 스킬 작업자, `prog-character` 에이전트
 
+### [ANIMATION_REQUEST_TEMPLATE.md](./03_Implementation/ANIMATION_REQUEST_TEMPLATE.md)
+- **내용**: 사용자가 원하는 모션(스킬 Q/W/E·Idle·Move·Death)을 **자유 서술로 적어 채워 넣는 기획 템플릿**. 하이브리드 애니 파이프라인(Blender 베이크 → UE 재임포트 → 몽타주)의 입력값(타이밍 비트·임팩트 순간·도약 여부)을 뽑아냄. R 슬램 완료작이 채워진 예시
+- **추천 대상**: 사용자(모션 발주), `art-anim`·`prog-anim` 에이전트
+
 ---
 
 ## 04_Testing

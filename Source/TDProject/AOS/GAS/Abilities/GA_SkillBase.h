@@ -88,6 +88,25 @@ public:
 	float ExplicitRootDuration = -1.0f;
 
 	// ============================================================
+	// Launch (Q/R 점프 — LaunchCharacter 속도 구동. Paragon 원본이 in-place 라 루트모션 대신 속도로 띄움.)
+	// ============================================================
+
+	/** true 면 활성화 시 캐릭터를 LaunchCharacter 로 띄운다 (Q 낮게 / R 높게).
+	 *  launch 스킬은 cast root(StopMovement)를 자동으로 건너뛴다 — root 가 launch 속도를 죽이므로. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Launch")
+	bool bLaunchOnActivate = false;
+
+	/** 수직 발사 속도 (cm/s). Q ~450 낮게, R ~900 높게. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Launch",
+		meta = (EditCondition = "bLaunchOnActivate", ClampMin = "0.0"))
+	float LaunchZSpeed = 600.0f;
+
+	/** 수평 발사 속도 (cm/s, 타겟/전방 방향). 0 이면 제자리 수직 점프. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Launch",
+		meta = (EditCondition = "bLaunchOnActivate", ClampMin = "0.0"))
+	float LaunchForwardSpeed = 0.0f;
+
+	// ============================================================
 	// Cooldown
 	// (CooldownGameplayEffectClass 는 UGameplayAbility 표준 슬롯 — BP 에서 BP_GE_Cooldown_* 지정)
 	// ============================================================

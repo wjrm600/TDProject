@@ -51,22 +51,34 @@ DEFAULT_NEG = (
 )
 
 
-def build_workflow(ckpt, pos, neg, seed, steps, cfg, sampler, scheduler, w, h, prefix):
-    """ComfyUI API 포맷 그래프 (vanilla SDXL — 커스텀 노드 불필요)."""
-    return {
+def build_workflow(ckpt, pos, neg, seed, steps, cfg, sampler, scheduler, w, h, prefix,
+                   lora="", lora_strength=0.8):
+    """ComfyUI API 포맷 그래프 (vanilla SDXL — 커스텀 노드 불필요).
+    lora 지정 시 LoraLoader 노드를 삽입해 model/clip 을 거쳐가게 한다.
+    ⚠️ LoRA 는 체크포인트와 같은 아키텍처여야 함 (SD1.5 LoRA ↔ SD1.5 ckpt, SDXL ↔ SDXL)."""
+    model_src, clip_src = ["4", 0], ["4", 1]
+    graph = {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": ["4", 1]}},
-        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["4", 1]}},
+    }
+    if lora:
+        graph["10"] = {"class_type": "LoraLoader", "inputs": {
+            "lora_name": lora, "strength_model": lora_strength, "strength_clip": lora_strength,
+            "model": ["4", 0], "clip": ["4", 1]}}
+        model_src, clip_src = ["10", 0], ["10", 1]
+    graph.update({
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": clip_src}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": clip_src}},
         "5": {"class_type": "EmptyLatentImage",
               "inputs": {"width": w, "height": h, "batch_size": 1}},
         "3": {"class_type": "KSampler", "inputs": {
             "seed": seed, "steps": steps, "cfg": cfg,
             "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
-            "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0],
+            "model": model_src, "positive": ["6", 0], "negative": ["7", 0],
             "latent_image": ["5", 0]}},
         "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
         "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": prefix, "images": ["8", 0]}},
-    }
+    })
+    return graph
 
 
 def _post(url, data):
@@ -145,8 +157,12 @@ def main():
     ap.add_argument("--sampler", default="dpmpp_sde")
     ap.add_argument("--scheduler", default="karras")
     ap.add_argument("--size", type=int, default=1024)
+    ap.add_argument("--width", type=int, default=0, help="가로 해상도 (0이면 --size 사용). 전신 캐릭터는 세로 비율 권장")
+    ap.add_argument("--height", type=int, default=0, help="세로 해상도 (0이면 --size 사용)")
     ap.add_argument("--seed", type=int, default=-1, help="-1 = 매 장 랜덤")
     ap.add_argument("--no-bg-removal", action="store_true", help="배경 제거 끄기")
+    ap.add_argument("--lora", default="", help="loras/ 내 LoRA 파일명 (지정 시 적용). ckpt 와 같은 아키텍처여야 함")
+    ap.add_argument("--lora-strength", type=float, default=0.8, help="LoRA 강도 (model+clip 공통)")
     args = ap.parse_args()
 
     os.makedirs(RAW_DIR, exist_ok=True)
@@ -171,8 +187,9 @@ def main():
         # --seed 고정 시: 첫 장은 그 시드, 이후는 seed+1, seed+2... (좋아한 구도 주변 탐색)
         seed = (args.seed + i) if args.seed >= 0 else int.from_bytes(os.urandom(4), "big")
         graph = build_workflow(args.ckpt, pos, args.neg, seed, args.steps, args.cfg,
-                               args.sampler, args.scheduler, args.size, args.size,
-                               f"tdproj_{args.name}")
+                               args.sampler, args.scheduler,
+                               (args.width or args.size), (args.height or args.size),
+                               f"tdproj_{args.name}", args.lora, args.lora_strength)
         try:
             pid = queue_prompt(graph, client_id)
         except urllib.error.URLError as e:

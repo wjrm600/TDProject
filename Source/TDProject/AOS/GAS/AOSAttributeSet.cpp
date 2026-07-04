@@ -15,6 +15,8 @@ UAOSAttributeSet::UAOSAttributeSet()
 	InitAttackRange(500.f);
 	InitAttackSpeed(1.f);
 	InitMoveSpeed(600.f);
+	InitCritChance(0.15f);   // 기본 15% 크리 확률 (DataTable/아이템으로 캐릭터별 조정 가능)
+	InitCritDamage(2.0f);    // 크리 시 데미지 2배
 	InitDamage(0.f);
 }
 
@@ -29,6 +31,8 @@ void UAOSAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(UAOSAttributeSet, AttackRange, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UAOSAttributeSet, AttackSpeed, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UAOSAttributeSet, MoveSpeed,   COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UAOSAttributeSet, CritChance,  COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UAOSAttributeSet, CritDamage,  COND_None, REPNOTIFY_Always);
 	// Damage 는 메타 속성 — 리플리케이션 안 함
 }
 
@@ -141,4 +145,14 @@ void UAOSAttributeSet::OnRep_AttackSpeed(const FGameplayAttributeData& OldAttack
 void UAOSAttributeSet::OnRep_MoveSpeed(const FGameplayAttributeData& OldMoveSpeed)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UAOSAttributeSet, MoveSpeed, OldMoveSpeed);
+}
+
+void UAOSAttributeSet::OnRep_CritChance(const FGameplayAttributeData& OldCritChance)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UAOSAttributeSet, CritChance, OldCritChance);
+}
+
+void UAOSAttributeSet::OnRep_CritDamage(const FGameplayAttributeData& OldCritDamage)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UAOSAttributeSet, CritDamage, OldCritDamage);
 }

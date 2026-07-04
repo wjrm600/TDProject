@@ -45,7 +45,23 @@ public:
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
 
+	// ============================================================
+	// 몽타주 섹션 (랜덤 기본공격 + 크리티컬)
+	// ============================================================
+
+	/** 일반 공격에서 랜덤으로 하나 선택해 재생할 섹션 이름들 (AM_Attack 의 섹션명과 일치해야 함).
+	 *  ⚠️ 각 섹션은 몽타주에서 Next Section = None 이어야 (한 번 재생 후 정지). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Attack|Sections")
+	TArray<FName> NormalAttackSectionNames = { FName("AttackA"), FName("AttackB") };
+
+	/** 크리티컬 히트 시 재생할 섹션 이름 (예: PrimaryAttack_D). 비우면 크리에도 일반 섹션 재생. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Attack|Sections")
+	FName CritSectionName = FName("Crit");
+
 protected:
+	// 이번 활성화가 크리티컬인지 — ActivateAbility 에서 roll, ApplyDamage 에서 배수 적용
+	bool bIsCritThisActivation = false;
+
 	// 활성화 시 cache 한 타겟 — 몽타주 진행 중 보관, AnimNotify 시점에 데미지 적용 대상
 	// TWeakObjectPtr: 몽타주 재생 중 타겟 사망/destroy 시 안전하게 null 처리
 	UPROPERTY()

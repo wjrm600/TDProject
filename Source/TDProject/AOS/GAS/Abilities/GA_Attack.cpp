@@ -14,6 +14,7 @@
 #include "AOS/AOSCharacter.h"
 #include "Abilities/Tasks/AbilityTask_PlayMontageAndWait.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
+#include "Animation/AnimMontage.h"
 #include "GameplayTagContainer.h"
 
 UGA_Attack::UGA_Attack()
@@ -61,6 +62,7 @@ void UGA_Attack::ActivateAbility(
 
 	// 활성화 상태 초기화 — InstancedPerActor 이므로 매 활성화 시 리셋 필수
 	bDamageAppliedThisActivation = false;
+	bIsCritThisActivation = false;
 	CachedTarget = nullptr;
 
 	if (!ActorInfo || !ActorInfo->AbilitySystemComponent.IsValid())
@@ -132,6 +134,33 @@ void UGA_Attack::ActivateAbility(
 		return;
 	}
 
+	// 4.5. 크리티컬 roll + 재생 섹션 선택.
+	//    크리 시 CritSectionName(예: PrimaryAttack_D), 아니면 NormalAttackSectionNames 중 랜덤(A/B).
+	//    ⚠️ 각 섹션은 몽타주에서 Next Section=None 이어야 한 번만 재생하고 정지한다.
+	//    섹션명이 비었거나 몽타주에 없으면 StartSection=NAME_None (처음부터 재생) fallback.
+	{
+		const float CritChance = SourceAttrSet ? SourceAttrSet->GetCritChance() : 0.0f;
+		bIsCritThisActivation = (CritChance > 0.0f) && (FMath::FRand() < CritChance);
+	}
+
+	FName StartSection = NAME_None;
+	if (bIsCritThisActivation && !CritSectionName.IsNone())
+	{
+		StartSection = CritSectionName;
+	}
+	else if (NormalAttackSectionNames.Num() > 0)
+	{
+		StartSection = NormalAttackSectionNames[FMath::RandRange(0, NormalAttackSectionNames.Num() - 1)];
+	}
+	// 몽타주에 해당 섹션이 실제로 없으면 처음부터 재생 (안전 fallback)
+	if (!StartSection.IsNone() && !AttackMontage->IsValidSectionName(StartSection))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[GA_Attack] 섹션 '%s' 이 몽타주에 없음 → StartSection=None fallback"),
+			*StartSection.ToString());
+		StartSection = NAME_None;
+	}
+
 	// 5. PlayMontageAndWait task
 	//    Rate=AttackSpeed: 몽타주 재생 속도 = AttackSpeed (1.0=평소, 2.0=2x 빠름).
 	//    bStopWhenAbilityEnds=true: Ability 가 취소될 때 몽타주도 함께 중단
@@ -144,7 +173,7 @@ void UGA_Attack::ActivateAbility(
 			NAME_None,
 			AttackMontage,
 			/*Rate=*/AttackSpeed,
-			/*StartSection=*/NAME_None,
+			/*StartSection=*/StartSection,
 			/*bStopWhenAbilityEnds=*/true,
 			/*AnimRootMotionTranslationScale=*/1.0f,
 			/*StartTimeSeconds=*/0.0f,
@@ -290,6 +319,15 @@ void UGA_Attack::ApplyDamageToCachedTarget()
 		UE_LOG(LogTemp, Verbose,
 			TEXT("[GA_Attack] EnhancedAttack 활성 — 데미지 1.5배 적용 (소비된 GE: %d)"),
 			Removed);
+	}
+
+	// 크리티컬: ActivateAbility 에서 roll 한 bIsCritThisActivation 이면 CritDamage 배수 적용.
+	//    (섹션 선택과 데미지 배수가 같은 roll 을 공유하므로 시각/수치 일관성 보장)
+	if (bIsCritThisActivation)
+	{
+		const float CritMult = SourceAttrSet ? SourceAttrSet->GetCritDamage() : 2.0f;
+		DamageAmount *= CritMult;
+		UE_LOG(LogTemp, Verbose, TEXT("[GA_Attack] 크리티컬! 데미지 %.1f배"), CritMult);
 	}
 
 	AActor* TargetActor = CachedTarget.Get();
