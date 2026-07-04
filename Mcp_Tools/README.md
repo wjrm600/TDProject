@@ -249,6 +249,32 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 > - 작성 후 IDE 의 `Refresh ↻` 로 인식시키고, 에디터를 켜두면 `unreal-engine` 이 connected 됩니다.
 > - `mcp_config.json` 은 홈 디렉토리(머신별 절대경로)라 **git 추적 대상이 아닙니다** — 새 머신에서는 위 형식으로 다시 작성.
 
+### 4-5. blender MCP (선택 — 라이브 Blender 제어 / 애니·메시 작업)
+
+Claude 가 Blender 를 직접 제어(씬 조회·파이썬 실행·Hyper3D/Sketchfab 에셋 생성)하려면
+**`blender-mcp`** 서버를 추가합니다. `uvx`(uv 툴러너)로 실행하며, **Blender 쪽에 BlenderMCP 애드온**이
+켜져 있어야 연결됩니다.
+
+```json
+{
+  "mcpServers": {
+    "blender": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["blender-mcp"]
+    }
+  }
+}
+```
+
+> - `uvx` 가 PATH 에 없으면 절대경로로: `C:\\Users\\<user>\\AppData\\Local\\Programs\\Python\\Python311\\Scripts\\uvx.exe`.
+> - **uv 설치**: `pip install uv` (또는 https://docs.astral.sh/uv/). 첫 실행 시 `uvx` 가 `blender-mcp` 를 자동 다운로드.
+> - Blender 에서 **BlenderMCP 애드온**을 설치·활성화 → 사이드바(N) → **BlenderMCP → Start MCP Server** 로 서버를 켜야 `blender` 가 connected.
+> - ⚠️ **애니 자가검증 렌더(`render_anim_preview.py`/`render_skin_preview.py`/`bl_render_uefbx.py`)는 이 MCP 서버가 필요 없습니다** — 헤드리스 Blender 를 subprocess 로 직접 띄우는 방식(창 없는 렌더). blender MCP 는 **라이브 Blender 조작(뷰포트·생성)** 용.
+
+> **⚠️ 프로젝트 `.mcp.json` vs 로컬 절대경로**: 저장소에 커밋된 `.mcp.json` 은 **제네릭 템플릿**(`npx`/`python`/`uvx` 상대 커맨드)입니다.
+> 머신마다 `npx`/`uvx`/`python` 이 PATH 에서 안 잡히면 위처럼 **절대경로 + `env.PATH`** 로 로컬 오버라이드하되, **그 머신별 `.mcp.json` 변경은 커밋하지 마세요**(로컬 유지). 새 머신 셋업은 이 문서 형식대로 다시 작성.
+
 ---
 
 ## 5. 동작 확인
