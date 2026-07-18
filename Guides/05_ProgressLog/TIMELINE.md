@@ -1725,3 +1725,28 @@
 - **사용자 잔여 단계**: ① Q/W/E/R 스킬 PIE 확인 ✅(2026-07-18 확인) ② `AM_Kwang_Attack` 에 B·D 클립 + AttackA/AttackB/Crit 3섹션 수동(크리 시스템 활성화 — A 방식 확정) ③ Kwang 초상화(현재 None 폴백) ④ 각 머신 Fab에서 ParagonKwang 다운로드.
 - **Alex 폐기 → 백본 유지로 결론**: 참조 검사 결과 Alex 세트가 **플레이스홀더 15(Unit6~20) 스킬/몽타주 + `BP_Character` 부모 기본공격 몽타주(`AM_Alex_Attack`) + `DT_Items` 추천**의 백본 → 삭제 시 다수 깨짐. **로스터에서만 제거**(Kwang 대체), 애셋은 배경 유지. 완전 삭제는 플레이스홀더를 진짜 캐릭터로 채우는 시점으로 미룸.
 - **교훈**: 리타깃조차 불필요 — Paragon 네이티브 직접 사용이 최소 마찰. 대가는 **저장소 비대(Fab 재다운로드가 필수 셋업)**. AnimGraph 배선·몽타주 섹션은 여전히 에디터 수동. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-18 — 2번째 Paragon 캐릭터 Greystone (검+방패) + 로코모션 strafe 통일 + 스킬 슈퍼아머
+
+**작업 내용**
+- **Greystone(로스터 1, 구 베가 자리)** 을 Kwang 골든 경로 그대로 반복 = 파이프라인 2번째 검증. `/multi-agent` 호출됐으나 오케스트레이터 분석 결과 **단일 순차 파이프라인(C++ 무변경) → 직접 진행이 최적** 판정(멀티에이전트 핸드오프 오버헤드만).
+  - G1: `BS_Greystone_Locomotion`(8방향) + `ABP_Greystone`(AOSAnimInstance). G2: `BP_Char_Greystone`(BP_Char_Kwang 복제, Greystone 메시 Z=-88, 로스터 import_text 교체). G3: 몽타주 7종(팩토리 자동). G4: `BP_GA_Greystone_*`+쿨다운(Kwang GA 복제 — 이미 launch off).
+  - 매핑: 기본공격 `Attack_A/B` + 크리 `C`, Q=`Ability_Q`, W=`Cast`, E=`Ability_E`, R=`Ability_Ultimate`(Godfall 4.37s), Death=`Death`.
+  - 무기 = **검+방패 둘 다 메시 내장 본**(`sword_top/bottom`·`shield_inner/outer`) → 소켓 작업 0.
+- **로코모션 strafe 미사용 통일(사용자 결정)**: Greystone 은 순수 `Jog_Strafe_*` 클립이 없어 `Jog_Left/Right` 만 존재 → **Kwang BS 도 `Jog_Strafe_L/R` → `Jog_Left/Right` 로 교체**해 양산 규칙 통일(strafe 애셋 미사용). 옆걸음/선회 모션 차이 미미하다는 사용자 판정.
+- **스킬 슈퍼아머(C++)**: R(Godfall 4.37s) 시전 중 피격 시 HitReact 몽타주가 스킬을 덮어써 모션 끊김 → `AAOSCharacter::Multicast_PlayHitReact` Rule A 에 `State.Casting` 체크 추가(공격 태그만 있던 비대칭 해소).
+
+**문제점 / 난관**
+- HitReact ↔ 스킬 **비대칭**: `GA_Attack` 은 이미 `State.Casting` 을 ActivationBlockedTags 로 막아 "스킬 중 공격 차단"을 했으나, **`Multicast_PlayHitReact` 는 `Ability.Attack.Basic` 만 체크** → 스킬 시전 중 HitReact 만 안 막혀 긴 스킬에서 끊김 발생.
+- Greystone strafe 클립 부재 — `Jog_Left/Right`(선회 겸용)만 존재.
+
+**해결 방법**
+- Rule A 확장: `HasMatchingGameplayTag(Ability.Attack.Basic) || HasMatchingGameplayTag(State.Casting)` → 공격·스킬 시전 중 HitReact 스킵(모든 캐릭터 공통 슈퍼아머). `State.Casting` = `UGA_SkillBase` 가 모든 스킬에 부여(`GA_SkillBase.cpp:29`) → 함수 본문만 변경이라 **핫 리로드 호환**(사용자 Ctrl+Alt+F11 검증, R 무끊김 확인).
+- Greystone 은 Paragon 관례상 `Jog_Left/Right` 가 스트레이프 역할 겸함 → 그대로 채택, Kwang 도 통일.
+
+**결과**
+- Greystone 로스터 1번 등록, PIE 로코모션·기본공격·스킬 확인(사용자). **Kwang 대비 훨씬 빠름**(함정 기지 + 에셋 배선만) = B2 양산 골든 경로 실증. Kwang `AM_Kwang_Attack` A/B/Crit 3섹션도 사용자 완료(크리 시스템 활성).
+- **사용자 잔여**: `ABP_Greystone` AnimGraph 배선(ABP_Kwang 동일), Greystone `AM_Greystone_Attack` A/B/C 섹션(크리), 각 머신 Fab 에서 ParagonGreystone 다운로드.
+- **교훈**: 골든 경로가 반복 가능함을 실증(2/5 고유). strafe 미사용 = 양산 로코모션 표준. 스킬 경직 처리는 슈퍼아머 일괄(추후 `bSuperArmor` 세분화 여지). [[project_kwang_ik_retarget_pipeline]]

@@ -71,7 +71,10 @@ Mcp_Tools/Anim_Pipeline/Reference/
 
 # 대용량 마켓플레이스/임포트 에셋 팩 (GitHub 100MB 파일 제한 + 저장소 비대화)
 # 이 팩들은 각 머신에서 별도 import/다운로드 필요. Git LFS 도입 전까지 제외.
-# - ParagonKwang: ~2.4GB (Paragon 캐릭터 — Alex 스킬 애니 소스)
-# - AnimStarterPack: ~25MB (UE 기본 애님 팩)
+# ⚠️ 런타임 필수 의존성 — 각 머신에서 Fab(Epic 영구무료)로 다운로드해야 캐릭터 참조가 살아남.
+# - ParagonKwang:     ~2.4GB (로스터 0 = Kwang 네이티브 메시/애니)
+# - ParagonGreystone: ~2.2GB (로스터 1 = Greystone 네이티브 메시/애니)
+# - AnimStarterPack:  ~25MB  (UE 기본 애님 팩)
 Content/ParagonKwang/
+Content/ParagonGreystone/
 Content/AnimStarterPack/

@@ -107,7 +107,7 @@ GEComponents.Add(TagsComp);   // GEComponents 는 protected
 
 - `UAOSAnimInstance`(ABP parent) — `Speed/Direction/bIsMoving/bIsAttacking/bIsCasting/bIsHitReacting/bIsDead` 등 GAS 태그 미러. 생성자 `RootMotionMode = RootMotionFromMontagesOnly`.
 - `AAOSCharacter` 몽타주 슬롯: `AttackMontage`/`HitReactMontage`/`DeathMontage`/`SkillMontages`(map). **nullptr 면 조용히 skip — 자산 없어도 PIE 동작.**
-- **HitReact↔Attack 충돌 규칙**: (A) 공격 중(`Ability.Attack.Basic` 보유) HitReact 스킵. (B) `UGE_HitReact_State` 가 `State.HitReact` 부여(Duration=몽타주 길이, SetByCaller) → `GA_Attack::ActivationBlockedTags` 가 차단.
+- **HitReact↔Attack/Skill 충돌 규칙**: (A) 공격 중(`Ability.Attack.Basic`) **또는 스킬 시전 중(`State.Casting`)** 이면 `Multicast_PlayHitReact` 가 HitReact 스킵(슈퍼아머 — 긴 스킬/궁극기가 DefaultSlot 점유 중 피격당해도 안 끊김). (B) `UGE_HitReact_State` 가 `State.HitReact` 부여(Duration=몽타주 길이, SetByCaller) → `GA_Attack`·`GA_SkillBase` 의 `ActivationBlockedTags` 가 차단. ⚠️ 대칭 유지: 공격/스킬은 `State.HitReact`·`State.Casting` 상호 차단, HitReact 는 위 (A)로 스킵.
 - **스킬 시전 root**: `UGA_SkillBase::bAllowMovementDuringCast` (BP CDO). false → `Char->ApplyCastRoot(Duration)`(`GE_Rooted` + `StopMovementImmediately`). 이동 시전은 ABP 상하체 분리(Layered Blend Per Bone, spine_01↑).
 
 **⚠️ `OnCharacterDeath` (서버) 호출 순서 — 바꾸면 desync/root motion 깨짐:**
@@ -125,7 +125,7 @@ GEComponents.Add(TagsComp);   // GEComponents 는 protected
 - **골드** = 글로벌 팀 공유 풀 (`AOSGameState.Team1/2Gold`, 클라는 GameState 경유 조회). 적립: 캐릭터 처치 +50 / 구조물 +150 / 라운드 패시브 +100 (GameMode EditAnywhere).
 - **아이템** = **유닛(UnitId=로스터 인덱스) 귀속, 라운드 누적**. 카탈로그 `DT_Items`(`FAOSItemRow`), 효과는 Infinite GE(`BP_GE_Item_*`). 캐릭터는 매 라운드 리스폰돼도 유닛 아이템 재적용. 구매는 준비/정산 단계만. ⚠️ 한 유닛은 한 슬롯에만(중복 배치 불가).
 - **벤픽** = 매치당 1회 드래프트. `GetDraftSequence()` 고정 14스텝(밴4 교대 + 픽10 스네이크, 팀당 밴2·픽5). 전체 고유(한 UnitId 는 한 팀만). 이후 모든 라운드 준비는 **픽된 캐릭터만** 배치(`ServerSetLaneDeployClassesForPlayer` 서버 강제). 흐름: `Lobby→BanPick→RoundPreparation(픽 필터)→RoundRunning→Settlement→RoundPreparation`.
-- 현재 로스터 20종(고유 5 + 플레이스홀더 15). **0번 = Kwang** (Epic ParagonKwang 네이티브 메시/애니 **리타깃 없이 직접 사용** — 검이 메시 내장 `weapon_r` 본, 소켓 부착 불필요). Kwang 만 풀스킬(Q/W/E/R). 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 재활용. **새 고유 캐릭터 = Paragon 히어로 Fab 임포트 → `BP_Char_Kwang` 복제(메시/ABP/몽타주만 교체)** 가 골든 경로. (구 Alex 세트(BP_Char_Alex·BP_GA_Alex_*·AM_Alex_*)는 **삭제 불가 백본** — 플레이스홀더 15(Unit6~20)의 스킬/몽타주 + `BP_Character` 부모의 기본공격 몽타주 + `DT_Items` 추천이 참조. 로스터에서만 제거됨. 플레이스홀더를 진짜 캐릭터로 채울 때 자연 해소.)
+- 현재 로스터 20종(고유 5 + 플레이스홀더 15). **0=Kwang(대검)·1=Greystone(검+방패)** = Epic Paragon 네이티브 메시/애니 **리타깃 없이 직접 사용**(무기가 메시 내장 본 — Kwang `weapon_r`, Greystone `sword_*`/`shield_*` → 소켓 부착 불필요). 둘 다 풀스킬(Q/W/E/R). 로코모션은 **strafe 애셋 미사용 통일**(`Idle`+`Jog_Fwd/Bwd/Left/Right`, 순수 strafe 클립 없는 히어로도 동일 규칙). 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 재활용. **새 고유 캐릭터 = Paragon 히어로 Fab 임포트 → `BP_Char_Kwang` 복제(메시/ABP/몽타주만 교체)** 가 골든 경로. (구 Alex 세트(BP_Char_Alex·BP_GA_Alex_*·AM_Alex_*)는 **삭제 불가 백본** — 플레이스홀더 15(Unit6~20)의 스킬/몽타주 + `BP_Character` 부모의 기본공격 몽타주 + `DT_Items` 추천이 참조. 로스터에서만 제거됨. 플레이스홀더를 진짜 캐릭터로 채울 때 자연 해소.)
 - ⚠️ 위젯 실현 순서: `ShowBanPick` 에서 `InitializeWithRoster`(RootWidget 구축)를 `AddToViewport` **보다 먼저** (순서 뒤바뀌면 화면 안 뜸 — 미니맵·벤픽서 실제 발생).
 
 > 벤픽/상점 위젯 저작 계약(`WBP_BanPick` 바인딩 이름·반응형 ScaleBox·3D 프리뷰 스테이지)·로스터 Portrait 함정 → **PROJECT_REFERENCE** "Ban/Pick" + "Economy & Shop" 섹션.

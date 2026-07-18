@@ -332,15 +332,20 @@ void AAOSCharacter::Multicast_PlayHitReact_Implementation()
 	// 사망 진행 중이면 hit react 스킵 (사망 몽타주 우선)
 	if (!IsAlive()) return;
 
-	// Rule A: 공격 중이면 hit react 스킵 — DefaultSlot 충돌 방지.
-	// "Ability.Attack.Basic" 태그가 활성 = GA_Attack 의 ActivationOwnedTags 가 부여 중.
+	// Rule A: 공격 중 또는 스킬 시전 중이면 hit react 스킵 — DefaultSlot 충돌 방지.
+	//   "Ability.Attack.Basic" = GA_Attack 의 ActivationOwnedTags (기본 공격 중).
+	//   "State.Casting"        = UGA_SkillBase 의 ActivationOwnedTags (Q/W/E/R 스킬 시전 중).
+	// 스킬(특히 긴 R/궁극기)이 DefaultSlot 을 점유하는 동안 피격당하면 HitReact 몽타주가
+	// 스킬 몽타주를 덮어써 모션이 끊기므로, 시전 중에는 HitReact 재생을 무시한다(슈퍼아머).
 	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
 	{
 		static const FGameplayTag AttackActiveTag =
 			FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
-		if (ASC->HasMatchingGameplayTag(AttackActiveTag))
+		static const FGameplayTag CastingTag =
+			FGameplayTag::RequestGameplayTag(FName("State.Casting"));
+		if (ASC->HasMatchingGameplayTag(AttackActiveTag) || ASC->HasMatchingGameplayTag(CastingTag))
 		{
-			// 공격 진행 중 — hit react 몽타주 재생 무시
+			// 공격/스킬 진행 중 — hit react 몽타주 재생 무시
 			return;
 		}
 	}
