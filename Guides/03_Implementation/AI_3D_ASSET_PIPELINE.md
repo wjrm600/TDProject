@@ -1,5 +1,10 @@
 # AI 기반 3D 모델 생성 · 교체 파이프라인
 
+> ⚠️ **현재 고유 캐릭터 = Paragon 히어로 네이티브 직접 사용(리타깃 폐기)**. 아래 AI생성→AccuRig→리타깃
+> 방식은 **historical**(2026-06~07-04). 신규 고유 캐릭터는 **[`PARAGON_CHARACTER_PIPELINE.md`](PARAGON_CHARACTER_PIPELINE.md)**
+> + [`build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py) 사용. 이 문서는
+> §10 컨셉이미지 생성·§11 애니 통합 교훈 등 재사용 가능한 기법 참고용으로 유지.
+
 **대상 독자**: 이 프로젝트의 에이전트/개발자. 현재 UE5 Mannequin 플레이스홀더 메시를
 AI 생성 3D 모델로 교체하는 전체 절차를 단계별로 기술합니다.
 

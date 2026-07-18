@@ -1783,3 +1783,15 @@
 **결과**
 - 스크립트 first full run 성공 = B1 실증 완료. 사용자 PIE 확인(로코모션·공격·스킬). Grux config 를 `CONFIGS` 에 등록(재사용 기준). 남은 수동: ABP AnimGraph 배선·Attack 3섹션.
 - **양산 가속 확인**: Grux 소요 = 조사(스킬 매핑) + config + run + 리빌드 + 수동2. Crunch/Boris 동일 속도 가능(Boris 는 원거리 설계 판단 선행). [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-18 — B2: 양산 체크리스트 문서화 `PARAGON_CHARACTER_PIPELINE.md`
+
+**작업 내용**
+- Kwang/Greystone/Grux 3회 + `build_paragon_character.py` 확정으로 패턴이 굳어 **고유 캐릭터 양산 가이드** 신설: [`Guides/03_Implementation/PARAGON_CHARACTER_PIPELINE.md`](../03_Implementation/PARAGON_CHARACTER_PIPELINE.md).
+- 구성: ①왜 네이티브(리타깃 대비표) ②사전조건(Fab 다운로드+gitignore) ③캐릭터당 7단계 체크리스트(조사→config→run→BS리빌드→수동2→PIE→커밋) ④유형별 변형(무기내장/맨손/원거리) ⑤공통 함정(strafe통일·velocity off·슈퍼아머·태그재사용·키편차·MCP함정) ⑥진행현황 3/5.
+- 포인터 연결: `AI_3D_ASSET_PIPELINE.md` 상단에 historical 배너(§10 컨셉·§11 애니교훈은 참고 유지), CLAUDE.md 문서 인덱스 추가.
+
+**결과**
+- B1(스크립트)+B2(문서)로 양산 인프라 완비. 남은 고유 2종(Crunch 맨손·Boris 원거리)은 가이드대로 재현. Boris 원거리 = AOS 근접 데미지와 부조화라 발사체 시스템 여부 설계 결정이 선행 조건으로 문서화됨. [[project_kwang_ik_retarget_pipeline]]
