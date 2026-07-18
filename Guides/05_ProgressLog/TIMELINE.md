@@ -1750,3 +1750,20 @@
 - Greystone 로스터 1번 등록, PIE 로코모션·기본공격·스킬 확인(사용자). **Kwang 대비 훨씬 빠름**(함정 기지 + 에셋 배선만) = B2 양산 골든 경로 실증. Kwang `AM_Kwang_Attack` A/B/Crit 3섹션도 사용자 완료(크리 시스템 활성).
 - **사용자 잔여**: `ABP_Greystone` AnimGraph 배선(ABP_Kwang 동일), Greystone `AM_Greystone_Attack` A/B/C 섹션(크리), 각 머신 Fab 에서 ParagonGreystone 다운로드.
 - **교훈**: 골든 경로가 반복 가능함을 실증(2/5 고유). strafe 미사용 = 양산 로코모션 표준. 스킬 경직 처리는 슈퍼아머 일괄(추후 `bSuperArmor` 세분화 여지). [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-18 — B1: 골든 경로 스크립트화 `build_paragon_character.py`
+
+**작업 내용**
+- Kwang/Greystone 2회로 확정된 K/G 4단계를 **재사용 스크립트**(`Mcp_Tools/Asset_Pipeline/build_paragon_character.py`)로 굳힘. `config` dict 하나로 ①BS ②ABP ③BP_Char복제+로스터 ④몽타주7 ⑤GA·GE8 + 전 배선을 `run(cfg)` 한 번에.
+- 신규 캐릭터 = `pack_anim`/`skeleton`/`mesh`/`roster_index`/`montages` 만 교체. `CONFIGS` 에 Kwang·Greystone 검증 예시 내장.
+
+**해결/발견**
+- ABP 생성을 MCP `create_animation_blueprint`(parentClass 무시) → **Python 네이티브 `AnimBlueprintFactory`(`target_skeleton`+`parent_class=AOSAnimInstance`)** 로 대체 → reparent 불필요. 임시 `ZTest` config 로 BS+ABP 생성 검증(CDO=AOSAnimInstance True) 후 삭제.
+- **BS 그리드 삼각분할만 Python 네이티브 API 부재** → `run()` 직후 MCP `force_rebuild_blend_space` 1줄 후처리로 잔존(스크립트 로그가 명시).
+- 캐릭터당 남는 에디터 수동 2가지: ABP AnimGraph 배선(BS→DefaultSlot→Output), `AM_<Name>_Attack` 3섹션(크리).
+
+**결과**
+- BS/ABP 부분 실검증 통과. BP복제/몽타주/GA·GE 는 K/G 실동작 코드 이관이라 신뢰. **3번째 캐릭터(Fab 팩 확보 후)에서 full 검증 예정** — config 작성 → `run()` → BS 리빌드 → 수동 2단계.
+- [[project_kwang_ik_retarget_pipeline]] 메모리에 스키마·실행법 반영.
