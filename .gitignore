@@ -75,7 +75,7 @@ Mcp_Tools/Anim_Pipeline/Reference/
 # - ParagonKwang:     ~2.4GB (로스터 0 = Kwang 네이티브 메시/애니)
 # - ParagonGreystone: ~2.2GB (로스터 1 = Greystone 네이티브 메시/애니)
 # - ParagonGrux:      ~3.0GB (로스터 2 = Grux 네이티브 메시/애니)
-# - ParagonCrunch:    ~2.0GB (편입 예정 — 맨손 격투)
+# - ParagonCrunch:    ~2.0GB (로스터 3 = Crunch 네이티브 메시/애니, 맨손 격투)
 # - ParagonBoris:     ~1.4GB (편입 예정 — 원거리, 설계 검토 필요)
 # - AnimStarterPack:  ~25MB  (UE 기본 애님 팩)
 Content/ParagonKwang/

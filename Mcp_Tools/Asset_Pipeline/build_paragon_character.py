@@ -281,4 +281,14 @@ CONFIGS = {
         'montages': {'Attack': 'PrimaryAttack_LA', 'Q': 'DoublePain', 'W': 'Cast', 'E': 'Stampede',
                      'R': 'Ultimate_Roar', 'Death': 'Death_A', 'HitReact': 'HitReact_Front'},
     },
+    'Crunch': {  # 맨손 격투 로봇(무기본 없음 — 부착 이슈 자체 無). idle=Idle_Combat(브롤러 스탠스)
+        'name': 'Crunch', 'display_name': 'Crunch',
+        'pack_anim': '/Game/ParagonCrunch/Characters/Heroes/Crunch/Animations',
+        'skeleton': '/Game/ParagonCrunch/Characters/Heroes/Crunch/Meshes/Crunch_Skeleton',
+        'mesh': '/Game/ParagonCrunch/Characters/Heroes/Crunch/Meshes/Crunch',
+        'roster_index': 3, 'z_offset': -88,
+        'loco': {'idle': 'Idle_Combat', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Ability_Combo_01', 'Q': 'Ability_Uppercut', 'W': 'Cast', 'E': 'Ability_GutPunch',
+                     'R': 'Ability_Hook_Empowered', 'Death': 'Death_A', 'HitReact': 'HitReact_Front'},
+    },
 }

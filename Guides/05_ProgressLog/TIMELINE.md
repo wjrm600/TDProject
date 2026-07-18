@@ -1795,3 +1795,18 @@
 
 **결과**
 - B1(스크립트)+B2(문서)로 양산 인프라 완비. 남은 고유 2종(Crunch 맨손·Boris 원거리)은 가이드대로 재현. Boris 원거리 = AOS 근접 데미지와 부조화라 발사체 시스템 여부 설계 결정이 선행 조건으로 문서화됨. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-19 — Crunch(맨손 격투 로봇) 편입 = 스크립트 4번째 실증
+
+**작업 내용**
+- `build_paragon_character.py` 로 Crunch 편입(로스터 3 = 구 Cammy 자리). **맨손 격투 = 무기본 없음 → 부착 이슈 자체 無**(가장 단순한 유형).
+- 매핑: 공격 `Ability_Combo_01`, Q=`Ability_Uppercut`, W=`Cast`, E=`Ability_GutPunch`, R=`Ability_Hook_Empowered`(강화 훅=궁극), Death=`Death_A`, HitReact=`HitReact_Front`. 로코모션 `Idle_Combat`(브롤러 스탠스)+`Jog_Fwd/Bwd/Left/Right`.
+- 스킬은 대시 변위 없는 **자기완결형 단타**로 선정(DashingCross 계열 회피 — 검증 편의). `run(CONFIGS['Crunch'])` 한 번 + BS 리빌드 1줄.
+
+**문제점 / 해결**
+- Crunch 에 순수 `Idle` 없음 → `Idle_Combat`(전투 스탠스, 브롤러 테마 적합)으로 대체. config `loco.idle` 로 흡수.
+
+**결과**
+- 스크립트 4번째 무수정 완주(Grux 동일 속도) = 양산 골든 경로 재실증. 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 고유 **4/5**. `.gitignore` Crunch 주석 정정(런타임 의존성). 남은 수동: ABP AnimGraph 배선·Attack 3섹션(사용자 완료). 마지막 Boris 는 원거리 설계 판단 선행. [[project_kwang_ik_retarget_pipeline]]

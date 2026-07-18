@@ -99,7 +99,7 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 | 0 | Kwang | 대검(내장) | ✅ 완성 |
 | 1 | Greystone | 검+방패(내장) | ✅ 완성 |
 | 2 | Grux | 양손(내장) | ✅ 완성 |
-| 3 | (구 Cammy) → **Crunch** | 맨손 | ⏳ 스크립트로 바로 가능 |
+| 3 | Crunch | 맨손 격투 | ✅ 완성 (스크립트 4번째 실증) |
 | 4 | (구 Guile) → **Boris** | 원거리 | ⏳ 설계 결정 선행 |
 
 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 유지 — 고유 캐릭터를 진짜로 채울 때 자연 축소.
