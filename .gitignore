@@ -72,15 +72,39 @@ Mcp_Tools/Anim_Pipeline/Reference/
 # 대용량 마켓플레이스/임포트 에셋 팩 (GitHub 100MB 파일 제한 + 저장소 비대화)
 # 이 팩들은 각 머신에서 별도 import/다운로드 필요. Git LFS 도입 전까지 제외.
 # ⚠️ 런타임 필수 의존성 — 각 머신에서 Fab(Epic 영구무료)로 다운로드해야 캐릭터 참조가 살아남.
+# 편입 완료(런타임 필수 의존성 — 각 머신 Fab 다운로드):
 # - ParagonKwang:     ~2.4GB (로스터 0 = Kwang 네이티브 메시/애니)
 # - ParagonGreystone: ~2.2GB (로스터 1 = Greystone 네이티브 메시/애니)
 # - ParagonGrux:      ~3.0GB (로스터 2 = Grux 네이티브 메시/애니)
 # - ParagonCrunch:    ~2.0GB (로스터 3 = Crunch 네이티브 메시/애니, 맨손 격투)
-# - ParagonBoris:     ~1.4GB (편입 예정 — 원거리, 설계 검토 필요)
+# 편입 후보(임포트만 완료, 아직 BP_Char 미생성 — 커밋 금지):
+# - ParagonBoris:     ~1.4GB (원거리, 설계 검토 필요)
+# - ParagonLtBelica:  ~2.0GB (원거리 후보)
+# - ParagonMurdock:   ~2.0GB (원거리 후보)
+# - ParagonRevenant:  ~1.7GB (원거리 후보)
+# - ParagonSparrow:   ~3.0GB (원거리 후보 — 활)
+# - ParagonSerath:    ~2.0GB (근접 후보)
+# - ParagonShinbi:    ~0.9GB (근접 후보)
+# - ParagonSunWukong: ~2.3GB (근접 후보 — 봉)
+# - ParagonTerra:     ~2.0GB (근접 후보 — 대검)
+# - ParagonYin:       ~1.3GB (근접 후보)
+# - ParagonAurora:    ~2.8GB (근접/캐스터 후보)
+# - ParagonProps:     ~12GB  (⚠️ 캐릭터 아님 — 환경/소품 팩)
 # - AnimStarterPack:  ~25MB  (UE 기본 애님 팩)
 Content/ParagonKwang/
 Content/ParagonGreystone/
 Content/ParagonGrux/
 Content/ParagonCrunch/
 Content/ParagonBoris/
+Content/ParagonLtBelica/
+Content/ParagonMurdock/
+Content/ParagonRevenant/
+Content/ParagonSparrow/
+Content/ParagonSerath/
+Content/ParagonShinbi/
+Content/ParagonSunWukong/
+Content/ParagonTerra/
+Content/ParagonYin/
+Content/ParagonAurora/
+Content/ParagonProps/
 Content/AnimStarterPack/
