@@ -291,4 +291,14 @@ CONFIGS = {
         'montages': {'Attack': 'Ability_Combo_01', 'Q': 'Ability_Uppercut', 'W': 'Cast', 'E': 'Ability_GutPunch',
                      'R': 'Ability_Hook_Empowered', 'Death': 'Death_A', 'HitReact': 'HitReact_Front'},
     },
+    'Aurora': {  # 얼음 근접 캐스터. R 은 InPlace 변형 사용(변위 회피). 내부 폴더명=팩명 일치
+        'name': 'Aurora', 'display_name': 'Aurora',
+        'pack_anim': '/Game/ParagonAurora/Characters/Heroes/Aurora/Animations',
+        'skeleton': '/Game/ParagonAurora/Characters/Heroes/Aurora/Meshes/Aurora_Skeleton',
+        'mesh': '/Game/ParagonAurora/Characters/Heroes/Aurora/Meshes/Aurora',
+        'roster_index': 4, 'z_offset': -88,
+        'loco': {'idle': 'Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Primary_Attack_A', 'Q': 'Ability_Q', 'W': 'Cast', 'E': 'Ability_E',
+                     'R': 'Ability_R_InPlace', 'Death': 'Death', 'HitReact': 'HitReact_Front'},
+    },
 }

@@ -2,7 +2,7 @@
 
 **대상**: 이 저장소에서 고유 캐릭터를 추가하는 에이전트/개발자.
 **방식(2026-07-18 확정)**: Epic Paragon 히어로 애셋(메시/애니)을 **리타깃 없이 그대로 사용**.
-절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 3회 실증(Kwang·Greystone·Grux).
+절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 5회 실증(Kwang·Greystone·Grux·Crunch·Aurora = 고유 로스터 0~4 전부).
 
 > 스크립트: [`Mcp_Tools/Asset_Pipeline/build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py)
 > — `run(config)` 한 번에 BS·ABP·BP복제·로스터·몽타주7·GA/GE8+전배선. 상세 스키마/실행법은 그 파일 docstring.
@@ -45,7 +45,7 @@
 {'name','display_name','pack_anim','skeleton','mesh','roster_index','z_offset',
  'loco':{idle,fwd,bwd,left,right}, 'montages':{Attack,Q,W,E,R,Death,HitReact}}
 ```
-- **`roster_index`**: 고유 0~4. 현재 0=Kwang·1=Greystone·2=Grux. 다음은 3(구 Cammy)·4(구 Guile).
+- **`roster_index`**: 고유 0~4. **0~4 전부 채움**(Kwang·Greystone·Grux·Crunch·Aurora). 추가 고유는 로스터 확장(고유 5→N) 설계 변경 선행.
 - 기존 캐릭터 config 복붙 → 6개 필드(pack/skeleton/mesh/roster_index/loco/montages)만 교체.
 
 ### ③ `run(config)` 실행 — MCP `execute_python`
@@ -100,8 +100,18 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 | 1 | Greystone | 검+방패(내장) | ✅ 완성 |
 | 2 | Grux | 양손(내장) | ✅ 완성 |
 | 3 | Crunch | 맨손 격투 | ✅ 완성 (스크립트 4번째 실증) |
-| 4 | (구 Guile) → **Boris** | 원거리 | ⏳ 설계 결정 선행 |
+| 4 | Aurora | 얼음 근접 캐스터 | ✅ 완성 (스크립트 5번째 실증) |
 
-플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 유지 — 고유 캐릭터를 진짜로 채울 때 자연 축소.
+**고유 로스터 0~4 전부 완성.** 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 유지.
+
+### 편입 대기 팩 (Fab 임포트 완료 — 로스터 확장 시 사용)
+
+추가 Paragon 팩이 프로젝트에 임포트돼 있으나 **현재 고유 5슬롯이 만석**이라 편입하려면 로스터 확장이 선행돼야 함(전부 `.gitignore` 처리, 커밋 금지):
+
+| 유형 | 팩 (⚠️=내부 폴더명 불일치) | 상태 |
+|---|---|---|
+| 근접 (스크립트 즉시) | Serath · Shinbi · **SunWukong(⚠️Wukong)** · Terra · Yin | config만 작성하면 `run()` 가능 |
+| 원거리 (설계 선행) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Sparrow · Boris | 발사체 시스템 vs 근접 뭉갬 결정 필요 |
+| 비캐릭터 | ParagonProps (~12GB) | 환경/소품 — 편입 대상 아님 |
 
 > 관련: [`build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py) · CLAUDE.md "캐릭터 로스터"/"애니메이션" · [`TIMELINE.md`](../05_ProgressLog/TIMELINE.md) 2026-07-18 항목들 · [`AI_3D_ASSET_PIPELINE.md`](AI_3D_ASSET_PIPELINE.md)(구 리타깃/Meshy 방식, historical).

@@ -1810,3 +1810,19 @@
 
 **결과**
 - 스크립트 4번째 무수정 완주(Grux 동일 속도) = 양산 골든 경로 재실증. 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 고유 **4/5**. `.gitignore` Crunch 주석 정정(런타임 의존성). 남은 수동: ABP AnimGraph 배선·Attack 3섹션(사용자 완료). 마지막 Boris 는 원거리 설계 판단 선행. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-19 — 신규 Paragon 팩 11개 조사 + Aurora 편입 = **고유 로스터 5/5 완성**
+
+**작업 내용**
+- Fab 로 Paragon 팩 11개 추가 임포트(LtBelica/Murdock/Props/Revenant/Serath/Shinbi/Sparrow/SunWukong/Terra/Yin/Aurora). 애니 이름 실측으로 무기 유형 분류:
+  - 근접 6: Serath·Shinbi·**SunWukong(내부 Wukong)**·Terra·Yin·**Aurora** / 원거리 4: **LtBelica(내부 Belica)**·Murdock·Revenant·Sparrow / 비캐릭터: Props(~12GB 환경 소품).
+- 슬롯 4(마지막 고유)에 **Aurora**(얼음 근접 캐스터) 편입 — Boris(원거리) 대신 근접이라 설계 결정 없이 스크립트 즉시 편입. 매핑: 공격 `Primary_Attack_A`(A/B/C/D 콤보), Q=`Ability_Q`, W=`Cast`, E=`Ability_E`, R=`Ability_R_InPlace`(제자리 궁=변위 회피), Death/HitReact. `run()` 5번째 무수정 완주.
+
+**문제점 / 해결**
+- **11개 팩 전부 `.gitignore` 미등록**(`git status ??`, 총 ~32GB) → `git add .` 시 대참사 위험. ⚠️ `git check-ignore <dir>/` 는 trailing-slash 오탐(무시로 착각) — `git status --porcelain` 이 확실. 11개 전부 명시 등록(별도 커밋 713eeab).
+- **내부 폴더명 함정**: `LtBelica→Belica`, `SunWukong→Wukong`(패키지명 ≠ 히어로 폴더) — config 경로에 내부명 사용 필요. 나머지 8개는 일치.
+
+**결과**
+- **고유 로스터 0~4 전부 실캐릭터 완성**(Kwang·Greystone·Grux·Crunch·Aurora). 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 편입 대기 팩(근접 5·원거리 5)은 로스터 확장(고유 5→N) 설계 선행. 원거리는 발사체 시스템 여부 추가 결정. 문서(PIPELINE 5/5·대기팩표, CLAUDE.md 로스터, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]

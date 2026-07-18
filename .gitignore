@@ -77,6 +77,7 @@ Mcp_Tools/Anim_Pipeline/Reference/
 # - ParagonGreystone: ~2.2GB (로스터 1 = Greystone 네이티브 메시/애니)
 # - ParagonGrux:      ~3.0GB (로스터 2 = Grux 네이티브 메시/애니)
 # - ParagonCrunch:    ~2.0GB (로스터 3 = Crunch 네이티브 메시/애니, 맨손 격투)
+# - ParagonAurora:    ~2.8GB (로스터 4 = Aurora 네이티브 메시/애니, 얼음 근접 캐스터)
 # 편입 후보(임포트만 완료, 아직 BP_Char 미생성 — 커밋 금지):
 # - ParagonBoris:     ~1.4GB (원거리, 설계 검토 필요)
 # - ParagonLtBelica:  ~2.0GB (원거리 후보)
@@ -88,7 +89,6 @@ Mcp_Tools/Anim_Pipeline/Reference/
 # - ParagonSunWukong: ~2.3GB (근접 후보 — 봉)
 # - ParagonTerra:     ~2.0GB (근접 후보 — 대검)
 # - ParagonYin:       ~1.3GB (근접 후보)
-# - ParagonAurora:    ~2.8GB (근접/캐스터 후보)
 # - ParagonProps:     ~12GB  (⚠️ 캐릭터 아님 — 환경/소품 팩)
 # - AnimStarterPack:  ~25MB  (UE 기본 애님 팩)
 Content/ParagonKwang/
