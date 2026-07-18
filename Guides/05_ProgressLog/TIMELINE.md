@@ -1722,5 +1722,6 @@
 **결과**
 - Kwang 로스터 0번 등록, **PIE 로코모션(8방향 옆걸음 포함) + 기본공격 재생 확인**(사용자). 기본공격 재생 = 몽타주 슬롯 `DefaultSlot` 매칭 검증됨. 무기 소켓 문제 원천 소멸(검 메시 내장 `weapon_r` 본).
 - 크리티컬/랜덤공격/점프 C++(전 세션)는 **그대로 유효**(스켈레톤 무관 게임플레이 코드).
-- **사용자 잔여 단계**: ① Q/W/E/R 스킬 PIE 확인 ② `AM_Kwang_Attack` 에 B·D 클립 + AttackA/AttackB/Crit 3섹션 수동(크리 시스템 활성화 — A 방식 확정) ③ Kwang 초상화(현재 None 폴백) ④ Alex 세트 완전 폐기(스킬 검증 후) ⑤ 각 머신 Fab에서 ParagonKwang 다운로드.
+- **사용자 잔여 단계**: ① Q/W/E/R 스킬 PIE 확인 ✅(2026-07-18 확인) ② `AM_Kwang_Attack` 에 B·D 클립 + AttackA/AttackB/Crit 3섹션 수동(크리 시스템 활성화 — A 방식 확정) ③ Kwang 초상화(현재 None 폴백) ④ 각 머신 Fab에서 ParagonKwang 다운로드.
+- **Alex 폐기 → 백본 유지로 결론**: 참조 검사 결과 Alex 세트가 **플레이스홀더 15(Unit6~20) 스킬/몽타주 + `BP_Character` 부모 기본공격 몽타주(`AM_Alex_Attack`) + `DT_Items` 추천**의 백본 → 삭제 시 다수 깨짐. **로스터에서만 제거**(Kwang 대체), 애셋은 배경 유지. 완전 삭제는 플레이스홀더를 진짜 캐릭터로 채우는 시점으로 미룸.
 - **교훈**: 리타깃조차 불필요 — Paragon 네이티브 직접 사용이 최소 마찰. 대가는 **저장소 비대(Fab 재다운로드가 필수 셋업)**. AnimGraph 배선·몽타주 섹션은 여전히 에디터 수동. [[project_kwang_ik_retarget_pipeline]]
