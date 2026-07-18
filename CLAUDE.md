@@ -125,7 +125,7 @@ GEComponents.Add(TagsComp);   // GEComponents 는 protected
 - **골드** = 글로벌 팀 공유 풀 (`AOSGameState.Team1/2Gold`, 클라는 GameState 경유 조회). 적립: 캐릭터 처치 +50 / 구조물 +150 / 라운드 패시브 +100 (GameMode EditAnywhere).
 - **아이템** = **유닛(UnitId=로스터 인덱스) 귀속, 라운드 누적**. 카탈로그 `DT_Items`(`FAOSItemRow`), 효과는 Infinite GE(`BP_GE_Item_*`). 캐릭터는 매 라운드 리스폰돼도 유닛 아이템 재적용. 구매는 준비/정산 단계만. ⚠️ 한 유닛은 한 슬롯에만(중복 배치 불가).
 - **벤픽** = 매치당 1회 드래프트. `GetDraftSequence()` 고정 14스텝(밴4 교대 + 픽10 스네이크, 팀당 밴2·픽5). 전체 고유(한 UnitId 는 한 팀만). 이후 모든 라운드 준비는 **픽된 캐릭터만** 배치(`ServerSetLaneDeployClassesForPlayer` 서버 강제). 흐름: `Lobby→BanPick→RoundPreparation(픽 필터)→RoundRunning→Settlement→RoundPreparation`.
-- 현재 로스터 20종(고유 5: 알렉스/베가/켄/캐미/가일 + 플레이스홀더 15). 알렉스만 풀스킬(Q/W/E/R), 나머지 기본 공격. 새 캐릭터 = `BP_Char_Ken` 복제 = 기본형.
+- 현재 로스터 20종(고유 5 + 플레이스홀더 15). **0번 = Kwang** (Epic ParagonKwang 네이티브 메시/애니 **리타깃 없이 직접 사용** — 검이 메시 내장 `weapon_r` 본, 소켓 부착 불필요). Kwang 만 풀스킬(Q/W/E/R). 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 재활용. **새 고유 캐릭터 = Paragon 히어로 Fab 임포트 → `BP_Char_Kwang` 복제(메시/ABP/몽타주만 교체)** 가 골든 경로. (구 Alex 리타깃 세트는 폐기 예정 — 이력은 TIMELINE 2026-07-04/07-18.)
 - ⚠️ 위젯 실현 순서: `ShowBanPick` 에서 `InitializeWithRoster`(RootWidget 구축)를 `AddToViewport` **보다 먼저** (순서 뒤바뀌면 화면 안 뜸 — 미니맵·벤픽서 실제 발생).
 
 > 벤픽/상점 위젯 저작 계약(`WBP_BanPick` 바인딩 이름·반응형 ScaleBox·3D 프리뷰 스테이지)·로스터 Portrait 함정 → **PROJECT_REFERENCE** "Ban/Pick" + "Economy & Shop" 섹션.
@@ -178,6 +178,7 @@ AAOSAIController::~AAOSAIController() { WaypointQueue.Empty(); ControlledCharact
 
 - **지형/Nav 변경 후 RecastNavMesh 반드시 재빌드**: `RuntimeGeneration=Static` 이라 cooked. 지형 액터 위치/스케일·`NavMeshBoundsVolume`·타워 위치 변경 후 **Build → Build Paths Only(Ctrl+Shift+B)** + nav uasset 저장/커밋. 안 하면 AI 가 옛 영역에 갇히거나 정지.
 - **라인 시작 = SpawnPoint 단일 진실** (위 Map/Lane 참고 — `FLaneInfo` 좌표 이중화 제거됨).
+- **ParagonKwang = 런타임 필수 의존성 (Fab 재다운로드)**: Kwang(로스터 0)이 `/Game/ParagonKwang` 메시/애니를 **직접 참조** → 팩이 없으면 `BP_Char_Kwang` 참조가 깨져 프로젝트가 정상 오픈 안 됨. 팩은 **2.4GB** 라 GitHub 무료 LFS(1GB) 초과로 `.gitignore` 제외 → **각 머신에서 Fab(Epic 영구무료)로 ParagonKwang 다운로드가 엔진 설치급 필수 셋업**. 새 Paragon 캐릭터 추가 시마다 저장소 대신 각 머신 Fab 다운로드로 확보.
 
 > 해결된 historical 이슈(에디터 종료 크래시, 타워 미표시, AI 미이동, HP바 미표시, 생존 캐릭터 소멸, 클라 구조물 유령 등) → **PROJECT_REFERENCE** "Known Issues and Gotchas".
 

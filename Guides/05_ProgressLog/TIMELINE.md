@@ -1692,3 +1692,35 @@
 - 로코모션 8방향 PIE 작동 확인(사용자 "잘되고 있어"). 전투 11종 리타깃+렌더 검증+매핑 완료. 크리/랜덤공격/점프 C++ 6파일 작성.
 - **사용자 잔여 단계**: ① 풀 리빌드(신규 속성) ② `AM_Alex_Attack` 섹션 `Default→AttackA` 리네임 + 각 Next=None ③ `AOSAnimNotify_AttackHit` 클래스 노티파이 배치 ④ `BP_GA_Alex_Q/R` launch 값 ⑤ `AM_Death` → `AS_Alex_Death_Kwang` 교체.
 - **교훈(B2 직결)**: 절차적 IK 폐기·프로 mocap 리타깃이 정답. Kwang 스켈레톤은 char1 호환(마네킹 혈통)이라 대검 라이브러리 전체 재사용 가능. 몽타주/섹션/노티파이 내용 저작은 여전히 에디터 수동(Python protected). [[project_kwang_ik_retarget_pipeline]] [[project_anim_locomotion_skeleton_routing]]
+
+---
+
+## 2026-07-18 — 리타깃마저 폐기 → ParagonKwang 네이티브 직접 사용 (Alex→Kwang 통일, char1 플레이스홀더 전환)
+
+**작업 내용**
+- **2차 방향 전환(사용자 확정)**: IK 리타깃도 걷어내고 **Epic Paragon 애셋을 리타깃 없이 그대로 사용**. Alex 를 폐기하고 **Kwang(대검 히어로) 을 로스터 0번**으로 통일. 다음 고유 캐릭터도 Paragon(예정: Greystone) 네이티브 직접 사용. char1(구 Alex 메시)은 **플레이스홀더(Unit6~20)** 로 재활용.
+- **K1 로코모션**: `Kwang_Skeleton` 위에 8방향 `BS_Kwang_Locomotion`(X=Direction[-180,180]·Y=Speed[0,600], 10샘플) — **Kwang 네이티브 `Idle`+`Jog_Fwd/Bwd/Strafe_Left/Strafe_Right`** 사용(전부 rootDrift 0 인플레이스 실측). 대검 히어로라 기본 로코모션이 이미 검 든 전투자세 + **진짜 옆걸음(`Jog_Strafe`) 네이티브** → "옆걸음·뒷걸음 포커스 이동" 요구 정확 충족. `ABP_Kwang`(AOSAnimInstance 리페어런트). AnimGraph 배선은 사용자 수동(BS→DefaultSlot→Output).
+- **K2 캐릭터**: `BP_Char_Kwang`(BP_Char_Alex 복제) — 메시=`KwangRosewood`, ABP=`ABP_Kwang`, Z=-88(발 원점·키 195). 로스터 0번 `character_class`=BP_Char_Kwang, `display_name`="Kwang". `DefaultWeaponMesh`=None(검 메시 내장).
+- **K3 몽타주 7종**: `AM_Kwang_{Attack,Q,W,E,R,Death,HitReact}` — **`AnimMontageFactory.source_animation` 지정으로 단일클립 몽타주 자동생성**(create_montage 껍데기 문제 우회). Attack=A, Q=Air, W=Cast, E=Ability_R, R=PrimaryAttack_C, Death=Death_Bwd, HitReact=Hitreact_Fwd. BP_Char_Kwang 의 SkillMontages/AttackMontage/Death/HitReact 전부 Kwang 배선.
+- **K4 GA/GE**: `BP_GA_Kwang_{Q,W,E,R}` + `BP_GE_Cooldown_Kwang_*` 복제, 쿨다운 참조 교체, StartupAbilities 배선. (스킬 태그는 Alex.* 재사용 — GA에 몽타주 참조 없음, 몽타주는 Character SkillMontages TMap 경유.)
+- **K5 플레이스홀더**: Unit6~20(15개) 메시=char1_accurig, ABP=ABP_Alex 배선.
+- **velocity 제거(사용자 요청)**: Q/R 점프의 `LaunchCharacter`(강제 velocity)가 캐릭터를 튀어올려 검증 방해 → `bLaunchOnActivate=false`(Kwang+Alex Q/R). 코드 보존, 빌드 불필요.
+
+**문제점 / 난관**
+- **Git 용량 = 결정적 제약**: ParagonKwang **2,448MB**(Characters 1,627 + FX 821, 1,602파일, 최대 단일 92MB). GitHub 무료 LFS = 저장 1GB/대역폭 1GB → Kwang 하나로 2.4배 초과, 5캐릭터면 ~12GB. **커밋 불가.**
+- **런타임 의존성 승격**: 기존엔 ParagonKwang=애니 소스라 리타깃 결과물만 커밋되면 게임 동작. 이제 **Kwang 메시를 직접 참조**하므로 팩이 없으면 `BP_Char_Kwang` 참조 깨짐 = 프로젝트 정상 오픈 불가.
+- `create_montage` MCP·`create_animation_blueprint` parentClass·`set_axis_settings` 반영 실패·`slot_anim_tracks` protected — 기존 함정 재확인.
+- `CharacterRosterEntry.CharacterClass` = EditDefaultsOnly struct 필드 → set_editor_property "cannot be edited on instances".
+
+**해결 방법**
+- ParagonKwang **`.gitignore` 유지 + 각 머신 Fab 재다운로드**(Epic 영구무료라 소실 위험 없음, 마켓팩 비커밋이 표준). 셋업 절차에 **필수** 항목으로 명시.
+- 단일클립 몽타주 = `AnimMontageFactory().set_editor_property('source_animation', seq)` → `create_asset` (슬롯=DefaultSlot 자동, PIE 기본공격 재생 확인).
+- 축 = `blend_parameters[i]` 직접 mutate 후 배열 재대입(set_axis_settings MCP 는 반영 안 됨) + `force_rebuild_blend_space`.
+- 로스터 struct = `entry.import_text("(CharacterClass=BlueprintGeneratedClass'...',DisplayName=INVTEXT(\"Kwang\"),Portrait=None)")` 우회.
+- ABP = `reparent_blueprint(abp, AOSAnimInstance)`(create 가 parentClass 무시).
+
+**결과**
+- Kwang 로스터 0번 등록, **PIE 로코모션(8방향 옆걸음 포함) + 기본공격 재생 확인**(사용자). 기본공격 재생 = 몽타주 슬롯 `DefaultSlot` 매칭 검증됨. 무기 소켓 문제 원천 소멸(검 메시 내장 `weapon_r` 본).
+- 크리티컬/랜덤공격/점프 C++(전 세션)는 **그대로 유효**(스켈레톤 무관 게임플레이 코드).
+- **사용자 잔여 단계**: ① Q/W/E/R 스킬 PIE 확인 ② `AM_Kwang_Attack` 에 B·D 클립 + AttackA/AttackB/Crit 3섹션 수동(크리 시스템 활성화 — A 방식 확정) ③ Kwang 초상화(현재 None 폴백) ④ Alex 세트 완전 폐기(스킬 검증 후) ⑤ 각 머신 Fab에서 ParagonKwang 다운로드.
+- **교훈**: 리타깃조차 불필요 — Paragon 네이티브 직접 사용이 최소 마찰. 대가는 **저장소 비대(Fab 재다운로드가 필수 셋업)**. AnimGraph 배선·몽타주 섹션은 여전히 에디터 수동. [[project_kwang_ik_retarget_pipeline]]
