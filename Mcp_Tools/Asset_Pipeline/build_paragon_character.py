@@ -271,4 +271,14 @@ CONFIGS = {
         'montages': {'Attack': 'Attack_A_Slow', 'Q': 'Ability_Q', 'W': 'Cast', 'E': 'Ability_E',
                      'R': 'Ability_Ultimate', 'Death': 'Death', 'HitReact': 'HitReact_Front'},
     },
+    'Grux': {  # 야수형 양손 무기(weapon_l/r 내장), 로코모션 Jog_Lft/Rgt(이름 주의)
+        'name': 'Grux', 'display_name': 'Grux',
+        'pack_anim': '/Game/ParagonGrux/Characters/Heroes/Grux/Animations',
+        'skeleton': '/Game/ParagonGrux/Characters/Heroes/Grux/Meshes/Grux_Skeleton',
+        'mesh': '/Game/ParagonGrux/Characters/Heroes/Grux/Meshes/Grux',
+        'roster_index': 2, 'z_offset': -88,
+        'loco': {'idle': 'Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Lft', 'right': 'Jog_Rgt'},
+        'montages': {'Attack': 'PrimaryAttack_LA', 'Q': 'DoublePain', 'W': 'Cast', 'E': 'Stampede',
+                     'R': 'Ultimate_Roar', 'Death': 'Death_A', 'HitReact': 'HitReact_Front'},
+    },
 }

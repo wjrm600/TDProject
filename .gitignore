@@ -74,7 +74,13 @@ Mcp_Tools/Anim_Pipeline/Reference/
 # ⚠️ 런타임 필수 의존성 — 각 머신에서 Fab(Epic 영구무료)로 다운로드해야 캐릭터 참조가 살아남.
 # - ParagonKwang:     ~2.4GB (로스터 0 = Kwang 네이티브 메시/애니)
 # - ParagonGreystone: ~2.2GB (로스터 1 = Greystone 네이티브 메시/애니)
+# - ParagonGrux:      ~3.0GB (로스터 2 = Grux 네이티브 메시/애니)
+# - ParagonCrunch:    ~2.0GB (편입 예정 — 맨손 격투)
+# - ParagonBoris:     ~1.4GB (편입 예정 — 원거리, 설계 검토 필요)
 # - AnimStarterPack:  ~25MB  (UE 기본 애님 팩)
 Content/ParagonKwang/
 Content/ParagonGreystone/
+Content/ParagonGrux/
+Content/ParagonCrunch/
+Content/ParagonBoris/
 Content/AnimStarterPack/

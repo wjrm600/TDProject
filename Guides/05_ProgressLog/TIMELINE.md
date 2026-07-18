@@ -1767,3 +1767,19 @@
 **결과**
 - BS/ABP 부분 실검증 통과. BP복제/몽타주/GA·GE 는 K/G 실동작 코드 이관이라 신뢰. **3번째 캐릭터(Fab 팩 확보 후)에서 full 검증 예정** — config 작성 → `run()` → BS 리빌드 → 수동 2단계.
 - [[project_kwang_ik_retarget_pipeline]] 메모리에 스키마·실행법 반영.
+
+---
+
+## 2026-07-18 — Grux(야수/양손무기) 편입 = build_paragon_character.py **첫 full 실전**
+
+**작업 내용**
+- Boris/Crunch/Grux 3팩(Fab) 추가 확인 → **Grux 부터** 스크립트로 편입(로스터 2 = 구 Ken 자리). 무기 `weapon_l/r` 내장(소켓 0), 발 원점(Z=-88), 키 221.
+- 매핑: 공격 `PrimaryAttack_LA`, Q=`DoublePain`(이중베기), W=`Cast`, E=`Stampede`(돌진), R=`Ultimate_Roar`(궁극), Death=`Death_A`, HitReact=`HitReact_Front`. 로코모션 `Jog_Fwd/Bwd/Lft/Rgt`(**Lft/Rgt 이름 주의** — config 로 흡수).
+- **`run(GRUX)` 한 번**에 BS+ABP+BP복제+로스터+몽타주7+GA·GE8+전배선 완료(K/G 수십 MCP 호출 → config+run 1회). BS 리빌드만 MCP 후처리. 검증: SkillMontages=AM_Grux_*, StartupAbilities=BP_GA_Grux_*, 로스터[2]=Grux 모두 정확.
+
+**문제점 / 해결**
+- Boris/Crunch/Grux 3팩이 **`.gitignore` 미등록** → `git status` 에 `??` 로 노출(6.6GB 커밋 위험). ⚠️ `git check-ignore <dir>/` 는 trailing-slash 로 오탐(무시로 착각) — `git status --porcelain | grep` 이 확실. 3팩 모두 `.gitignore` 명시 추가.
+
+**결과**
+- 스크립트 first full run 성공 = B1 실증 완료. 사용자 PIE 확인(로코모션·공격·스킬). Grux config 를 `CONFIGS` 에 등록(재사용 기준). 남은 수동: ABP AnimGraph 배선·Attack 3섹션.
+- **양산 가속 확인**: Grux 소요 = 조사(스킬 매핑) + config + run + 리빌드 + 수동2. Crunch/Boris 동일 속도 가능(Boris 는 원거리 설계 판단 선행). [[project_kwang_ik_retarget_pipeline]]
