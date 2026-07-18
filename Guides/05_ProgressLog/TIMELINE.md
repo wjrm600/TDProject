@@ -1826,3 +1826,18 @@
 
 **결과**
 - **고유 로스터 0~4 전부 실캐릭터 완성**(Kwang·Greystone·Grux·Crunch·Aurora). 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 편입 대기 팩(근접 5·원거리 5)은 로스터 확장(고유 5→N) 설계 선행. 원거리는 발사체 시스템 여부 추가 결정. 문서(PIPELINE 5/5·대기팩표, CLAUDE.md 로스터, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-19 — 로스터 확장: 근접 5종 일괄 편입(로스터 5~9) = 실캐릭터 10
+
+**작업 내용**
+- **벤픽 14 소요**(밴4+픽10 전부 고유) → 실캐릭터 ≥14 필요. 고유 5로는 부족 → 로스터 확장 착수. 근접 5종을 인덱스 5~9 에 일괄 편입: **5=Serath(검/날개)·6=Shinbi(늑대소환)·7=Wukong(봉)·8=Terra(대검)·9=Yin(사슬검)**.
+- 스킬 네이밍이 `Q_*/E_*/RMB_*/R_*`(Ability_ 접두 대부분 없음) — 시그니처 클립 스캔으로 슬롯 매핑. `build_paragon_character.py` `CONFIGS` 에 5종 추가 후 루프 `run()`. Wukong·Terra 는 전용 R 클립 부재 → R=Cast 대체. Yin idle=Idle_Combat(순수 Idle 부재).
+
+**문제점 / 해결**
+- **5종 일괄 `run()` = MCP 30초 타임아웃**(응답 레벨) — 그러나 에디터는 완주. 디스크/로스터/몽타주35/StartupAbilities 전수 검증으로 전 생성 확인(타임아웃 무해). 대량 시 2~3종씩 분할 권장.
+- **로스터 인덱스 교체**: 플레이스홀더 BP_Char_Unit6~10 자리(5~9)를 실캐릭터로 교체. 구 Unit BP 는 디스크 잔존(Alex 백본 보존), 로스터 참조만 교체.
+
+**결과**
+- **실캐릭터 5→10**(로스터 0~9). 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 남은 **14 도달 = 원거리 4개**(발사체 vs 근접 뭉갬 설계 선행)가 마지막 관문. ⚠️ 양산 병목 = 캐릭터당 에디터 수동 2(ABP 배선·Attack 3섹션) 미자동화. 문서(PIPELINE 10종표·병목 명시, CLAUDE.md 로스터, gitignore) 갱신. [[project_kwang_ik_retarget_pipeline]]

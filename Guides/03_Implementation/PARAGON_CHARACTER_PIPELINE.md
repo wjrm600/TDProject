@@ -2,7 +2,7 @@
 
 **대상**: 이 저장소에서 고유 캐릭터를 추가하는 에이전트/개발자.
 **방식(2026-07-18 확정)**: Epic Paragon 히어로 애셋(메시/애니)을 **리타깃 없이 그대로 사용**.
-절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 5회 실증(Kwang·Greystone·Grux·Crunch·Aurora = 고유 로스터 0~4 전부).
+절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 10회 실증(로스터 0~9 = 근접 히어로 전부).
 
 > 스크립트: [`Mcp_Tools/Asset_Pipeline/build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py)
 > — `run(config)` 한 번에 BS·ABP·BP복제·로스터·몽타주7·GA/GE8+전배선. 상세 스키마/실행법은 그 파일 docstring.
@@ -45,7 +45,7 @@
 {'name','display_name','pack_anim','skeleton','mesh','roster_index','z_offset',
  'loco':{idle,fwd,bwd,left,right}, 'montages':{Attack,Q,W,E,R,Death,HitReact}}
 ```
-- **`roster_index`**: 고유 0~4. **0~4 전부 채움**(Kwang·Greystone·Grux·Crunch·Aurora). 추가 고유는 로스터 확장(고유 5→N) 설계 변경 선행.
+- **`roster_index`**: 로스터 20슬롯 중 **0~9 실캐릭터 채움**(근접 전부). 10~19 는 플레이스홀더(Unit11~20). 다음 편입은 인덱스 10부터(원거리 — 설계 선행).
 - 기존 캐릭터 config 복붙 → 6개 필드(pack/skeleton/mesh/roster_index/loco/montages)만 교체.
 
 ### ③ `run(config)` 실행 — MCP `execute_python`
@@ -92,26 +92,33 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 
 ---
 
-## 5. 진행 현황 (고유 5종)
+## 5. 진행 현황 (실캐릭터 10종 / 벤픽 14 목표)
+
+벤픽 드래프트는 14스텝(밴4+픽10) 전부 고유 소비 → **최소 14 실캐릭터 필요**. 로스터 확장 진행 중:
 
 | # | 캐릭터 | 무기 | 상태 |
 |---|--------|------|------|
 | 0 | Kwang | 대검(내장) | ✅ 완성 |
 | 1 | Greystone | 검+방패(내장) | ✅ 완성 |
 | 2 | Grux | 양손(내장) | ✅ 완성 |
-| 3 | Crunch | 맨손 격투 | ✅ 완성 (스크립트 4번째 실증) |
-| 4 | Aurora | 얼음 근접 캐스터 | ✅ 완성 (스크립트 5번째 실증) |
+| 3 | Crunch | 맨손 격투 | ✅ 완성 |
+| 4 | Aurora | 얼음 근접 캐스터 | ✅ 완성 |
+| 5 | Serath | 검/날개 | ✅ 완성 |
+| 6 | Shinbi | 늑대 소환 근접 | ✅ 완성 |
+| 7 | SunWukong(내부 Wukong) | 봉 | ✅ 완성 (R=Cast 대체) |
+| 8 | Terra | 대검 | ✅ 완성 (R=Cast 대체) |
+| 9 | Yin | 사슬검 | ✅ 완성 |
+| 10~13 | (원거리 4 필요) | — | ⏳ 발사체 설계 선행 |
 
-**고유 로스터 0~4 전부 완성.** 플레이스홀더 15(Unit6~20)는 char1(구 Alex) 메시 + `ABP_Alex` 유지.
+**근접 풀 소진(0~9 = 실캐릭터 10).** 인덱스 10~19 는 여전히 플레이스홀더(Unit11~20, char1+`ABP_Alex`). 14 도달엔 **원거리 4개** 추가 필요.
 
-### 편입 대기 팩 (Fab 임포트 완료 — 로스터 확장 시 사용)
-
-추가 Paragon 팩이 프로젝트에 임포트돼 있으나 **현재 고유 5슬롯이 만석**이라 편입하려면 로스터 확장이 선행돼야 함(전부 `.gitignore` 처리, 커밋 금지):
+### 편입 대기 팩 (Fab 임포트 완료, 전부 `.gitignore` — 커밋 금지)
 
 | 유형 | 팩 (⚠️=내부 폴더명 불일치) | 상태 |
 |---|---|---|
-| 근접 (스크립트 즉시) | Serath · Shinbi · **SunWukong(⚠️Wukong)** · Terra · Yin | config만 작성하면 `run()` 가능 |
-| 원거리 (설계 선행) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Sparrow · Boris | 발사체 시스템 vs 근접 뭉갬 결정 필요 |
+| 원거리 (설계 선행) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Sparrow · Boris | 발사체 시스템 vs 근접 뭉갬 결정 필요(14 도달의 마지막 관문) |
 | 비캐릭터 | ParagonProps (~12GB) | 환경/소품 — 편입 대상 아님 |
+
+> ⚠️ **양산 병목 = 캐릭터당 에디터 수동 2가지**(ABP AnimGraph 배선 + Attack 3섹션). 스크립트 파트(config+run)는 분 단위지만 이 수동은 자동화 미해결 — 대량 확장 시 이게 실제 비용. (스킬 매핑 오류는 몽타주만 재생성하면 되고 ABP 배선과 독립이라 배선 작업은 보존됨.)
 
 > 관련: [`build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py) · CLAUDE.md "캐릭터 로스터"/"애니메이션" · [`TIMELINE.md`](../05_ProgressLog/TIMELINE.md) 2026-07-18 항목들 · [`AI_3D_ASSET_PIPELINE.md`](AI_3D_ASSET_PIPELINE.md)(구 리타깃/Meshy 방식, historical).
