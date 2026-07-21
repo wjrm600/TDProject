@@ -134,9 +134,16 @@ def build_character_bp(cfg):
     mc.set_editor_property('skeletal_mesh_asset', unreal.load_asset(cfg['mesh']))
     mc.set_editor_property('anim_class', unreal.load_asset(f"{AOS_ANIM}/ABP_{name}").generated_class())
     mc.set_editor_property('relative_location', unreal.Vector(0, 0, float(cfg['z_offset'])))
+    # 원거리 등 스탯 분화: attr_row 지정 시 AttributeInitRowName 교체(기본은 템플릿 값 유지).
+    if cfg.get('attr_row'):
+        try:
+            cdo.set_editor_property('AttributeInitRowName', unreal.Name(cfg['attr_row']))
+        except Exception:
+            cdo.import_text(f"(AttributeInitRowName=\"{cfg['attr_row']}\")")
     BEL.compile_blueprint(bp)
     eal.save_asset(dst, False)
-    log.append(f"[BP] {dst}  mesh={mc.get_editor_property('skeletal_mesh_asset').get_name()} z={cfg['z_offset']}")
+    log.append(f"[BP] {dst}  mesh={mc.get_editor_property('skeletal_mesh_asset').get_name()} z={cfg['z_offset']}"
+               f" attr_row={cdo.get_editor_property('AttributeInitRowName')}")
 
     # 로스터 교체 (EditDefaultsOnly struct → import_text)
     gmbp, gcdo = _bp_cdo(GM)
@@ -351,5 +358,16 @@ CONFIGS = {
         'loco': {'idle': 'Idle_Combat', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
         'montages': {'Attack': 'Primary_Attack_A_Slow', 'Q': 'Q_Pull_Kick', 'W': 'RMB',
                      'E': 'E_Ability_Attack_A', 'R': 'R_Ability', 'Death': 'Death', 'HitReact': 'HitReact_Front'},
+    },
+    # ── 원거리(히트스캔): attr_row='Ranged'(AttackRange 900) + 공격=발사 애니. idle=소문자 'idle' 주의 ──
+    'Sparrow': {  # 궁수. 원거리 검증 1호. HitReact_Fwd(Front 아님)
+        'name': 'Sparrow', 'display_name': 'Sparrow',
+        'pack_anim': '/Game/ParagonSparrow/Characters/Heroes/Sparrow/Animations',
+        'skeleton': '/Game/ParagonSparrow/Characters/Heroes/Sparrow/Meshes/Sparrow_Skeleton',
+        'mesh': '/Game/ParagonSparrow/Characters/Heroes/Sparrow/Meshes/Sparrow',
+        'roster_index': 10, 'z_offset': -88, 'attr_row': 'Ranged',
+        'loco': {'idle': 'idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Primary_Fire_Med', 'Q': 'Q_Ability', 'W': 'Cast', 'E': 'RMB_Fire',
+                     'R': 'R_Ability_Med_Fire', 'Death': 'Death_Fwd', 'HitReact': 'HitReact_Fwd'},
     },
 }

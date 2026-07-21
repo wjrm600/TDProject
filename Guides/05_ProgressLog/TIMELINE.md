@@ -1841,3 +1841,19 @@
 
 **결과**
 - **실캐릭터 5→10**(로스터 0~9). 사용자 PIE 확인(로코모션·기본공격·Q/W/E/R). 남은 **14 도달 = 원거리 4개**(발사체 vs 근접 뭉갬 설계 선행)가 마지막 관문. ⚠️ 양산 병목 = 캐릭터당 에디터 수동 2(ABP 배선·Attack 3섹션) 미자동화. 문서(PIPELINE 10종표·병목 명시, CLAUDE.md 로스터, gitignore) 갱신. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-20 — 원거리 = 히트스캔 발견 + Sparrow(궁수) 편입 = 발사체 시스템 불필요
+
+**작업 내용**
+- 원거리 방식 결정 전 전투 코드 조사 → **데미지가 위치 아닌 타겟에 직접 적용**(`GA_Attack::ApplyDamageToCachedTarget` → `ApplyGameplayEffectSpecToTarget`, 거리/트레이스 체크 無). AI 는 `IsCurrentTargetInAttackRange()`(=`거리 ≤ GetEffectiveAttackRange()`, 속성 `AttackRange`) 에서 정지 후 공격.
+- **결론: 원거리 = `AttackRange` 큰 스탯 행 + 발사 애니. C++/리빌드 0**(발사체 액터 불필요, 투사체는 순수 VFX).
+- `DT_CharacterAttributes` 에 **`Ranged` 행**(AttackRange 900, MoveSpeed 550) 신설. `build_paragon_character.py` 에 **`attr_row` config 지원**(BP `AttributeInitRowName` 교체) 추가.
+- **Sparrow(로스터 10, 궁수)** 편입 — 공격 `Primary_Fire_Med`, `attr_row='Ranged'`, idle=소문자 `idle`, HitReact_Fwd. Q=Q_Ability/W=Cast/E=RMB_Fire/R=R_Ability_Med_Fire.
+
+**문제점 / 해결**
+- 현재 근접 유닛은 전부 `Alex` 행(AttackRange 300, AP1/AS2) 공유 → 원거리용 별도 행 필요. `Ranged` 행 분리로 해결. 단 AP10 vs 근접 AP1 → **유닛 밸런스 미조정**(별도 스탯 패스로 후속).
+
+**결과**
+- 사용자 PIE 확인: **Sparrow 가 적에 안 붙고 ≈900 에서 정지해 발사, 원거리 즉시 명중**. 히트스캔 원거리 실증(발사체 설계 관문 소멸). 실캐릭터 **10→11**. 남은 3(Belica/Murdock/Revenant/Boris 중 3)만 Sparrow 방식 복제하면 **벤픽 14 달성**. 문서(CLAUDE.md 원거리 항목, PIPELINE 히트스캔 섹션, gitignore, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]

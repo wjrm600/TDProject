@@ -2,7 +2,7 @@
 
 **대상**: 이 저장소에서 고유 캐릭터를 추가하는 에이전트/개발자.
 **방식(2026-07-18 확정)**: Epic Paragon 히어로 애셋(메시/애니)을 **리타깃 없이 그대로 사용**.
-절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 10회 실증(로스터 0~9 = 근접 히어로 전부).
+절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 11회 실증(로스터 0~10, 근접 10 + 원거리 1(Sparrow)).
 
 > 스크립트: [`Mcp_Tools/Asset_Pipeline/build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py)
 > — `run(config)` 한 번에 BS·ABP·BP복제·로스터·몽타주7·GA/GE8+전배선. 상세 스키마/실행법은 그 파일 docstring.
@@ -45,7 +45,7 @@
 {'name','display_name','pack_anim','skeleton','mesh','roster_index','z_offset',
  'loco':{idle,fwd,bwd,left,right}, 'montages':{Attack,Q,W,E,R,Death,HitReact}}
 ```
-- **`roster_index`**: 로스터 20슬롯 중 **0~9 실캐릭터 채움**(근접 전부). 10~19 는 플레이스홀더(Unit11~20). 다음 편입은 인덱스 10부터(원거리 — 설계 선행).
+- **`roster_index`**: 로스터 20슬롯 중 **0~10 실캐릭터 채움**(근접 10 + 원거리 Sparrow). 11~19 는 플레이스홀더(Unit12~20). 다음 편입은 인덱스 11부터(원거리 히트스캔 — `'attr_row':'Ranged'` 추가).
 - 기존 캐릭터 config 복붙 → 6개 필드(pack/skeleton/mesh/roster_index/loco/montages)만 교체.
 
 ### ③ `run(config)` 실행 — MCP `execute_python`
@@ -92,31 +92,36 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 
 ---
 
-## 5. 진행 현황 (실캐릭터 10종 / 벤픽 14 목표)
+## 5. 진행 현황 (실캐릭터 11종 / 벤픽 14 목표)
 
 벤픽 드래프트는 14스텝(밴4+픽10) 전부 고유 소비 → **최소 14 실캐릭터 필요**. 로스터 확장 진행 중:
 
 | # | 캐릭터 | 무기 | 상태 |
 |---|--------|------|------|
-| 0 | Kwang | 대검(내장) | ✅ 완성 |
-| 1 | Greystone | 검+방패(내장) | ✅ 완성 |
-| 2 | Grux | 양손(내장) | ✅ 완성 |
-| 3 | Crunch | 맨손 격투 | ✅ 완성 |
-| 4 | Aurora | 얼음 근접 캐스터 | ✅ 완성 |
+| 0~4 | Kwang·Greystone·Grux·Crunch·Aurora | 근접 | ✅ 완성 |
 | 5 | Serath | 검/날개 | ✅ 완성 |
 | 6 | Shinbi | 늑대 소환 근접 | ✅ 완성 |
 | 7 | SunWukong(내부 Wukong) | 봉 | ✅ 완성 (R=Cast 대체) |
 | 8 | Terra | 대검 | ✅ 완성 (R=Cast 대체) |
 | 9 | Yin | 사슬검 | ✅ 완성 |
-| 10~13 | (원거리 4 필요) | — | ⏳ 발사체 설계 선행 |
+| 10 | Sparrow | 궁수(**원거리**) | ✅ 완성 (히트스캔 1호 검증) |
+| 11~13 | (원거리 3 필요) | — | ⏳ 히트스캔으로 바로 가능 |
 
-**근접 풀 소진(0~9 = 실캐릭터 10).** 인덱스 10~19 는 여전히 플레이스홀더(Unit11~20, char1+`ABP_Alex`). 14 도달엔 **원거리 4개** 추가 필요.
+**근접 6 + 원거리 1 = 실캐릭터 11.** 인덱스 11~19 는 플레이스홀더(Unit12~20). 14 도달엔 **원거리 3개** 더.
+
+### 🎯 원거리 = 히트스캔 (발사체 시스템 불필요 — 검증 완료)
+
+데미지는 **위치가 아니라 타겟에 직접 적용**(`GA_Attack` 거리/트레이스 체크 없음). AI 는 `GetEffectiveAttackRange()`(=`AttackRange` 속성)에서 멈춰 공격. 따라서:
+- **원거리 유닛 = `AttackRange` 큰 스탯 행 + 발사(fire) 애니.** C++/리빌드 0.
+- `DT_CharacterAttributes` 에 **`Ranged` 행(AttackRange 900, MoveSpeed 550)** 신설. 원거리 BP 는 `AttributeInitRowName='Ranged'` → 스크립트 config `'attr_row':'Ranged'` 로 자동 설정.
+- config `Attack` 를 `Primary_Fire_*` 로 매핑. Sparrow(궁수) 로 "멀리서 정지→즉시 명중" PIE 검증 완료.
+- 날아가는 투사체는 순수 VFX(선택적 후속). ⚠️ 밸런스: 현재 근접은 `Alex` 행(AP1/AS2) 공유, `Ranged`는 AP10 → 유닛 밸런스 미조정(별도 패스).
 
 ### 편입 대기 팩 (Fab 임포트 완료, 전부 `.gitignore` — 커밋 금지)
 
 | 유형 | 팩 (⚠️=내부 폴더명 불일치) | 상태 |
 |---|---|---|
-| 원거리 (설계 선행) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Sparrow · Boris | 발사체 시스템 vs 근접 뭉갬 결정 필요(14 도달의 마지막 관문) |
+| 원거리 (히트스캔) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Boris | Sparrow 방식 그대로 3기 더 편입하면 14 달성 |
 | 비캐릭터 | ParagonProps (~12GB) | 환경/소품 — 편입 대상 아님 |
 
 > ⚠️ **양산 병목 = 캐릭터당 에디터 수동 2가지**(ABP AnimGraph 배선 + Attack 3섹션). 스크립트 파트(config+run)는 분 단위지만 이 수동은 자동화 미해결 — 대량 확장 시 이게 실제 비용. (스킬 매핑 오류는 몽타주만 재생성하면 되고 ABP 배선과 독립이라 배선 작업은 보존됨.)
