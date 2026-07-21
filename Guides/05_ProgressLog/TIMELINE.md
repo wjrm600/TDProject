@@ -1871,3 +1871,19 @@
 
 **결과**
 - **로스터 0~13 실캐릭터 14 (벤픽 14 달성)**, 근접 10 + 원거리 4(Sparrow·Belica·Murdock·Revenant). 미편입 원거리 = Boris 1종만 잔존. 문서(CLAUDE.md 로스터·additive 함정, PIPELINE 14종표·§1 셋업·§4 함정, gitignore, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-21 — DT_CharacterAttributes 밸런스 스탯 패스 (실캐릭터 14 캐릭터별 개별 행)
+
+**작업 내용**
+- 그간 근접 10기가 `Alex` 행(HP150/AP1/Range300/AS2/MS500) 1개를, 원거리 4기가 `Ranged` 행(HP100/AP10/Range900/AS1/MS550) 1개를 공유 → **캐릭터별 개별 행 14개 신설**(행명=로스터 표시명: Kwang/Greystone/Grux/Crunch/Aurora/Serath/Shinbi/Wukong/Terra/Yin/Sparrow/Belica/Murdock/Revenant). 각 `BP_Char_*` CDO `AttributeInitRowName` 을 자기 행으로 지정.
+- 밸런스 규칙(사용자 지정): **AP=5·MoveSpeed=600 전원 통일**, 근접 Range300/AS1.0 · 원거리 Range800/AS0.7, **HP는 근접↑ 원거리↓**. HP 아키타입 차등 — 탱커(Greystone260·Terra250)·브루저(Grux240·Crunch230·Kwang220·Wukong210)·근접캐스터/어쌔신(Serath200·Aurora190·Shinbi190·Yin190) / 원거리(Belica145·Revenant135·Sparrow130·Murdock130).
+- 플레이스홀더 기본값도 신규 밸런스에 맞춰 재조정: `Alex` 행(근접 템플릿 HP200/AP5/R300/AS1/MS600, Unit15~20 이 참조) · `Ranged` 행(원거리 템플릿 HP130/AP5/R800/AS0.7/MS600). 레거시 행(Vega/Ken/Default/Cammy/Guile — 비로스터 BP 참조)은 미변경 보존.
+
+**문제점 / 해결**
+- 공유 행 구조로는 캐릭터 단위 밸런싱이 불가 → JSON 라운드트립(`export`↔`fill_data_table_from_json_string`)으로 21행 재작성(레거시 5 + 템플릿 2 + 신규 14). BP 포인터는 CDO `set_editor_property` + `save_asset(only_if_is_dirty=False)` 강제 저장(CLAUDE.md 패턴).
+- 이전 TIMELINE(2026-07-20)의 "유닛 밸런스 미조정(별도 스탯 패스 후속)" 숙제 해소.
+
+**결과**
+- 14 실캐릭터 전원 개별 스탯 행 보유 → 향후 밸런싱이 캐릭터 단위로 가능. DT + BP 14개 저장 완료(사용자 PIE 검증 대기). [[project_kwang_ik_retarget_pipeline]]
