@@ -2,7 +2,7 @@
 
 **대상**: 이 저장소에서 고유 캐릭터를 추가하는 에이전트/개발자.
 **방식(2026-07-18 확정)**: Epic Paragon 히어로 애셋(메시/애니)을 **리타깃 없이 그대로 사용**.
-절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 11회 실증(로스터 0~10, 근접 10 + 원거리 1(Sparrow)).
+절차적 저작 → IK 리타깃 → **리타깃마저 폐기**의 최종 형태. 14회 실증(로스터 0~13, 근접 10 + 원거리 4 = 벤픽 14 달성).
 
 > 스크립트: [`Mcp_Tools/Asset_Pipeline/build_paragon_character.py`](../../Mcp_Tools/Asset_Pipeline/build_paragon_character.py)
 > — `run(config)` 한 번에 BS·ABP·BP복제·로스터·몽타주7·GA/GE8+전배선. 상세 스키마/실행법은 그 파일 docstring.
@@ -28,6 +28,14 @@
    - ⚠️ **런타임 필수 의존성**: 팩이 없으면 `BP_Char_<Hero>` 참조가 깨져 프로젝트가 정상 오픈 안 됨. 각 머신에서 받아야 함(엔진 설치급 셋업).
 2. **`.gitignore` 에 즉시 등록**: `Content/Paragon<Hero>/`
    - ⚠️ **함정**: `git check-ignore <dir>/` 는 trailing-slash 로 **오탐**(무시로 착각)한다. 반드시 **`git status --porcelain | grep Paragon<Hero>`** 로 `??` 노출 여부 확인. 노출되면 아직 미등록 → `git add .` 한 번에 수 GB 커밋 사고.
+
+### 🖥️ 새 장치 셋업 (클론 → 바로 실행) — 의존성 스캔으로 검증(2026-07-20)
+
+AOS 게임 맵(`Lvl_MainMenu`/`Lvl_ThirdPerson`)은 **커밋된 프로젝트 콘텐츠 + 아래 Paragon 캐릭터 팩 14개 + 엔진** 에만 의존. 순서:
+1. `git clone` (프로젝트 콘텐츠 `/Game/AOS`·`/Game/Characters`·`/Game/BossyEnemy`(char1/Alex 백본·마네킹) 포함) → 2. C++ 빌드(소스 커밋됨) → 3. **Fab 에서 아래 14팩만 다운로드** → 즉시 실행.
+
+**Fab 다운로드 필요 (14팩)**: ParagonKwang · Greystone · Grux · Crunch · Aurora · Serath · Shinbi · SunWukong · Terra · Yin · Sparrow · LtBelica · Murdock · Revenant.
+**불필요**(각 팩의 데모/샘플 맵만 참조, AOS 게임 미사용): `AnimStarterPack` · **`ParagonProps`(~12GB)** · `KiteDemo` · `Lighting` · `SampleMap` · ParagonBoris(미편입). → 안 받아도 게임 정상 실행.
 
 ---
 
@@ -88,26 +96,25 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 - **스킬 슈퍼아머**: 긴 스킬 시전 중 피격 시 HitReact 가 스킬 몽타주 덮어써 끊김 → `Multicast_PlayHitReact` 가 `State.Casting` 중 HitReact 스킵(C++, 모든 캐릭터 공통).
 - **스킬 태그 Alex.\* 재사용**: GA 에 몽타주 참조 없음(Character `SkillMontages` TMap 경유). 태그는 슬롯 식별용이라 재사용 무해.
 - **키 편차**: Paragon 히어로는 195~260cm 로 큼. Z=-88 시작 후 PIE 미세조정.
+- **⚠️ additive idle 함정**: 일부 히어로의 `Idle` 은 **additive 애니**(`additive_anim_type != AAT_NONE`, 예: Belica `Idle`=`AAT_LOCAL_SPACE_BASE`). 이를 BS 일반 샘플로 쓰면 가산 델타가 절대 포즈에 적용돼 **메시 스케일 왜곡**(Speed 0 에서 쪼그라들고 속도↑ 시 원복). → **idle 은 반드시 `AAT_NONE` 클립**(비가산 `Idle_Relaxed` 등) 사용. 신규 편입 시 `load_asset(idle).get_editor_property('additive_anim_type')` 확인. 수정은 BS **삭제 없이 in-place**(speed 0 샘플 animation 교체 → `force_rebuild_blend_space`)로 해야 ABP 배선 보존.
 - **MCP 함정**: `create_montage`=껍데기(`AnimMontageFactory.source_animation` 우회) · `set_axis_settings`=반영 안 됨(`blend_parameters[i]` 직접 mutate) · `create_animation_blueprint` parentClass 무시(스크립트는 `AnimBlueprintFactory.parent_class` 로 네이티브 생성) · `slot_anim_tracks`/`sample_data` 접근 제한.
 
 ---
 
-## 5. 진행 현황 (실캐릭터 11종 / 벤픽 14 목표)
+## 5. 진행 현황 (실캐릭터 14종 — **벤픽 14 달성**)
 
-벤픽 드래프트는 14스텝(밴4+픽10) 전부 고유 소비 → **최소 14 실캐릭터 필요**. 로스터 확장 진행 중:
+벤픽 드래프트 14스텝(밴4+픽10) 전부 고유 소비 → 최소 14 실캐릭터 필요 → **충족**.
 
 | # | 캐릭터 | 무기 | 상태 |
 |---|--------|------|------|
-| 0~4 | Kwang·Greystone·Grux·Crunch·Aurora | 근접 | ✅ 완성 |
-| 5 | Serath | 검/날개 | ✅ 완성 |
-| 6 | Shinbi | 늑대 소환 근접 | ✅ 완성 |
-| 7 | SunWukong(내부 Wukong) | 봉 | ✅ 완성 (R=Cast 대체) |
-| 8 | Terra | 대검 | ✅ 완성 (R=Cast 대체) |
-| 9 | Yin | 사슬검 | ✅ 완성 |
-| 10 | Sparrow | 궁수(**원거리**) | ✅ 완성 (히트스캔 1호 검증) |
-| 11~13 | (원거리 3 필요) | — | ⏳ 히트스캔으로 바로 가능 |
+| 0~4 | Kwang·Greystone·Grux·Crunch·Aurora | 근접 | ✅ |
+| 5~9 | Serath·Shinbi·SunWukong(Wukong)·Terra·Yin | 근접 | ✅ (Wukong·Terra R=Cast 대체) |
+| 10 | Sparrow | 궁수(**원거리**) | ✅ 히트스캔 1호 |
+| 11 | LtBelica(내부 Belica) | 캐논(**원거리**) | ✅ (idle=HeroSelect_Idle, additive 회피) |
+| 12 | Murdock | 총(**원거리**) | ✅ |
+| 13 | Revenant | 쌍권총(**원거리**) | ✅ |
 
-**근접 6 + 원거리 1 = 실캐릭터 11.** 인덱스 11~19 는 플레이스홀더(Unit12~20). 14 도달엔 **원거리 3개** 더.
+**근접 10 + 원거리 4 = 실캐릭터 14.** 인덱스 14~19 는 플레이스홀더(Unit15~20). 미편입 원거리 = Boris 1종만 `.gitignore` 잔존(로스터 확장 시 동일 방식).
 
 ### 🎯 원거리 = 히트스캔 (발사체 시스템 불필요 — 검증 완료)
 
@@ -121,7 +128,7 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 
 | 유형 | 팩 (⚠️=내부 폴더명 불일치) | 상태 |
 |---|---|---|
-| 원거리 (히트스캔) | **LtBelica(⚠️Belica)** · Murdock · Revenant · Boris | Sparrow 방식 그대로 3기 더 편입하면 14 달성 |
+| 원거리 (히트스캔) | Boris | 로스터 확장 시 Sparrow 방식(`attr_row='Ranged'`) 그대로 편입 |
 | 비캐릭터 | ParagonProps (~12GB) | 환경/소품 — 편입 대상 아님 |
 
 > ⚠️ **양산 병목 = 캐릭터당 에디터 수동 2가지**(ABP AnimGraph 배선 + Attack 3섹션). 스크립트 파트(config+run)는 분 단위지만 이 수동은 자동화 미해결 — 대량 확장 시 이게 실제 비용. (스킬 매핑 오류는 몽타주만 재생성하면 되고 ABP 배선과 독립이라 배선 작업은 보존됨.)

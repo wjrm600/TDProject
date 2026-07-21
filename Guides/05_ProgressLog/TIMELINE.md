@@ -1857,3 +1857,17 @@
 
 **결과**
 - 사용자 PIE 확인: **Sparrow 가 적에 안 붙고 ≈900 에서 정지해 발사, 원거리 즉시 명중**. 히트스캔 원거리 실증(발사체 설계 관문 소멸). 실캐릭터 **10→11**. 남은 3(Belica/Murdock/Revenant/Boris 중 3)만 Sparrow 방식 복제하면 **벤픽 14 달성**. 문서(CLAUDE.md 원거리 항목, PIPELINE 히트스캔 섹션, gitignore, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-20 — 원거리 3기(Belica·Murdock·Revenant) 편입 = **벤픽 14 달성** + additive idle 함정 + 이식성 검증
+
+**작업 내용**
+- Sparrow 방식(`attr_row='Ranged'` + 발사 애니) 그대로 **원거리 3기** 편입: 11=LtBelica(내부 Belica, 캐논)·12=Murdock(총)·13=Revenant(쌍권총). Murdock 스킬 클립 비표준(SpreadShot/TazerTrap/TheEleven). `run()` 루프 3기 완주(타임아웃 없음). **실캐릭터 14 = 벤픽 드래프트 요건 충족.**
+
+**문제점 / 해결**
+- **additive idle 함정**: Belica `Idle` 이 additive(`AAT_LOCAL_SPACE_BASE`) → BS 일반 샘플로 쓰면 메시 스케일 왜곡(Speed 0 쪼그라듦, 속도↑ 원복). 전 14기 idle 스캔 → **Belica 만** 해당. 비가산 `Idle_Relaxed` 로 교체(BS **삭제 없이 in-place** → ABP 배선 보존, force_rebuild 시 ABP_Belica 재컴파일 확인). 이후 사용자가 고개 흔듦 적은 `HeroSelect_Idle`(비가산)로 재교체. PIPELINE §4 함정 등재.
+- **이식성 검증**(사용자 문의): 의존성 스캔 결과 AOS 게임 맵은 **커밋 콘텐츠(/Game/AOS·Characters·BossyEnemy=char1/Alex 백본·마네킹) + Paragon 14팩 + 엔진** 에만 의존. `AnimStarterPack`·`ParagonProps`(12GB)·`KiteDemo`·`Lighting`·`SampleMap` 은 각 팩 데모 맵만 참조 → **불필요**. → 새 장치 = 클론 + C++ 빌드 + **Fab 14팩만** 다운로드면 즉시 실행. PIPELINE §1 에 셋업 목록 등재.
+
+**결과**
+- **로스터 0~13 실캐릭터 14 (벤픽 14 달성)**, 근접 10 + 원거리 4(Sparrow·Belica·Murdock·Revenant). 미편입 원거리 = Boris 1종만 잔존. 문서(CLAUDE.md 로스터·additive 함정, PIPELINE 14종표·§1 셋업·§4 함정, gitignore, TIMELINE) 갱신. [[project_kwang_ik_retarget_pipeline]]

@@ -370,4 +370,36 @@ CONFIGS = {
         'montages': {'Attack': 'Primary_Fire_Med', 'Q': 'Q_Ability', 'W': 'Cast', 'E': 'RMB_Fire',
                      'R': 'R_Ability_Med_Fire', 'Death': 'Death_Fwd', 'HitReact': 'HitReact_Fwd'},
     },
+    'Belica': {  # LtBelica(내부 폴더 Belica). 캐스터/캐논. 벤픽 14 채우는 원거리 2호
+        'name': 'Belica', 'display_name': 'LtBelica',
+        'pack_anim': '/Game/ParagonLtBelica/Characters/Heroes/Belica/Animations',
+        'skeleton': '/Game/ParagonLtBelica/Characters/Heroes/Belica/Meshes/Belica_Skeleton',
+        'mesh': '/Game/ParagonLtBelica/Characters/Heroes/Belica/Meshes/Belica',
+        'roster_index': 11, 'z_offset': -88, 'attr_row': 'Ranged',
+        # ⚠️ Belica 의 'Idle' 은 additive(AAT_LOCAL_SPACE_BASE) → BS 샘플로 쓰면 메시 스케일 왜곡.
+        #    'HeroSelect_Idle'(AAT_NONE, 차분한 포즈) 사용. Idle_Relaxed 는 고개 흔듦 심해 부적합.
+        'loco': {'idle': 'HeroSelect_Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Primary_Fire_Med', 'Q': 'Q_Ability', 'W': 'Cast', 'E': 'E_Ability',
+                     'R': 'RMB', 'Death': 'Death_A', 'HitReact': 'HitReact_Front'},
+    },
+    'Murdock': {  # 총잡이. 스킬 클립명 비표준(SpreadShot/TazerTrap/TheEleven). 원거리 3호
+        'name': 'Murdock', 'display_name': 'Murdock',
+        'pack_anim': '/Game/ParagonMurdock/Characters/Heroes/Murdock/Animations',
+        'skeleton': '/Game/ParagonMurdock/Characters/Heroes/Murdock/Meshes/Murdock_Skeleton',
+        'mesh': '/Game/ParagonMurdock/Characters/Heroes/Murdock/Meshes/Murdock',
+        'roster_index': 12, 'z_offset': -88, 'attr_row': 'Ranged',
+        'loco': {'idle': 'Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Fire_Fast', 'Q': 'SpreadShot', 'W': 'Cast', 'E': 'TazerTrap',
+                     'R': 'TheEleven', 'Death': 'Death_Fwd', 'HitReact': 'HitReact_Fwd'},
+    },
+    'Revenant': {  # 쌍권총. Q/E/Ability 표준. R 은 Fire 변형(전용 R 부재). 원거리 4호 → 벤픽 14 달성
+        'name': 'Revenant', 'display_name': 'Revenant',
+        'pack_anim': '/Game/ParagonRevenant/Characters/Heroes/Revenant/Animations',
+        'skeleton': '/Game/ParagonRevenant/Characters/Heroes/Revenant/Meshes/Revenant_Skeleton',
+        'mesh': '/Game/ParagonRevenant/Characters/Heroes/Revenant/Meshes/Revenant',
+        'roster_index': 13, 'z_offset': -88, 'attr_row': 'Ranged',
+        'loco': {'idle': 'Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
+        'montages': {'Attack': 'Primary_Fire_Med', 'Q': 'Q_Ability', 'W': 'Cast', 'E': 'E_Ability',
+                     'R': 'Fire_Fast_Var_A', 'Death': 'Death_Forward', 'HitReact': 'HitReact_Front'},
+    },
 }
