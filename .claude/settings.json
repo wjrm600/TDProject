@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/session_start.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/log_agent_spawn.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_agent_spawn.py\""
           }
         ]
       }
@@ -27,7 +27,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/check_cpp_invariants.py"
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_cpp_invariants.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_doc_symbols.py\""
           }
         ]
       }

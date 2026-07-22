@@ -143,7 +143,8 @@ protected:
 
 	// Phase 6: StateTree AI 컴포넌트 (행동 결정 트리)
 	// BP_AOSAIController 의 컴포넌트 디테일 → StateTreeRef 슬롯에 ST_AOSCharacterAI 자산 지정
-	// bStartLogicAutomatically = true (default) → BeginPlay 에서 자동 시작
+	// 생성자에서 SetStartLogicAutomatically(false) — StartLogic() 은 StartDeployment() 에서
+	// 팀 확정 후 수동 호출 (OnPossess 시점 호출 시 Team2 아군오사 — cpp OnPossess 주석 참고)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AOS|AI|StateTree")
 	TObjectPtr<UStateTreeAIComponent> StateTreeComponent;
 

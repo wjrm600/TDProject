@@ -1887,3 +1887,58 @@
 
 **결과**
 - 14 실캐릭터 전원 개별 스탯 행 보유 → 향후 밸런싱이 캐릭터 단위로 가능. DT + BP 14개 저장 완료(사용자 PIE 검증 대기). [[project_kwang_ik_retarget_pipeline]]
+
+---
+
+## 2026-07-22 — 하네스 drift 전면 동기화 (외부 레퍼런스 재비교 → 에이전트 정의 5종 + INTERFACE_CONTRACTS 현행화)
+
+**작업 내용**
+- Donchitos/Claude-Code-Game-Studios 재비교(저장소는 6-20 비교 이후 무변경 v1.0.0) 중 **우리 하네스 자체의 아키텍처 drift 실증**: `.claude/` 7개 파일·20곳이 Phase 6 이전 아키텍처(`UpdateAIBehavior`/`AttackTarget`/`MoveTowardsTarget`, ReceiveDamage 직접 데미지) 기술. 특히 `agent-prog-ai.md` 는 "State Tree 로 대체 금지"(현행 아키텍처와 정반대), `agent-prog-character.md` 는 폐기된 사망 처리("메시 숨김→콜리전 off" — 현행 금지 패턴)를 지시.
+- 수정: ① `INTERFACE_CONTRACTS.md` 전면 동기화(StateTree 헬퍼 계약·GAS 단일 데미지 흐름 계약 신설, ReceiveDamage=deprecated 래퍼 명시, AnimInstance 미러 변수/AnimNotify 실존 목록 교정, 밸런스 파라미터 표를 DataTable 단일 진실 체계로 재편) ② 에이전트 정의 5종(prog-ai/prog-character/prog-object/art-anim/design-balance) 재작성 — StateTree+GAS 현행화, 구 `mcp__mcp-unreal__*` 도구명 → `mcp__unreal-engine__*` 교체, "CLAUDE.md 우선 + drift 발견 시 보고" 조항 삽입(중복 서술 대신 포인터로 drift 표면 축소) ③ `AOSAIController.h` StateTree 컴포넌트 주석 교정(bStartLogicAutomatically=true→false 실제와 일치) ④ CLAUDE.md 웨이포인트 함수 목록 교정(제거된 MoveTowardsTarget→현행 헬퍼).
+- `.claude/agents/` 자기수정은 classifier 차단 → 수정본을 scratchpad 에 작성, 사용자 복사 적용 방식.
+
+**문제점 / 발견**
+- 에이전트 정의는 4월 말 작성 후 Phase 6(StateTree)·GAS 마이그레이션·MCP 서버 교체를 한 번도 반영 안 함 — 이 정의로 스폰된 서브에이전트는 현행 아키텍처를 거스르는 코드를 작성하게 됨.
+- 부수 발견: `settings.json` 훅 명령이 상대 경로(`python .claude/hooks/...`)라 세션 셸이 `cd` 로 이동하면 훅 실행 실패 (이번 세션에서 실발생) → `$CLAUDE_PROJECT_DIR` 절대 경로 패턴 필요 (스니펫 전달, 사용자 적용 대기).
+
+**해결 방법**
+- 문서를 코드 진실(`Source/`)과 대조해 재작성: AOSAIController.h 현행 public API(StateTree 헬퍼 8종), GAS/Data/AOSAttributeInitData.h 의 FAOSAttributeInitRow 필드, AOSGameMode.h 골드 파라미터(50/150/100), AOSStructure AttackRange=600 등 전부 grep 실측 후 반영.
+- 재발 방지책(비교 분석 2번 항목)으로 "에이전트/조율 문서의 C++ 심볼 실존 검사기(훅+CI 겸용)" 후속 제안.
+
+**결과**
+- 하네스 문서 ↔ 코드 동기화 완료(에이전트 5종은 사용자 적용 대기). 잔여: 기획/아트 나머지 4종(art-visual·art-vfx·design-level·design-docs)의 구 MCP 도구명 교체, settings.json 훅 경로 절대화.
+- **(후속 동일 세션) 나머지 4종도 수정**: 구 `mcp__mcp-unreal__*`(예: `material_ops`/`niagara_ops`/`get_level_actors`/`get_property`/`capture_viewport`/`level_ops`) → 현행 통합 도구(`manage_asset`/`manage_effect`/`control_actor`/`inspect`/`control_editor`(screenshot)/`manage_level`(save_level)) + 연결확인 `status`→`system_control` 로 전면 교체. **design-docs 의 Guides 폴더 구조가 실제와 완전 불일치**(존재하지 않는 `02_ProgressLog`/`03_ClassReview`/`05_DesignSpecs`/`07_PatchNotes` 나열, 진행 로그를 per-feature 파일로 오기) → 실제 구조(`01_GameOverview`~`06_BalanceLog`, 진행 로그=`05_ProgressLog/TIMELINE.md` 단일 파일 + `작업내용/문제점/해결/결과` 형식)로 교정. 커밋 푸터 `Co-Authored-By: Claude Opus 4.6` → CLAUDE.md 표준(`Claude Code` + `Claude <noreply@anthropic.com>`)으로 수정. 9종 에이전트 정의 전부 현행화 완료(사용자 복사 적용).
+
+---
+
+## 2026-07-22 — 하네스 drift 방지책: 문서→코드 심볼 실존 검사기 (check_doc_symbols.py)
+
+**작업 내용**
+- 오늘 수동으로 잡은 "에이전트/조율 문서가 제거된 C++ API 를 참조" drift 를 **기계적으로 재발 방지**하는 검사기 신설(비교 분석 2번 항목). `check_cpp_invariants.py` 와 동일한 훅+CI 이중 진입점 패턴.
+- 원리: `Source/**/*.{h,cpp}` 를 읽어 **블록주석·문자열·라인주석을 제거한** '실코드' 토큰 집합을 만들고, `.claude/agents/*.md`·`.claude/coordination/*.md` 의 코드 컨텍스트(백틱/```펜스) 속 `함수명(` 참조가 그 집합에 없으면 drift 로 flag. (주석/문자열 제거가 핵심 — "// UpdateAIBehavior 제거" 흔적이 심볼을 살아있게 오판하는 것 방지.)
+- 오탐 억제: ① 괄호 앞 공백 불허(`함수명(` 만, `Setter (…)` 같은 영어명사+부연 제외) ② 줄에 "제거/폐기/deprecated/구/없음/대체/부활/안티패턴" 등 의도적 부재 표기 있으면 스킵(교정 문서 자기오탐 방지) ③ 플레이스홀더 조각(`Xxx`/`Foo`…) 제외. **엔진 심볼은 프로젝트가 실제 호출하므로 토큰 집합에 잡혀 자동 통과** → denylist 최소.
+- 견고성: PROJECT_ROOT = `CLAUDE_PROJECT_DIR`(훅 주입) 우선 → 스크립트 위치 fallback. **cwd 비의존**(다른 훅의 상대경로 cwd 버그를 애초에 회피).
+
+**문제점 / 발견**
+- 검사기가 즉시 실효 입증: ① **오늘 재작성한 에이전트 9종이 실제로는 트리에 적용 안 됨**을 폭로(cp 명령이 bash 문법인데 사용자 셸=PowerShell 이라 무동작 → `mcp__mcp-unreal` 6파일·`02_ProgressLog`·구 prog-ai 전부 잔존). ② 미검토 파일 **agent-prog-anim(6건: GetMovementSpeed/IsAttacking/GetCurrentTarget/PlayAttackMontage/PlayDeathMontage/PlayHitReactMontage)·agent-prog-ui(ShowSomeWidget)** 의 추가 drift 발견. ③ 내 prog-character 재작성본의 `SpawnCharacter()` 오기(실제=`SpawnCharacterAtPoint`/`SpawnCharactersForRound`) 도 검출 → 수정.
+- 검증(4케이스): CLI `--all`→exit1(12건 전량), 훅 드리프트 파일→exit2(에이전트 피드백), 깨끗한 파일→exit0 무출력, 비대상 .cpp→exit0(기존 훅 불간섭). UTF-8 바이트 출력 정상.
+
+**해결 방법 / 잔여**
+- 스크립트는 `.claude/hooks/` 자기수정 classifier 차단으로 scratchpad 작성 → 사용자 배치. `settings.json` PostToolUse(Edit|Write) 에 배선 + (선택) CI `--all`. 에이전트 9종 재적용은 PowerShell `Copy-Item` 명령으로 재전달.
+- 잔여: 에이전트 9종 실제 적용, 훅 배선, 미검토 4종(prog-anim·prog-ui·asset-gen·build-verify) 중 검사기가 지목한 prog-anim/prog-ui drift 수정.
+
+**결과**
+- 문서 drift 를 편집 시점(훅)·push 시점(CI) 양쪽에서 기계적으로 포착하는 가드레일 확보 — 다음 아키텍처 전환 때 오늘 같은 수동 대조 불필요. 검사기 자체가 "미적용/추가 drift/내 오기" 3종을 첫 실행에 검출해 실효성 입증.
+
+---
+
+## 2026-07-22 — 에이전트 정의 나머지 2종(prog-anim·prog-ui) drift 수정 → 전 13종 현행화 완료
+
+**작업 내용**
+- 검사기가 지목한 마지막 drift 2파일 수정. **agent-prog-anim**: `AOSAnimInstance` 를 "신규 생성 필요"로 오기(실제는 이미 구현·`AOS/` 바로 아래 위치), 미러 변수 목록 오류(`Velocity`/`bIsHit` 는 없고 실제는 `Speed/Direction/bIsMoving/bIsFalling/IdleAnim/RunAnim/bIsAttacking/bIsCasting/bIsHitReacting/bIsDead`), 몽타주 재생을 AnimInstance 함수(`PlayAttackMontage()` 등 미존재)로 오기 → 실제는 **AOSCharacter 의 `Multicast_PlayDeathMontage()`/`Multicast_PlayHitReact()`/`ApplyCastRoot()`/`StartRagdoll()`**, 기본공격은 `GA_Attack`(GAS) 재생. 존재하지 않는 `AOSAnimNotify_DeathEnd/_HitEnd` 제거(실존=`AttackHit` 하나). **agent-prog-ui**: DS 가드 예시의 플레이스홀더 `ShowSomeWidget()` → 실제 위젯 표시 함수(`ShowBanPick`/`ShowSettlement` 등)로 교체, 벤픽 실현 순서(InitializeWithRoster→AddToViewport) 함정 추가, 클라 UI=GameState 경유 계약 명시.
+
+**문제점 / 해결**
+- 두 파일 모두 코드 실측(AOSAnimInstance.h public 멤버, AOSCharacter Multicast/Ragdoll 함수, AOSPlayerController Show* 함수) 후 재작성. 새 재작성본을 검사기로 재검증 → **drift 0건** 확인 후 배치.
+
+**결과**
+- **에이전트 정의 13종 중 실질 대상 전부(프로그래머 5 + 기획 3 + 아트 3 = 11종) 현행화 완료.** 검사기 `--all` 이 지목하던 잔여 7건(prog-anim 6 + prog-ui 1) 소멸 예정 → 문서→코드 심볼 검사 완전 그린. (미검토 asset-gen·build-verify 는 C++ 심볼 참조가 적어 검사기 무경고.) 오늘 세션: 외부 레퍼런스 재비교 → drift 실증 → 문서/에이전트 현행화 → 재발 방지 검사기 구축까지 1사이클 완료.

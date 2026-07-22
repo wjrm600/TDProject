@@ -35,7 +35,7 @@ Claude Code 가 이 저장소에서 작업할 때의 지침입니다. **이 파�
 ### Waypoint Queue System (가장 중요)
 AI 이동은 **pathfinding 이 아니라 웨이포인트 큐** 패턴. 각 AI가 방문할 구조물 큐를 만들어 순서대로 진행:
 아군 타워(스폰 가까운 순) → 적 타워(스폰 가까운 순) → 적 CC. 파괴된 웨이포인트는 자동 skip, 적 감지 시 전투가 이동을 인터럽트.
-- `AOSAIController::BuildWaypointQueue()` / `GetNextTargetLocation()` / `MoveTowardsTarget()`
+- `AOSAIController::BuildWaypointQueue()` / `GetNextTargetLocation()` / `RequestMoveToCurrentWaypoint()`·`AdvanceToNextWaypoint()` (Phase 6: 구 `MoveTowardsTarget()` 은 StateTree task 로 대체·제거)
 - ⚠️ **이 시스템을 모른 채 navmesh/pathfinding 기능 추가로 "고치려" 하지 말 것.** 큐가 MOBA 식 라인 푸시를 보장한다. 상세: [`Guides/04_Implementation/WAYPOINT_QUEUE_SYSTEM.md`](Guides/04_Implementation/WAYPOINT_QUEUE_SYSTEM.md).
 
 ### Map / Lane System

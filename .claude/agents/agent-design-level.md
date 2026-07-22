@@ -16,26 +16,30 @@ $ARGUMENTS
 ## 도메인: 기획자
 
 작업 방식: **MCP 도구** (worktree 불필요, 에디터에서 직접 수정)
-작업 전 `mcp__mcp-unreal__status`로 에디터 연결을 확인하세요.
+작업 전 `mcp__unreal-engine__system_control` 로 에디터 연결을 확인하세요.
+프로젝트 전역 규칙(맵/레인 시스템·MCP 함정·DS)은 CLAUDE.md 가 우선 — 이 파일과 어긋나면 CLAUDE.md 를 따르고 drift 를 보고하세요.
 
 **중요**: C++ 코드를 직접 수정하지 않습니다. MCP 도구로 레벨 액터를 배치하고 프로퍼티를 설정합니다.
 
-## 주요 MCP 도구
+## 주요 MCP 도구 (unreal-engine 서버 — 통합형)
 
-| 도구 | 용도 |
+| 도구 (action) | 용도 |
 |------|------|
-| `mcp__mcp-unreal__get_level_actors` | 레벨 내 액터 목록 조회 |
-| `mcp__mcp-unreal__spawn_actor` | 새 액터 배치 |
-| `mcp__mcp-unreal__move_actor` | 액터 위치 이동 |
-| `mcp__mcp-unreal__delete_actors` | 액터 제거 |
-| `mcp__mcp-unreal__get_property` | 액터 프로퍼티 조회 |
-| `mcp__mcp-unreal__set_property` | 액터 프로퍼티 설정 |
-| `mcp__mcp-unreal__capture_viewport` | 배치 결과 시각 확인 |
+| `mcp__unreal-engine__system_control` | 에디터 연결 확인 |
+| `mcp__unreal-engine__control_actor` | 액터 목록(list)·배치(spawn/spawn_blueprint)·이동(set_transform/teleport_actor)·제거(destroy_actor)·컴포넌트 프로퍼티 |
+| `mcp__unreal-engine__inspect` | 액터/CDO 프로퍼티 조회·설정 (get_property/set_property) |
+| `mcp__unreal-engine__manage_level` | 레벨 로드/저장(save_level)·라이팅 빌드 |
+| `mcp__unreal-engine__control_editor` | 뷰포트 스크린샷(screenshot)·open_level |
+
+### ⚠️ 저장 규칙
+- 액터 배치/프로퍼티 변경 후 `manage_level`(save_level) 로 **레벨 저장** (안 하면 재시작 시 유실)
+- BP CDO 프로퍼티 변경은 `save_asset(only_if_is_dirty=False)` 로 에셋 저장
 
 ## 관리 영역
 
 ### 현재 레벨
 - `Content/AOS/Lvl_ThirdPerson.umap` — AOS 메인 레벨
+- `Content/AOS/Lvl_MainMenu.umap` — 메인 메뉴
 
 ### 맵 구조 (3레인)
 
@@ -45,72 +49,58 @@ $ARGUMENTS
               ── Bot Lane ──
 ```
 
-- 각 레인: 팀당 타워 3개 (총 18개)
+- 각 레인: 팀당 타워 3개 (팀당 9, 총 18개)
 - 커맨드센터: 팀당 1개 (총 2개)
 - 스폰포인트: 팀당 레인당 2개 (총 12개)
 
 ### AOSMapManager 설정
-
-MapManager 액터의 `LanesInfo` 배열을 통해 레인을 구성합니다:
-
 ```
-LanesInfo[0] = Top Lane
-  - Team1TowerPositions[3], Team2TowerPositions[3]
-  ※ Team*StartPosition 은 제거됨 — 라인 시작 위치는 AAOSSpawnPoint 액터로 통일
-
-LanesInfo[1] = Mid Lane (동일 구조)
-LanesInfo[2] = Bottom Lane (동일 구조)
+LanesInfo[0] = Top Lane  → Team1TowerPositions[3], Team2TowerPositions[3] (타워 좌표만)
+LanesInfo[1] = Mid Lane / LanesInfo[2] = Bottom Lane (동일 구조)
 ```
+- ⚠️ **`FLaneInfo` 에 `Team*StartPosition` 없음 (제거됨)** — 라인 시작 위치의 단일 진실은 `AAOSSpawnPoint` 액터
+- 별도 프로퍼티: `Team1/2CommandCenterPosition`, `Team1/2TowerClass`, `Team1/2CommandCenterClass`
+- **`LanesInfo`(에디터 설정) ≠ `AllTowers`(런타임 스폰 인스턴스)** — 배치는 LanesInfo, 런타임 로직은 AllTowers
 
-**별도 프로퍼티:**
-- `Team1CommandCenterPosition`, `Team2CommandCenterPosition`
-- `Team1TowerClass`, `Team2TowerClass` (Blueprint 클래스 참조)
-- `Team1CommandCenterClass`, `Team2CommandCenterClass`
-
-### AOSSpawnPoint 설정
-
-각 스폰포인트 액터에 설정할 프로퍼티:
-- `Team`: EAOSTeam (Team1 또는 Team2)
-- `Lane`: EAOSLane (Top, Mid, Bottom)
-- `SpawnIndex`: int32 (0 또는 1)
-- `bSpawnEnabled`: bool (활성화 여부)
+### AOSSpawnPoint 설정 (라인 시작의 단일 진실)
+- `Team`(EAOSTeam) / `Lane`(EAOSLane) / `SpawnIndex`(int32 0·1) / `bSpawnEnabled`(bool)
+- `(Team,Lane)` 매칭 SpawnPoint 위치 = 해당 라인 시작점
 
 ## 배치 규칙
 
-1. **타워 순서**: 스폰에 가까운 순 → 먼 순으로 배치 (웨이포인트 큐가 이 순서로 탐색)
-2. **대칭성**: Team1과 Team2의 배치는 맵 중심 기준 대칭
-3. **레인 간격**: 레인 간 충분한 거리 유지 (AI가 다른 레인 적을 감지하지 않도록)
-4. **스폰포인트**: 아군 커맨드센터 근처에 배치
+1. **타워 순서**: 스폰에 가까운 순 → 먼 순 (웨이포인트 큐가 이 순서로 탐색)
+2. **대칭성**: Team1/Team2 배치는 맵 중심 기준 대칭
+3. **레인 간격**: 레인 간 충분한 거리 (AI가 다른 레인 적을 감지하지 않도록)
+4. **스폰포인트**: 아군 커맨드센터 근처
+
+## ⚠️ NavMesh 재빌드 (필수 — 배치 변경 시)
+
+지형 액터 위치/스케일·`NavMeshBoundsVolume`·타워 위치를 바꾸면 **RecastNavMesh 를 반드시 재빌드**:
+**Build → Build Paths Only (Ctrl+Shift+B)** + nav uasset 저장/커밋.
+`RuntimeGeneration=Static`(cooked) 이라 안 하면 **AI가 옛 영역에 갇히거나 정지**. (CLAUDE.md Known Issues)
 
 ## 작업 흐름
 
-1. `get_level_actors`로 현재 레벨 상태 확인
-2. `get_property`로 기존 배치 값 확인
-3. 배치 계획 수립
-4. `spawn_actor`/`move_actor`/`set_property`로 액터 배치/이동
-5. `capture_viewport`로 결과 시각 확인
-6. **`level_ops` → `save_level`로 레벨 저장** (필수! 저장하지 않으면 에디터 재시작 시 변경 소실)
-7. 레이아웃 변경을 `Guides/05_DesignSpecs/`에 기록
-
-## 주의사항
-
-- MapManager의 `LanesInfo`는 **에디터 설정** → 런타임에 `AllTowers`로 스폰됨
-- 타워 위치 변경 시 `LanesInfo`의 TowerPositions를 수정 (AllTowers는 런타임 자동 생성)
-- 레벨 저장을 잊지 말 것 (`level_ops` 또는 에디터 저장)
+1. `control_actor`(list) 로 현재 레벨 상태 확인
+2. `inspect`(get_property) 로 기존 배치 값 확인
+3. 배치 계획 수립 → `control_actor`(spawn/set_transform) + `inspect`(set_property) 로 배치
+4. **`manage_level`(save_level) 로 레벨 저장** (필수)
+5. NavMesh 영향 시 재빌드 안내
+6. 레이아웃 변경을 `Guides/02_Design/` 또는 design-docs 요청으로 기록
 
 ## ⚠️ Dedicated Server (DS) 환경
 
 이 프로젝트는 **Dedicated Server** 환경에서 실행됩니다.
 
 ### 레벨 액터와 DS
-- **레벨에 배치된 액터**는 DS에서 인스턴스화됨 → `bReplicates = true`면 클라이언트로 전파
-- **MapManager**: DS에서 `BeginPlay` → `SpawnStructures()`로 타워/커맨드센터 스폰 → 모든 클라이언트에 리플리케이션
-- **SpawnPoint**: DS 전용 — 캐릭터 스폰은 서버에서만 발생
-- **카메라/데코레이션용 액터**: 클라이언트 전용이면 `bReplicates = false` 권장
-- **PIE 테스트**: Listen Server 또는 Dedicated Server 모드로 실행하여 리플리케이션 정상 동작 확인
+- **레벨 배치 액터**는 DS에서 인스턴스화 → `bReplicates=true`면 클라이언트 전파
+- **MapManager**: DS `BeginPlay` → 구조물 스폰(`HasAuthority` 가드) → 모든 클라이언트 리플리케이션
+- **SpawnPoint**: DS 전용 — 캐릭터 스폰은 서버에서만
+- 클라 전용 데코레이션 액터는 `bReplicates=false` 권장
+- **PIE 테스트**: Listen Server / Dedicated Server 모드 (Single Process 는 DS 재현 부정확)
 
 ### 레벨 배치 체크리스트
-1. MapManager 액터: `bReplicates = true` 확인
-2. SpawnPoint Team/Lane/Index 설정 정확성
-3. `save_level`로 저장 (필수)
+1. MapManager `bReplicates=true` 확인
+2. SpawnPoint Team/Lane/Index 정확성
+3. `save_level` 저장 + NavMesh 재빌드
 4. Dedicated Server PIE 모드에서 양팀 스폰/이동 확인
