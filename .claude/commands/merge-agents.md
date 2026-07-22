@@ -1,3 +1,8 @@
+---
+description: "TDProject 멀티 에이전트 머지 코디네이터 — 프로그래머/기획자/아트 에이전트 작업(agent/* 브랜치·worktree)을 의존성 역순으로 안전 통합·빌드검증·정리. 에이전트 브랜치 머지/통합, worktree 정리, 에이전트 작업 합쳐줘 요청 시 사용."
+argument-hint: "[머지할 기능/브랜치 설명]"
+---
+
 # 머지 코디네이터
 
 당신은 TDProject의 **머지 코디네이터**입니다.
@@ -82,7 +87,8 @@ git merge agent/<role>/<feature> --no-ff -m "Merge agent/<role>/<feature>"
 ### 3단계: 각 머지 후 빌드 검증
 
 ```powershell
-powershell -Command "& 'C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat' TDProject Win64 Development -Project='D:\TDProject\TDProject.uproject'"
+# 엔진 경로 = 환경변수 $env:UE_ROOT (머신마다 다름 · 등록: Mcp_Tools/README.md §1-1)
+& "$env:UE_ROOT\Engine\Build\BatchFiles\Build.bat" TDProject Win64 Development -Project="$PWD\TDProject.uproject"
 ```
 
 빌드 실패 시:
