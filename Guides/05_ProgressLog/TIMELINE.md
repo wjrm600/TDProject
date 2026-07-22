@@ -1942,3 +1942,23 @@
 
 **결과**
 - **에이전트 정의 13종 중 실질 대상 전부(프로그래머 5 + 기획 3 + 아트 3 = 11종) 현행화 완료.** 검사기 `--all` 이 지목하던 잔여 7건(prog-anim 6 + prog-ui 1) 소멸 예정 → 문서→코드 심볼 검사 완전 그린. (미검토 asset-gen·build-verify 는 C++ 심볼 참조가 적어 검사기 무경고.) 오늘 세션: 외부 레퍼런스 재비교 → drift 실증 → 문서/에이전트 현행화 → 재발 방지 검사기 구축까지 1사이클 완료.
+
+---
+
+## 2026-07-23 — CCGS 스킬 이식(3) + UI 전용 스킬 신설(2) + ui-review 첫 실행으로 UI 코드 개선
+
+**작업 내용**
+- Donchitos/Claude-Code-Game-Studios 73스킬 검토 → 우리(솔로·PC·관전형 오토배틀러)에 맞는 것만 선별. **이식 3종**: `balance-check`(DT_* MCP 라운드트립 분석), `playtest-report`(관전형 PIE 발견을 4버킷 라우팅), `asset-audit`(저작물 한정 읽기전용, Paragon 팩·Fab 의존성·Alex 백본 오탐 제외). **신설 2종**(CCGS UI 스킬은 팀·멀티플랫폼·정식 UX 문서 전제라 부적합 → 우리 코드 기반 신규): `ui-review`(위젯 C++/WBP DS 규칙 감사), `ui-spec`(DS 인지형 신규 위젯 스펙 저작). 커밋 `1aad874`(이식 3 + 전 커맨드 description 자연어 자동발동 + merge-agents 빌드경로 `$env:UE_ROOT`/`$PWD` 교정), `97f8c47`(UI 2종 + balance-check 저장경로 → `06_BalanceLog` 교정).
+- **`/ui-review all` 첫 실행**: 위젯 12종 + AOSPlayerController Show/Hide 6쌍 + 카메라 정적 감사.
+
+**문제점 / 발견**
+- ui-review 가 실제 2건 포착: ① `ShowMainMenu`/`ShowSettlement`/`ShowLobby` 가 형제 함수(ShowMinimap/CharacterSelect/BanPick)엔 있는 방어적 `IsLocalPlayerController()` 가드 **누락(비대칭)** ② `AOSBanPickWidget.cpp` 골드 프리뷰 링 리터럴 `(1.0,0.78,0.20)` 이 L1007·L1086 **2곳 중복**(AOSUIStyle 토큰 미사용).
+- **오탐 배제 실증**: "가드 누락 → BLOCKING" 순진 판정 대신 디스패치 경로를 추적 → `OnGameStateChanged` 가 `BeginPlay` 의 `IsLocalPlayerController()` 블록 안에서만 구독(L84, AOSGameMode.cpp:1066-1069 주석 확인)이라 DS 도달 불가 → **BLOCKING 아닌 ADVISORY**로 정확히 강등. 초기 정적 grep 이 지목한 `kBanRed`/`CS*` 팔레트 재산포도 재검토 결과 **토큰 파생 별칭**(오탐)으로 판명.
+- BindWidget: 전 위젯 100% `BindWidgetOptional`+C++ 폴백 → 강제 바인딩 0개 = WBP 누락 크래시 불가(설계적 견고성 확인).
+
+**해결 방법**
+- 가드 일관성: `ShowMainMenu`/`ShowSettlement`/`ShowLobby` 진입부에 `if (!IsLocalPlayerController()) return;` 추가(동작 불변 — 디스패치가 이미 로컬 한정이라 순수 방어적 대칭 + 향후 비-로컬 호출 안전망).
+- 스타일 토큰: 중복 골드 링 → `AOSUIStyle::PreviewRing` 신설 후 BanPick 2곳 교체(값 동일 = 색 불변). 값이 다른 로컬 변형(CharacterSelect 녹색 슬롯·팀색)은 토큰화 시 색이 바뀌므로 디자인 결정으로 남겨둠(미변경).
+
+**결과**
+- 커맨드 로스터 7종 전부 `description` 자연어 자동발동. UI 코드베이스 **판정 COMPLIANT**(BLOCKING 0) 재확인 + 가드 대칭·토큰 규율 개선. 신설 스킬이 첫 실행에서 실제 개선 2건 도출 + 오탐 2건 자체 배제 → 설계 의도(오탐 방지) 실효 입증. **C++ 변경(AOSPlayerController.cpp·AOSUIStyle.h·AOSBanPickWidget.cpp)은 핫 리로드/빌드·커밋 대기** — 헤더 inline 상수 추가라 UCLASS/UPROPERTY 무관, 핫 리로드 호환. [[reference_ccgs_harness_comparison]]

@@ -1004,7 +1004,7 @@ void UAOSBanPickWidget::RefreshCards()
 		if (CardBorders[i])
 		{
 			FLinearColor Outline = AOSUIStyle::BorderSoft; float Width = 1.f;       // 기본 = 소프트 보더
-			if (i == PendingIndex)                               { Outline = FLinearColor(1.00f, 0.78f, 0.20f, 1.f); Width = 2.5f; } // 미리보기 = 골드 ring
+			if (i == PendingIndex)                               { Outline = AOSUIStyle::PreviewRing; Width = 2.5f; } // 미리보기 = 골드 ring
 			else if (GS->IsUnitBanned(i))                        { Outline = AOSUIStyle::BanRed;            Width = 2.f; }            // 밴
 			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team1)) { Outline = AOSUIStyle::TeamAccent(true);  Width = 2.f; }            // T1 픽 = 코랄
 			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team2)) { Outline = AOSUIStyle::TeamAccent(false); Width = 2.f; }            // T2 픽 = 블루
@@ -1083,7 +1083,7 @@ void UAOSBanPickWidget::RefreshSlots()
 			// 슬롯 테두리: 둥근 흰 카드 유지 + 상태별 보더(활성=골드 / 채워짐=팀 파스텔 / 빈=소프트)
 			if (PickBorders.IsValidIndex(i) && PickBorders[i])
 			{
-				const FLinearColor Outline = bActive ? FLinearColor(1.0f, 0.78f, 0.20f, 1.f)
+				const FLinearColor Outline = bActive ? AOSUIStyle::PreviewRing
 					: bFilled ? AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1)
 					          : AOSUIStyle::BorderSoft;
 				const float Width = bActive ? 2.5f : bFilled ? 2.f : 1.f;

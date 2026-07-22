@@ -28,6 +28,7 @@ namespace AOSUIStyle
 	inline const FLinearColor Accent     = FLinearColor(0.361f, 0.561f, 0.839f, 1.f); // LOCK IN 활성(블루)
 	inline const FLinearColor AccentIdle = FLinearColor(0.882f, 0.894f, 0.914f, 1.f); // LOCK IN 비활성 바탕
 	inline const FLinearColor BanRed     = FLinearColor(0.753f, 0.314f, 0.290f, 1.f); // 밴 X
+	inline const FLinearColor PreviewRing= FLinearColor(1.0f,   0.78f,  0.20f,  1.f); // 미리보기/활성 슬롯 골드 링
 
 	// 팀 파스텔 림 / 진한 텍스트 (bTeam1 ? 코랄 : 블루)
 	inline FLinearColor TeamAccent(bool bTeam1)

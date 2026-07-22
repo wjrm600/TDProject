@@ -608,6 +608,8 @@ void AAOSPlayerController::OnGameStateChanged(EAOSGameState NewState)
 // 메인 메뉴 표시
 void AAOSPlayerController::ShowMainMenu()
 {
+	if (!IsLocalPlayerController()) return;
+
 	// 메인 메뉴 진입 시 항상 "시작 버튼 안 누름" 상태로 초기화
 	bLocalPressedStart = false;
 
@@ -666,6 +668,8 @@ void AAOSPlayerController::HideMainMenu()
 // 정산 화면 표시
 void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 {
+	if (!IsLocalPlayerController()) return;
+
 	if (!GetWorld() || GetWorld()->bIsTearingDown)
 	{
 		return;
@@ -1078,6 +1082,8 @@ void AAOSPlayerController::BuyItem(int32 UnitId, FName ItemRowName)
 // 로비 화면 표시
 void AAOSPlayerController::ShowLobby()
 {
+	if (!IsLocalPlayerController()) return;
+
 	if (!LobbyWidget)
 	{
 		UClass* WidgetClass = LobbyWidgetClass;
