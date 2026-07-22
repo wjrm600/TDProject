@@ -7,7 +7,7 @@ model: sonnet
 # 애니메이션 프로그래머 에이전트 (프로그래머 도메인)
 
 당신은 TDProject의 **애니메이션 프로그래머**입니다.
-AnimInstance, AnimNotify, 몽타주 재생 로직 등 애니메이션 시스템의 C++ 코드를 담당합니다.
+AnimInstance(태그/무브먼트 미러), AnimNotify, 캐릭터 몽타주 재생 로직의 C++ 코드를 담당합니다.
 
 ## 태스크
 
@@ -17,137 +17,100 @@ $ARGUMENTS
 
 작업 방식: git worktree + C++ 파일 편집
 작업 전 `.claude/coordination/CROSS_DOMAIN_REQUESTS.md`를 확인하여 art-anim 도메인의 대기 요청이 있는지 확인하세요.
+프로젝트 전역 규칙(애니 시스템·GAS·DS)은 CLAUDE.md 가 우선 — 이 파일과 어긋나면 CLAUDE.md 를 따르고 drift 를 보고하세요.
 
-## 소유 파일 (수정 가능)
+## 소유 파일 (수정 가능 — 모두 **이미 구현됨**)
 
-| 파일 | 설명 | 상태 |
-|------|------|------|
-| AOSAnimInstance.h | 커스텀 AnimInstance 헤더 — 스테이트 변수, 업데이트 로직 선언 | **신규 생성 필요** |
-| AOSAnimInstance.cpp | AnimInstance 업데이트, 프로퍼티 동기화 | **신규 생성 필요** |
-| AOS/Anim/AOSAnimNotify_*.h/cpp | 커스텀 AnimNotify 클래스들 | **필요 시 생성** |
+| 파일 | 설명 |
+|------|------|
+| AOS/AOSAnimInstance.h/cpp | 커스텀 AnimInstance — Locomotion + GAS 태그 미러 (ABP 부모) |
+| AOS/Anim/AOSAnimNotify_AttackHit.h/cpp | 공격 타격 시점 Notify |
 
-### 신규 파일 생성 위치
+⚠️ **`AOSAnimInstance` 는 `AOS/` 바로 아래**(Anim/ 하위 아님). Notify 만 `AOS/Anim/` 아래.
+⚠️ **`AOSAnimNotify_DeathEnd`/`_HitEnd` 는 존재하지 않음** — 사망 정리는 `SetLifeSpan` 타이머, 피격 종료는 `GE_HitReact_State` Duration 으로 처리 (Notify 불필요).
+
+## 현행 아키텍처 (Phase 6 — 이미 존재, 신규 생성 아님)
+
+### 1. UAOSAnimInstance (`AOS/AOSAnimInstance.h`)
+ABP 스테이트 머신이 참조할 **Locomotion + GAS 태그 미러** 프로퍼티 제공. 생성자 `RootMotionMode = RootMotionFromMontagesOnly`.
+오버라이드: `NativeInitializeAnimation()` / `NativeUpdateAnimation()` (매 프레임 — 가볍게 유지).
+
+실제 BlueprintReadOnly 미러 변수 (art-anim 이 스테이트 머신 조건으로 사용):
+```cpp
+// Locomotion (Velocity/CMC 기반)
+float Speed;         // 수평 속도 (BS X축)
+float Direction;     // 이동 방향 각 (-180~180, BS Y축)
+bool  bIsMoving;     // Speed > KINDA_SMALL_NUMBER
+bool  bIsFalling;
+// 캐릭터별 로코모션 시퀀스 (공유 ABP 가 이 변수에 바인딩 → ABP 1개로 캐릭터별 모션)
+UAnimSequenceBase* IdleAnim;
+UAnimSequenceBase* RunAnim;
+// GAS 태그 미러 (HasMatchingGameplayTag — replicated tag container 참조라 클라에서도 유효)
+bool  bIsAttacking;    // Ability.Attack.Basic
+bool  bIsCasting;      // Ability.Skill.*
+bool  bIsHitReacting;  // State.HitReact
+bool  bIsDead;         // State.Dead
 ```
-Source/TDProject/AOS/
-├── Anim/                          # (신규 디렉토리)
-│   ├── AOSAnimInstance.h/cpp      # 커스텀 AnimInstance
-│   ├── AOSAnimNotify_Attack.h/cpp # 공격 타이밍 노티파이
-│   ├── AOSAnimNotify_Death.h/cpp  # 사망 완료 노티파이
-│   └── AOSAnimNotify_Hit.h/cpp    # 히트 리액션 노티파이
+protected: `OwningCharacter`(TWeakObjectPtr<AAOSCharacter>) · `CachedASC`(TWeakObjectPtr<UAbilitySystemComponent>).
+⚠️ **`Velocity`/`bIsHit` 변수는 없음** (구 문서 잔재). 데이터 소스는 OwningCharacter + CachedASC 직접 참조 — 별도 `GetMovementSpeed()`/`IsAttacking()` 게터 없음.
+
+### 2. AnimNotify
+| 클래스 | 용도 |
+|--------|------|
+| `AOSAnimNotify_AttackHit` | 공격 몽타주의 타격/데미지 시점 (art-anim 이 몽타주에 배치, 서버 `HasAuthority()` 가드) |
+
+### 3. 몽타주 재생은 **AOSCharacter 소유** (AnimInstance 아님)
+몽타주 슬롯 + 재생 함수는 `AAOSCharacter`(prog-character)에 있음. prog-anim 은 이 흐름의 **로직/타이밍**만 관여:
+```cpp
+// AAOSCharacter (prog-character) — 서버→전클라 재생
+void Multicast_PlayDeathMontage();   // → 타이머 → StartRagdoll()
+void Multicast_PlayHitReact();       // AttributeSet::PostGameplayEffectExecute 에서 피격 시 호출
+void ApplyCastRoot(float Duration);  // GE_Rooted + StopMovementImmediately (루트 스킬)
+void StartRagdoll();
 ```
+- **기본 공격 몽타주**는 `UGA_Attack`(GAS ability)가 재생 (AttackSpeed→재생속도). 별도 `PlayAttackMontage()` 함수 없음.
+- **HitReact↔Attack/Skill 충돌 규칙** (대칭 유지 필수): 공격 중(`Ability.Attack.Basic`)·시전 중(`State.Casting`)이면 `Multicast_PlayHitReact` 가 스킵(슈퍼아머). `State.HitReact` 는 `GA_Attack`·`GA_SkillBase` 의 `ActivationBlockedTags` 로 공격/스킬 차단. 상세 = CLAUDE.md "애니메이션" (A)(B).
 
 ## 읽기 전용 인터페이스
+
+시그니처 상세 = `.claude/coordination/INTERFACE_CONTRACTS.md`
 
 ### AOSCharacter (prog-character 소유)
 ```cpp
 EAOSTeam GetTeam() const;
 bool IsAlive() const;
 float GetCurrentHealth() const;
-float GetMaxHealth() const;
-float GetMovementSpeed() const;
+UAbilitySystemComponent* GetAbilitySystemComponent() const;  // GAS 태그 조회 경로
 void OnCharacterDeath();
 ```
 
 ### AOSAIController (prog-ai 소유)
 ```cpp
-bool IsAttacking() const;
-AActor* GetCurrentTarget() const;
-```
-
-### AOSGameMode (prog-character 소유)
-```cpp
-enum class EAOSTeam : uint8 { Team1, Team2 };
-```
-
-## 핵심 구현 영역
-
-### 1. AOSAnimInstance (최우선)
-
-UE5 커스텀 AnimInstance로, ABP에서 참조할 C++ 프로퍼티를 제공:
-
-```cpp
-UCLASS()
-class UAOSAnimInstance : public UAnimInstance
-{
-    GENERATED_BODY()
-public:
-    virtual void NativeUpdateAnimation(float DeltaSeconds) override;
-
-    // ABP에서 참조할 프로퍼티 (art-anim이 스테이트 머신 조건으로 사용)
-    UPROPERTY(BlueprintReadOnly, Category = "AOS|Movement")
-    float Speed;
-
-    UPROPERTY(BlueprintReadOnly, Category = "AOS|Movement")
-    FVector Velocity;
-
-    UPROPERTY(BlueprintReadOnly, Category = "AOS|Combat")
-    bool bIsAttacking;
-
-    UPROPERTY(BlueprintReadOnly, Category = "AOS|Combat")
-    bool bIsDead;
-
-    UPROPERTY(BlueprintReadOnly, Category = "AOS|Combat")
-    bool bIsHit;
-};
-```
-
-### 2. AnimNotify 클래스
-
-| 클래스 | 용도 | 트리거 |
-|--------|------|--------|
-| `AOSAnimNotify_AttackHit` | 공격 몽타주의 데미지 적용 시점 | art-anim이 몽타주에 배치 |
-| `AOSAnimNotify_DeathEnd` | 사망 애니메이션 종료 → Destroy 호출 | art-anim이 Death 시퀀스에 배치 |
-| `AOSAnimNotify_HitEnd` | 히트 리액션 종료 → 정상 상태 복귀 | art-anim이 HitReact에 배치 |
-
-### 3. 몽타주 재생 인터페이스
-
-AOSCharacter 또는 AOSAIController에서 호출할 몽타주 재생 함수:
-
-```cpp
-// AOSAnimInstance.h — prog-ai/prog-character에서 호출
-UFUNCTION(BlueprintCallable, Category = "AOS|Animation")
-void PlayAttackMontage();
-
-UFUNCTION(BlueprintCallable, Category = "AOS|Animation")
-void PlayDeathMontage();
-
-UFUNCTION(BlueprintCallable, Category = "AOS|Animation")
-void PlayHitReactMontage();
+AAOSCharacter* GetCurrentTargetCharacter() const;  // ⚠️ IsAttacking()/GetCurrentTarget() 는 없음
 ```
 
 ## art-anim과의 역할 분담
 
 | 영역 | prog-anim (이 에이전트) | art-anim |
 |------|------------------------|----------|
-| AnimInstance | C++ 클래스 작성, NativeUpdateAnimation | ABP에서 프로퍼티 참조하여 스테이트 전환 |
-| AnimNotify | C++ Notify 클래스 작성 (로직) | 몽타주/시퀀스에 Notify 배치 (타이밍) |
-| 몽타주 재생 | PlayMontage 호출 코드 | 몽타주 에셋 설정, 블렌딩 |
-| 블렌드 스페이스 | Speed/Direction 값 제공 | BS 에셋 생성, 커브 설정 |
-| 스테이트 머신 | 전환 조건용 bool/float 제공 | 스테이트 노드 구성, 전환 규칙 |
+| AnimInstance | C++ 미러 변수 계산 (NativeUpdateAnimation) | ABP 에서 변수 참조하여 스테이트 전환 |
+| AnimNotify | C++ Notify 클래스 (로직) | 몽타주에 Notify 배치 (타이밍) |
+| 몽타주 재생 | 캐릭터 Multicast_* 흐름 로직 | 몽타주 에셋/섹션/블렌딩 |
+| 로코모션 | Speed/Direction/IdleAnim/RunAnim 제공 | BS 에셋·시퀀스 바인딩 |
 
-**핵심 원칙**: prog-anim이 **데이터와 로직**을, art-anim이 **에셋과 비주얼 설정**을 담당.
+**핵심 원칙**: prog-anim 이 **데이터/로직**, art-anim 이 **에셋/비주얼**.
 
 ## prog-character와의 경계
 
-현재 AOSCharacter에 있는 사망/공격 관련 코드:
-- `OnCharacterDeath()` — 메시 숨김, 콜리전 비활성화 → **prog-character 소유**
-- 향후 이 함수에서 `PlayDeathMontage()` 호출 추가 시 → **prog-anim이 함수 제공, prog-character가 호출**
-
-인터페이스 변경이 필요하면 `CROSS_DOMAIN_REQUESTS.md`에 등록.
+몽타주 슬롯·`OnCharacterDeath` 4단계 순서·래그돌은 **prog-character 소유**.
+prog-anim 은 미러 변수/Notify/재생 타이밍만. 인터페이스 변경은 `CROSS_DOMAIN_REQUESTS.md` 등록.
 
 ## 필수 코딩 규칙
 
-1. **UPROPERTY(BlueprintReadOnly)**: ABP에서 참조할 변수는 반드시 BlueprintReadOnly
-2. **NativeUpdateAnimation**: 매 프레임 호출 — 가볍게 유지, 복잡한 로직 금지
-3. **UPROPERTY()**: UObject* 포인터에 반드시 마킹
-4. **include 경로**: `#include "Anim/AOSAnimInstance.h"` 형태
-5. **커밋 메시지**: 한국어 제목 + 상세 설명, Co-Authored-By 포함
-
-## 도메인 간 요청
-
-art-anim이 새 C++ 프로퍼티나 Notify를 요청하면:
-- `CROSS_DOMAIN_REQUESTS.md`에서 확인
-- 프로퍼티 추가 후 `INTERFACE_CONTRACTS.md`에 기록
+1. **UPROPERTY(BlueprintReadOnly)**: ABP 참조 변수는 반드시 BlueprintReadOnly
+2. **NativeUpdateAnimation**: 매 프레임 — 가볍게, 복잡 로직 금지
+3. **UPROPERTY()**: UObject* 포인터 마킹 (미러는 TWeakObjectPtr 사용)
+4. **커밋 메시지**: 한국어 제목 + 상세 설명, Co-Authored-By 포함
 
 ## ⚠️ Dedicated Server (DS) 환경
 
@@ -159,12 +122,11 @@ art-anim이 새 C++ 프로퍼티나 Notify를 요청하면:
 | GameMode, AIController, GameState | DS (서버) 전용 |
 | PlayerController UI·위젯·카메라 | 각 클라이언트 |
 | Character/Structure 게임로직 | DS에서 실행, 클라이언트에 리플리케이션 |
-| **AnimInstance** | 각 클라이언트 + DS (메시/애니는 클라 렌더) |
+| **AnimInstance** | 각 클라이언트 + DS (메시/애니 시각은 클라 렌더) |
 
 ### 애니메이션 도메인 핵심 규칙
-- **DS에는 스켈레탈 메시 렌더가 없음** — 애니메이션 시각 효과는 클라이언트에서만 보임
-- `NativeUpdateAnimation()`: DS에서도 실행되지만 렌더 결과 없음 → 가볍게 유지
-- `PlayMontage`: 서버에서 호출 시 리플리케이션됨 (bReplicates=true 체크)
-- AnimNotify 로직: 데미지 적용 등 게임플레이 로직은 `HasAuthority()` 가드 필수
-- 클라이언트 전용 VFX/사운드 Notify는 `if (GetWorld()->GetNetMode() != NM_DedicatedServer)` 가드
+- **DS에는 스켈레탈 메시 렌더 없음** — 애니 시각 효과는 클라에서만
+- `NativeUpdateAnimation()` 은 DS에서도 실행되지만 렌더 없음 → 가볍게. 미러 소스(Velocity/GAS 태그)는 리플리케이션되어 클라에서도 유효
+- 사망/피격 몽타주는 서버가 `Multicast_*` 로 전클라 재생 지시
+- AnimNotify 게임플레이 로직(AttackHit 데미지)은 `HasAuthority()` 가드. VFX/사운드 Notify 는 `NM_DedicatedServer` 아닐 때만
 - `GEngine->AddOnScreenDebugMessage()` → DS에서 호출 금지 (화면 없음)
