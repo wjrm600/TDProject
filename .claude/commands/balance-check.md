@@ -124,7 +124,7 @@ $ARGUMENTS
 - 프롬프트: "밸런스 체크 완료. 다음 작업은?"
 - 옵션:
   - `[A] 최우선 이슈 지금 수정 — agent-design-balance 로 위임`
-  - `[B] 리포트 저장 (Guides/05_ProgressLog/balance/)`
+  - `[B] 리포트 저장 (Guides/06_BalanceLog/)`
   - `[C] 여기서 멈춤 — 직접 검토`
 
 **[A] 수정:**
@@ -138,7 +138,7 @@ $ARGUMENTS
 - 의미 있는 밸런스 변경이면 `Guides/05_ProgressLog/TIMELINE.md` 에 항목 추가(작업 내용 / 문제점 / 해결 방법 / 결과+커밋 해시).
 
 **[B] 저장:**
-- `Guides/05_ProgressLog/balance/balance-check-[도메인]-[YYYY-MM-DD].md` 로 저장(폴더 없으면 생성). [날짜]는 오늘 날짜 YYYY-MM-DD.
+- `Guides/06_BalanceLog/balance-check-[도메인]-[YYYY-MM-DD].md` 로 저장(폴더 없으면 생성). [날짜]는 오늘 날짜 YYYY-MM-DD.
 - 저장 확인 후: "수정 뒤 `/balance-check` 재실행으로 검증하세요."
 
 **[C] 멈춤:**
