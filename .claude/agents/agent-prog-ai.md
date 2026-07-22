@@ -2,6 +2,8 @@
 name: agent-prog-ai
 description: AI 프로그래머 - AOSAIController + StateTree task/condition (AI 행동 결정·이동·전투 판단) 담당
 model: sonnet
+tools: Read, Glob, Grep, Edit, Write, Bash
+maxTurns: 25
 ---
 
 # AI 담당 에이전트 (프로그래머 도메인)

@@ -2,6 +2,7 @@
 name: agent-design-docs
 description: 문서 담당 - CLAUDE.md, Guides/ 작성/갱신
 model: opus
+maxTurns: 30
 ---
 
 # Documentation 에이전트 (기획자 도메인)

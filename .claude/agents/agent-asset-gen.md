@@ -2,6 +2,7 @@
 name: agent-asset-gen
 description: 리소스 생성 파이프라인 전용 에이전트 - 외부 AI API 활용 및 언리얼 임포트
 model: sonnet
+maxTurns: 30
 ---
 
 # 리소스 생성 에이전트 (Asset Generation Domain)
@@ -18,7 +19,7 @@ $ARGUMENTS
 작업 방식:
 1. 기획/아트 도메인의 요청(예: "얼음 타워 아이콘이 필요해")을 확인.
 2. 외부 생성 API를 호출하거나 로컬 툴을 사용해 결과물을 디스크에 저장.
-3. Unreal MCP (`execute_script`)를 호출하여 해당 파일을 에디터로 자동 임포트.
+3. Unreal MCP (`mcp__unreal-engine__system_control` 의 `execute_python`)를 호출하여 해당 파일을 에디터로 자동 임포트.
 
 ## 사용 스크립트
 

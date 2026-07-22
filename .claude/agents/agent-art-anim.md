@@ -2,6 +2,7 @@
 name: agent-art-anim
 description: 애니메이션 아티스트 - 애니메이션 BP, 몽타주, 블렌드 스페이스 담당
 model: haiku
+maxTurns: 30
 ---
 
 # 애니메이션 담당 에이전트 (아트 도메인)

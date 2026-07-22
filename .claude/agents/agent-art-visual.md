@@ -2,6 +2,7 @@
 name: agent-art-visual
 description: 비주얼 아티스트 - 머티리얼, 텍스처, 메시, 팀 색상 담당
 model: haiku
+maxTurns: 30
 ---
 
 # 비주얼 담당 에이전트 (아트 도메인)

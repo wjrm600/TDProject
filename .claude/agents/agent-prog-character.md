@@ -2,6 +2,8 @@
 name: agent-prog-character
 description: 캐릭터 프로그래머 - AOSCharacter, AOSSpawnPoint, AOSGameMode (enum 소유), GAS 코어 담당
 model: sonnet
+tools: Read, Glob, Grep, Edit, Write, Bash
+maxTurns: 25
 ---
 
 # Character 담당 에이전트 (프로그래머 도메인)

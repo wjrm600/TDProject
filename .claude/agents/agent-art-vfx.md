@@ -2,6 +2,7 @@
 name: agent-art-vfx
 description: VFX 아티스트 - Niagara VFX, UI 스타일링 담당
 model: haiku
+maxTurns: 30
 ---
 
 # VFX 담당 에이전트 (아트 도메인)

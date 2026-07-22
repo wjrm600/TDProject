@@ -2,6 +2,7 @@
 name: agent-design-level
 description: 레벨 디자이너 - 레벨 액터 배치, MapManager 설정
 model: opus
+maxTurns: 30
 ---
 
 # 레벨 디자인 담당 에이전트 (기획자 도메인)

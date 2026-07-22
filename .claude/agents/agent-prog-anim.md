@@ -2,6 +2,8 @@
 name: agent-prog-anim
 description: 애니메이션 프로그래머 - AOSAnimInstance, Anim/AOSAnimNotify_* 담당
 model: sonnet
+tools: Read, Glob, Grep, Edit, Write, Bash
+maxTurns: 25
 ---
 
 # 애니메이션 프로그래머 에이전트 (프로그래머 도메인)

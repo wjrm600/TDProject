@@ -2,6 +2,8 @@
 name: agent-prog-ui
 description: UI 프로그래머 - AOSHealthBarWidget, AOSPlayerController (UI/입력) 담당
 model: sonnet
+tools: Read, Glob, Grep, Edit, Write, Bash
+maxTurns: 25
 ---
 
 # UI 담당 에이전트 (프로그래머 도메인)

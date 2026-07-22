@@ -2,6 +2,8 @@
 name: agent-prog-object
 description: 오브젝트 프로그래머 - AOSStructure, AOSMapManager (구조물/맵 시스템) 담당
 model: sonnet
+tools: Read, Glob, Grep, Edit, Write, Bash
+maxTurns: 25
 ---
 
 # Object 담당 에이전트 (프로그래머 도메인)
