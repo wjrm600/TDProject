@@ -370,7 +370,7 @@ void UAOSBanPickWidget::BuildFallbackFrame()
 		GridFrame->SetBrushColor(kBorderLight);
 		GridFrame->SetPadding(FMargin(1.f));
 		UBorder* GridPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("BPGridPanel"));
-		GridPanel->SetBrushColor(FLinearColor(0.90f, 0.90f, 0.93f, 1.f));
+		GridPanel->SetBrushColor(AOSUIStyle::PanelBase);
 		GridPanel->SetPadding(FMargin(14.f, 12.f, 14.f, 12.f));
 		GridPanel->SetContent(GridWidthBox);
 		GridFrame->SetContent(GridPanel);
@@ -834,15 +834,24 @@ void UAOSBanPickWidget::UpdatePreviewSelections()
 	// 상대 확정(밴/픽 기록) 시점에 갱신된다.
 	const int32 EnemyUnit = LatestDrafted(Enemy);
 
+	// 캐릭터가 실제로 선택된 경우에만 프리뷰 이미지 표시 — 빈 RT가 흰 박스로 렌더되는 것 방지.
 	if (MyPreviewStage)
 	{
-		MyPreviewStage->SetPreviewCharacter(
-			CachedRoster.IsValidIndex(MyUnit) ? CachedRoster[MyUnit].CharacterClass : nullptr);
+		const bool bHasChar = CachedRoster.IsValidIndex(MyUnit) && CachedRoster[MyUnit].CharacterClass != nullptr;
+		MyPreviewStage->SetPreviewCharacter(bHasChar ? CachedRoster[MyUnit].CharacterClass : nullptr);
+		if (MyPreviewImage)
+		{
+			MyPreviewImage->SetVisibility(bHasChar ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		}
 	}
 	if (EnemyPreviewStage)
 	{
-		EnemyPreviewStage->SetPreviewCharacter(
-			CachedRoster.IsValidIndex(EnemyUnit) ? CachedRoster[EnemyUnit].CharacterClass : nullptr);
+		const bool bHasChar = CachedRoster.IsValidIndex(EnemyUnit) && CachedRoster[EnemyUnit].CharacterClass != nullptr;
+		EnemyPreviewStage->SetPreviewCharacter(bHasChar ? CachedRoster[EnemyUnit].CharacterClass : nullptr);
+		if (EnemyPreviewImage)
+		{
+			EnemyPreviewImage->SetVisibility(bHasChar ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		}
 	}
 }
 

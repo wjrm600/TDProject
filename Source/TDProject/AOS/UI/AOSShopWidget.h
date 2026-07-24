@@ -13,6 +13,7 @@
 class UButton;
 class UTextBlock;
 class UBorder;
+class UImage;
 class UVerticalBox;
 class UHorizontalBox;
 class UWrapBox;
@@ -104,7 +105,11 @@ class TDPROJECT_API UAOSShopWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	// 자체 WidgetTree 로 정적 구조(배경/헤더/두 뷰 컨테이너) 1회 생성
+	// 하이브리드: WBP_Shop(Parent=UAOSShopWidget)가 있으면 디자이너 트리 사용,
+	// 없으면 RebuildWidget 가드가 BuildShopUI(폴백)로 C++ 트리 생성.
+	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	// 폴백 정적 구조(배경/헤더/두 뷰 컨테이너) 1회 생성 — WBP 미저작 시에만 동작(멱등 가드).
 	void BuildShopUI();
 
 	// 상점 열기 — 배치 유닛 목록을 받아 유닛 선택 뷰 표시 + 가시화
@@ -125,29 +130,37 @@ public:
 	virtual void NativeDestruct() override;
 
 protected:
-	UPROPERTY()
-	UBorder* RootBg = nullptr;
+	// ── WBP 이름 계약 (BindWidgetOptional) — WBP_Shop 의 위젯 이름과 정확히 일치 시 자동 바인딩,
+	//    없으면 BuildShopUI(폴백)가 C++ 로 생성해 채운다. (BanPick 하이브리드 패턴) ──
+	UPROPERTY(meta = (BindWidgetOptional))
+	UBorder* RootBg = nullptr;           // 전체화면 dim 배경
 
-	UPROPERTY()
+	UPROPERTY(meta = (BindWidgetOptional))
+	UBorder* PanelBorder = nullptr;      // 팝업 패널(토큰 솔리드 — 장식 텍스처 없음)
+
+	UPROPERTY(meta = (BindWidgetOptional))
 	UTextBlock* TitleText = nullptr;
 
-	UPROPERTY()
-	UTextBlock* TimerText = nullptr;
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* TimerText = nullptr;     // Info(파랑), ≤10s Danger
 
-	UPROPERTY()
-	UTextBlock* GoldText = nullptr;
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* GoldText = nullptr;      // Gold
 
-	UPROPERTY()
+	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* BackButton = nullptr;
 
-	UPROPERTY()
+	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* CloseButton = nullptr;
 
-	UPROPERTY()
-	UWrapBox* UnitPickerBox = nullptr;   // View1
+	UPROPERTY(meta = (BindWidgetOptional))
+	UImage* HeaderDivider = nullptr;     // 헤더 구획선(옵션)
 
-	UPROPERTY()
-	UVerticalBox* ItemStoreBox = nullptr; // View2
+	UPROPERTY(meta = (BindWidgetOptional))
+	UWrapBox* UnitPickerBox = nullptr;   // View1 (C++ 가 유닛 버튼 채움)
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UVerticalBox* ItemStoreBox = nullptr; // View2 (C++ 가 아이템 버튼 채움)
 
 	UPROPERTY()
 	TArray<UAOSShopUnitButton*> UnitButtons;

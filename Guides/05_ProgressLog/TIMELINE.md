@@ -1962,3 +1962,26 @@
 
 **결과**
 - 커맨드 로스터 7종 전부 `description` 자연어 자동발동. UI 코드베이스 **판정 COMPLIANT**(BLOCKING 0) 재확인 + 가드 대칭·토큰 규율 개선. 신설 스킬이 첫 실행에서 실제 개선 2건 도출 + 오탐 2건 자체 배제 → 설계 의도(오탐 방지) 실효 입증. **C++ 변경(AOSPlayerController.cpp·AOSUIStyle.h·AOSBanPickWidget.cpp)은 핫 리로드/빌드·커밋 대기** — 헤더 inline 상수 추가라 UCLASS/UPROPERTY 무관, 핫 리로드 호환. [[reference_ccgs_harness_comparison]]
+
+---
+
+## 2026-07-24 — UI 출시급 개편: 다크·프리미엄 리테마 + WBP 하이브리드 마이그레이션 + MCP WBP 저작 파이프라인 확립
+
+**작업 내용**
+- 사용자 캡처(워시아웃 파스텔 + ComfyUI 상점 액자 "끔찍")에서 출발 → **다크·프리미엄** 방향 확정(HTML 목업 사인오프). 액센트 역할 분리 = **Gold(경제/상점) / Info 파랑(시간) / RedCTA 빨강(진행·라운드준비)**, 팀 코랄/애저, Success/Danger.
+- **Phase 2 — `AOSUIStyle.h` 다크 토큰 전면 개편**: 기존 심볼(BgBase/CardWhite/TextSlate/Accent/BanRed/PreviewRing…) 전부 **별칭으로 유지**해 다운스트림 무중단, 값만 다크로. 시맨틱 토큰(Gold/Info/RedCTA/Success/Danger)+간격·타입 스케일+`SolidBrush`/`SolidButtonStyle` 헬퍼 추가.
+- **Phase 3 — 파일럿 C++ 하이브리드 마이그레이션**(BanPick 패턴 일반화): `AOSShopWidget`·`AOSCharacterSelectWidget` 를 순수 C++ WidgetTree → `BindWidgetOptional`+`RebuildWidget` 가드+`BuildUI/BuildShopUI→BuildFallbackFrame`. CharacterSelect: 레인 컨테이너 `TopLaneBox/MidLaneBox/BotLaneBox` 신설 + `PopulateLanes()`(슬롯 채움)+`EnsureShopWidget()`(상점 부착)+`ShopWidgetClass` 주입(독립 WBP_Shop 승격). 상점 `T_UI_Shop_*` 텍스처 참조 5곳 → `SolidBrush`/`SolidButtonStyle` 토큰.
+- **전 화면 다크 전파**: MainMenu/Lobby/Settlement 토큰화(로비 팀색을 규칙대로 Team1=코랄/Team2=애저 정렬), BanPick 그리드 흰박스(`0.90,0.90,0.93`→PanelBase)·프리뷰 흰박스(픽 전 Collapsed) 수정. HUD(HealthBar/DamageNumber/Minimap)는 게임플레이 기능색이라 제외.
+- **MCP로 WBP 스캐폴딩**: `WBP_Shop`·`WBP_CharacterSelect` 를 부모 C++ 클래스로 생성, BindWidget 이름 그대로 계층 저작 → **에디터 편집 가능**. `T_UI_Shop_*` uasset 6종(고아) 삭제.
+
+**문제점 / 발견**
+- 근본 원인 = ① `AOSUIStyle.h` near-white 저대비 팔레트(워시아웃) ② 상점 ComfyUI 액자를 흰 틴트로 원채도 노출 + 두꺼운 9-slice ③ 7화면 중 6화면 순수 C++ WidgetTree(디자이너 편집 불가 — 사용자 핵심 불만).
+- **MCP WBP 저작의 실체**(장시간 검증): `manage_blueprint`의 `add_*`는 위젯 이름을 못 지음(`name`/`componentName` 둘 다 타입 기본명, rename 액션 없음) → BindWidget 불가. 파이썬 `new_object(class, tree, '정확한이름')`+`add_child`는 **이름 지정 가능**. WidgetTree는 `load_object(wbp,'WidgetTree')`로만 접근(속성 미노출). RootWidget은 파이썬 미설정 → `manage_blueprint add_overlay`(no-parent)로 세팅. `new_object` 위젯은 `WidgetVariableNameToGuidMap` 미등록 → 컴파일러 `ValidateAndFixUpVariableGuids`가 `ensure` 로그 후 **자동복구**(비치명). ⚠️ **VS 디버거 attach 시 그 ensure의 `__debugbreak()`에 에디터가 멈춰** MCP 30s 타임아웃 → 저작 중 **디버거 Detach 필수**. (잘못된 parentName 참조는 크래시 유발.)
+- WBP 경로에선 `BuildShopUI`/`BuildUI` 폴백이 스킵 → 그 안에만 있던 버튼 바인딩(상점 Back/Close, CS Shop/StartRound) 누락. 반응형 `ScaleBox` 도 스캐폴드에서 빠져 CS 가 화면 대비 작게 렌더.
+
+**해결 방법**
+- 버튼 바인딩을 폴백 밖 공용 경로로 이동: 상점 `OpenForUnits`, CS `InitializeWithRoster` 에 `IsAlreadyBound` 가드 바인딩.
+- **MCP WBP 레시피 확립**: `manage_blueprint`(create+set_parent+add_overlay 루트) → 파이썬(`new_object`+`add_child`+스타일) → `close_all_editors_for_asset`+`compile`+`save`. 첫 컴파일만 GUID SEH로 느림(타임아웃돼도 에디터서 완료), 이후 빠름. WBP_CharacterSelect 는 `ScaleBox(ScaleToFit)`+1920×1080 캔버스+980px 컬럼으로 재구축(→ 화면 채움·레인 폭 확보).
+
+**결과**
+- 로비→메인메뉴→벤픽→배치→상점→정산 **전 흐름 다크·프리미엄 통일**, 상점 ComfyUI 액자 제거. `WBP_Shop`·`WBP_CharacterSelect` 가 **UMG 에디터에서 계층 편집 가능한 하이브리드**로 승격(사용자 PIE 검증: 렌더·드래그드롭·상점 구매·버튼 정상). **MCP로 BindWidget WBP 저작 가능**을 실증([[mcp-umg-authoring-recipe]]). 문서: `Guides/02_Design/ART_DIRECTION.md`+`UI_Specs/{Shop,CharacterSelect}.md` 신설, `UI_TEXTURE_KIT.md` "AI=콘텐츠, 크롬=토큰 솔리드"로 개정. **C++ 변경(다크 토큰·하이브리드 마이그레이션·버튼 바인딩)은 신규 UPROPERTY 포함 = 풀 리빌드+라이브코딩·커밋 대기.** 남은 폴리시 = 사용자 에디터 시각 다듬기(이제 가능) + 실초상화/아이콘(Phase 5).

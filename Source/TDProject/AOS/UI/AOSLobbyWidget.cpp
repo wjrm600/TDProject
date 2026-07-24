@@ -4,6 +4,7 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Blueprint/WidgetTree.h"
+#include "AOSUIStyle.h"
 
 TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 {
@@ -17,7 +18,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		TitleText = WidgetTree->ConstructWidget<UTextBlock>(
 			UTextBlock::StaticClass(), TEXT("TitleText"));
 		TitleText->SetText(FText::FromString(TEXT("로비")));
-		TitleText->SetColorAndOpacity(FLinearColor::White);
+		TitleText->SetColorAndOpacity(AOSUIStyle::TextPrimary);
 		Canvas->AddChild(TitleText);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(TitleText->Slot))
 		{
@@ -30,7 +31,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		StatusText = WidgetTree->ConstructWidget<UTextBlock>(
 			UTextBlock::StaticClass(), TEXT("StatusText"));
 		StatusText->SetText(FText::FromString(TEXT("플레이어 대기 중... (0/2)")));
-		StatusText->SetColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f, 1.0f));
+		StatusText->SetColorAndOpacity(AOSUIStyle::TextMuted);
 		Canvas->AddChild(StatusText);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(StatusText->Slot))
 		{
@@ -43,7 +44,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		Team1ReadyText = WidgetTree->ConstructWidget<UTextBlock>(
 			UTextBlock::StaticClass(), TEXT("Team1ReadyText"));
 		Team1ReadyText->SetText(FText::FromString(TEXT("Team1: 대기 중...")));
-		Team1ReadyText->SetColorAndOpacity(FLinearColor(0.6f, 0.6f, 1.0f, 1.0f));
+		Team1ReadyText->SetColorAndOpacity(AOSUIStyle::TeamAccent(true));
 		Canvas->AddChild(Team1ReadyText);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(Team1ReadyText->Slot))
 		{
@@ -56,7 +57,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		Team2ReadyText = WidgetTree->ConstructWidget<UTextBlock>(
 			UTextBlock::StaticClass(), TEXT("Team2ReadyText"));
 		Team2ReadyText->SetText(FText::FromString(TEXT("Team2: 대기 중...")));
-		Team2ReadyText->SetColorAndOpacity(FLinearColor(1.0f, 0.6f, 0.6f, 1.0f));
+		Team2ReadyText->SetColorAndOpacity(AOSUIStyle::TeamAccent(false));
 		Canvas->AddChild(Team2ReadyText);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(Team2ReadyText->Slot))
 		{
@@ -68,6 +69,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		// 준비 버튼
 		ReadyButton = WidgetTree->ConstructWidget<UButton>(
 			UButton::StaticClass(), TEXT("ReadyButton"));
+		ReadyButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 		ReadyButton->OnClicked.AddDynamic(this, &UAOSLobbyWidget::OnReadyButtonClicked);
 		Canvas->AddChild(ReadyButton);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(ReadyButton->Slot))
@@ -81,7 +83,7 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 		UTextBlock* ReadyButtonText = WidgetTree->ConstructWidget<UTextBlock>(
 			UTextBlock::StaticClass(), TEXT("ReadyButtonText"));
 		ReadyButtonText->SetText(FText::FromString(TEXT("준비")));
-		ReadyButtonText->SetColorAndOpacity(FLinearColor::Black);
+		ReadyButtonText->SetColorAndOpacity(AOSUIStyle::TextPrimary);
 		ReadyButton->AddChild(ReadyButtonText);
 	}
 
@@ -111,7 +113,7 @@ void UAOSLobbyWidget::UpdateReadyState(const FString& Team1Name, bool bTeam1Read
 			? FString::Printf(TEXT("%s: 준비 완료 ✓"), *T1)
 			: FString::Printf(TEXT("%s: 대기 중..."), *T1)));
 		Team1ReadyText->SetColorAndOpacity(
-			bTeam1Ready ? FLinearColor(0.2f, 1.0f, 0.2f, 1.0f) : FLinearColor(0.6f, 0.6f, 1.0f, 1.0f));
+			bTeam1Ready ? AOSUIStyle::Success : AOSUIStyle::TeamAccent(true));
 	}
 
 	if (Team2ReadyText)
@@ -121,7 +123,7 @@ void UAOSLobbyWidget::UpdateReadyState(const FString& Team1Name, bool bTeam1Read
 			? FString::Printf(TEXT("%s: 준비 완료 ✓"), *T2)
 			: FString::Printf(TEXT("%s: 대기 중..."), *T2)));
 		Team2ReadyText->SetColorAndOpacity(
-			bTeam2Ready ? FLinearColor(0.2f, 1.0f, 0.2f, 1.0f) : FLinearColor(1.0f, 0.6f, 0.6f, 1.0f));
+			bTeam2Ready ? AOSUIStyle::Success : AOSUIStyle::TeamAccent(false));
 	}
 }
 

@@ -8,6 +8,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "AOSGameMode.h"
 #include "AOSPlayerController.h"
+#include "AOSUIStyle.h"
 
 bool UAOSSettlementWidget::Initialize()
 {
@@ -39,6 +40,7 @@ void UAOSSettlementWidget::BuildUI()
 	TitleFont.Size = 36;
 	TitleText->SetFont(TitleFont);
 	TitleText->SetJustification(ETextJustify::Center);
+	TitleText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));
 	UVerticalBoxSlot* TitleSlot = VBox->AddChildToVerticalBox(TitleText);
 	TitleSlot->SetPadding(FMargin(0, 0, 0, 20));
 	TitleSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
@@ -56,6 +58,7 @@ void UAOSSettlementWidget::BuildUI()
 
 	// ReturnToMainMenuButton
 	ReturnToMainMenuButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ReturnButton"));
+	ReturnToMainMenuButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	UVerticalBoxSlot* BtnSlot = VBox->AddChildToVerticalBox(ReturnToMainMenuButton);
 	BtnSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
@@ -64,6 +67,7 @@ void UAOSSettlementWidget::BuildUI()
 	FSlateFontInfo BtnFont = BtnText->GetFont();
 	BtnFont.Size = 24;
 	BtnText->SetFont(BtnFont);
+	BtnText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));
 	ReturnToMainMenuButton->AddChild(BtnText);
 	ReturnToMainMenuButton->OnClicked.AddDynamic(this, &UAOSSettlementWidget::OnReturnClicked);
 
@@ -87,6 +91,7 @@ void UAOSSettlementWidget::SetResult(EAOSTeam WinningTeam)
 		ResultString = TEXT("Team 2 승리!");
 	}
 
+	ResultText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TeamAccent(WinningTeam == EAOSTeam::Team1)));
 	ResultText->SetText(FText::FromString(ResultString));
 	UE_LOG(LogTemp, Warning, TEXT("[Settlement] 결과 표시: %s"), *ResultString);
 }
@@ -98,7 +103,7 @@ void UAOSSettlementWidget::SetDraw()
 		return;
 	}
 
-	ResultText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.0f, 1.0f)));
+	ResultText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));
 	ResultText->SetText(FText::FromString(TEXT("무승부\n5초 후 다음 라운드...")));
 
 	// 무승부 시 메인 메뉴 버튼 숨기기 (무승부는 다음 라운드로 자동 전환됨)

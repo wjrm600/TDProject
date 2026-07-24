@@ -25,8 +25,7 @@ void UAOSShopUnitButton::BuildButtonUI(const FText& UnitName, int32 /*OwnedItemC
 {
 	Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),
 		*FString::Printf(TEXT("ShopUnitBtn_%d"), UnitListIndex));
-	Button->SetStyle(AOSUIStyle::KitButtonStyle(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::CardWhite));
+	Button->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	WidgetTree->RootWidget = Button;
 	Button->OnClicked.AddDynamic(this, &UAOSShopUnitButton::HandleClicked);
 
@@ -56,8 +55,7 @@ void UAOSShopItemButton::BuildButtonUI(const FText& DisplayName)
 {
 	Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(),
 		*FString::Printf(TEXT("ShopItemBtn_%s"), *RowName.ToString()));
-	Button->SetStyle(AOSUIStyle::KitButtonStyle(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::CardWhite));
+	Button->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	WidgetTree->RootWidget = Button;
 	Button->OnClicked.AddDynamic(this, &UAOSShopItemButton::HandleClicked);
 
@@ -71,7 +69,7 @@ void UAOSShopItemButton::BuildButtonUI(const FText& DisplayName)
 	Label->SetFont(F);
 	if (bRecommended)
 	{
-		Label->SetColorAndOpacity(FSlateColor(FLinearColor(0.72f, 0.52f, 0.10f, 1.0f)));   // ★추천 = 진한 골드
+		Label->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));   // ★추천 = 진한 골드
 	}
 	Button->AddChild(Label);
 }
@@ -86,7 +84,7 @@ void UAOSShopItemButton::SetAffordable(bool bAffordable)
 	{
 		Label->SetColorAndOpacity(FSlateColor(bAffordable
 			? AOSUIStyle::TextSlate
-			: FLinearColor(0.70f, 0.70f, 0.72f, 1.0f)));   // 구매가능=슬레이트 / 불가=흐린 회색
+			: AOSUIStyle::TextFaint));   // 구매가능=본문 / 불가=흐린 회색
 	}
 }
 
@@ -124,19 +122,30 @@ UDataTable* UAOSShopWidget::LoadItemTable() const
 	return LoadObject<UDataTable>(nullptr, ItemTablePath());
 }
 
+TSharedRef<SWidget> UAOSShopWidget::RebuildWidget()
+{
+	// WBP_Shop(Parent=UAOSShopWidget)이 있으면 RootWidget 이 이미 채워짐 → 폴백 skip.
+	if (WidgetTree && !WidgetTree->RootWidget)
+	{
+		BuildShopUI();
+	}
+	return Super::RebuildWidget();
+}
+
 void UAOSShopWidget::BuildShopUI()
 {
+	// WBP 가 트리를 저작했으면(RootWidget 존재) 폴백 생성 skip — 멱등.
+	if (WidgetTree && WidgetTree->RootWidget) { return; }
+
 	// 전체화면 반투명 배경 (팝업 dim + 입력 차단)
 	RootBg = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ShopRootBg"));
-	RootBg->SetBrushColor(FLinearColor(AOSUIStyle::BgBase.R, AOSUIStyle::BgBase.G, AOSUIStyle::BgBase.B, 0.90f));   // 라이트 팝업 dim(near-white)
+	RootBg->SetBrushColor(FLinearColor(AOSUIStyle::BgDeep.R, AOSUIStyle::BgDeep.G, AOSUIStyle::BgDeep.B, 0.86f));   // 다크 팝업 dim
 	RootBg->SetPadding(FMargin(120.0f, 70.0f));
 	WidgetTree->RootWidget = RootBg;
 
 	// 팝업 패널 (텍스처 키트 9-slice — 없으면 흰 카드 폴백)
-	UBorder* PanelBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ShopPanel"));
-	PanelBorder->SetBrush(AOSUIStyle::KitBrush(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Panel.T_UI_Shop_Panel"),
-		0.18f, AOSUIStyle::CardWhite));   // slice_margin = ui_kit_manifest 계약
+	PanelBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ShopPanel"));
+	PanelBorder->SetBrush(AOSUIStyle::SolidBrush(AOSUIStyle::PanelBase));   // 토큰 솔리드(장식 텍스처 제거)
 	PanelBorder->SetPadding(FMargin(56.0f, 48.0f));
 	RootBg->SetContent(PanelBorder);
 
@@ -151,8 +160,7 @@ void UAOSShopWidget::BuildShopUI()
 
 	// 뒤로가기 버튼 (아이템 페이지에서만 표시)
 	BackButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopBack"));
-	BackButton->SetStyle(AOSUIStyle::KitButtonStyle(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::AccentIdle));
+	BackButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	BackButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnBackClicked);
 	{
 		UTextBlock* BackLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopBackLabel"));
@@ -176,7 +184,7 @@ void UAOSShopWidget::BuildShopUI()
 	TimerText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopTimer"));
 	TimerText->SetText(FText::FromString(TEXT("남은 시간: --")));
 	FSlateFontInfo TmF = TimerText->GetFont(); TmF.Size = 18; TimerText->SetFont(TmF);
-	TimerText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextSlate));
+	TimerText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Info));
 	UHorizontalBoxSlot* TimerHS = Header->AddChildToHorizontalBox(TimerText);
 	TimerHS->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 	TimerHS->SetPadding(FMargin(0, 0, 18, 0));
@@ -184,14 +192,13 @@ void UAOSShopWidget::BuildShopUI()
 	GoldText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopGold"));
 	GoldText->SetText(FText::FromString(TEXT("골드: 0")));
 	FSlateFontInfo GF = GoldText->GetFont(); GF.Size = 18; GoldText->SetFont(GF);
-	GoldText->SetColorAndOpacity(FSlateColor(FLinearColor(0.72f, 0.52f, 0.10f, 1.0f)));   // 진한 골드(라이트 대비)
+	GoldText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));   // 진한 골드(라이트 대비)
 	UHorizontalBoxSlot* GoldHS = Header->AddChildToHorizontalBox(GoldText);
 	GoldHS->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 	GoldHS->SetPadding(FMargin(0, 0, 18, 0));
 
 	CloseButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopClose"));
-	CloseButton->SetStyle(AOSUIStyle::KitButtonStyle(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Button"), 0.30f, AOSUIStyle::AccentIdle));
+	CloseButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	CloseButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnCloseClicked);
 	{
 		UTextBlock* CloseLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopCloseLabel"));
@@ -204,11 +211,9 @@ void UAOSShopWidget::BuildShopUI()
 	CloseHS->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
 
 	// 헤더 아래 장식 디바이더 (텍스처 키트 — 없으면 얇은 라인 폴백)
-	UImage* HeaderDivider = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ShopHeaderDivider"));
-	HeaderDivider->SetBrush(AOSUIStyle::KitBrush(
-		TEXT("/Game/AOS/UI/Assets/T_UI_Shop_Divider.T_UI_Shop_Divider"),
-		0.f, AOSUIStyle::BorderSoft));
-	HeaderDivider->SetDesiredSizeOverride(FVector2D(768.f, 26.f));
+	HeaderDivider = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ShopHeaderDivider"));
+	HeaderDivider->SetBrush(AOSUIStyle::SolidBrush(AOSUIStyle::Border));   // 토큰 솔리드 얇은 라인
+	HeaderDivider->SetDesiredSizeOverride(FVector2D(768.f, 2.f));
 	UVerticalBoxSlot* DividerVS = ContentBox->AddChildToVerticalBox(HeaderDivider);
 	DividerVS->SetPadding(FMargin(0, 0, 0, 10));
 	DividerVS->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
@@ -233,6 +238,16 @@ void UAOSShopWidget::BuildShopUI()
 void UAOSShopWidget::OpenForUnits(const TArray<FAOSShopUnit>& InUnits)
 {
 	Units = InUnits;
+
+	// 헤더 버튼 바인딩 (WBP/폴백 공용 — WBP 경로에선 BuildShopUI 폴백이 스킵되므로 여기서 보장, 중복 방지)
+	if (BackButton && !BackButton->OnClicked.IsAlreadyBound(this, &UAOSShopWidget::OnBackClicked))
+	{
+		BackButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnBackClicked);
+	}
+	if (CloseButton && !CloseButton->OnClicked.IsAlreadyBound(this, &UAOSShopWidget::OnCloseClicked))
+	{
+		CloseButton->OnClicked.AddDynamic(this, &UAOSShopWidget::OnCloseClicked);
+	}
 
 	// 골드 델리게이트 구독 (1회)
 	if (!bSubscribed)
@@ -438,8 +453,8 @@ void UAOSShopWidget::UpdateTimer(float RemainingSeconds)
 	const int32 Seconds = FMath::Max(0, FMath::CeilToInt(RemainingSeconds));
 	TimerText->SetText(FText::FromString(FString::Printf(TEXT("남은 시간: %d초"), Seconds)));
 	TimerText->SetColorAndOpacity(FSlateColor(Seconds <= 10
-		? AOSUIStyle::BanRed
-		: AOSUIStyle::TextSlate));
+		? AOSUIStyle::Danger
+		: AOSUIStyle::Info));
 }
 
 void UAOSShopWidget::HandleBuy(int32 UnitId, FName RowName)

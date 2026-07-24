@@ -2,7 +2,7 @@
 
 **위치**: `Guides/` 폴더
 **엔진**: Unreal Engine 5.7 / Visual Studio 2026
-**최종 업데이트**: 2026-06-01
+**최종 업데이트**: 2026-07-23 (UI 다크·프리미엄 리디자인 — ART_DIRECTION + UI_Specs 신설)
 
 ---
 
@@ -11,8 +11,9 @@
 ```
 Guides/
 ├── 01_GameOverview/    게임 전체 구조 이해
-├── 02_Design/         기획자 에이전트 전용 (밸런스, 레벨, Blueprint)
-├── 03_Implementation/ C++ 구현 상세 (AI, 타워, 캐릭터 시스템)
+├── 02_Design/         기획자 에이전트 전용 (아트 디렉션, UI 스펙, 밸런스, 레벨, Blueprint)
+│   └── UI_Specs/      위젯별 스펙 (DS 인지형, /ui-spec 형식)
+├── 03_Implementation/ C++ 구현 상세 (AI, 타워, 캐릭터, UI 텍스처)
 ├── 04_Testing/        테스트 및 설정 가이드
 ├── 05_ProgressLog/    작업 이력
 └── 06_BalanceLog/     밸런스 변경 이력 (design-balance 에이전트 기록용)
@@ -37,6 +38,15 @@ Guides/
 ---
 
 ## 02_Design — 기획자 에이전트 전용
+
+### [ART_DIRECTION.md](./02_Design/ART_DIRECTION.md) ⭐ UI 디자인 시스템
+- **내용**: 다크·프리미엄 v2 UI 아트 디렉션 — 비주얼 톤("전술 지휘 콘솔"), 팔레트 토큰 표(hex·역할), 타입/간격/깊이/라운드 스케일, 컴포넌트 스펙(패널/버튼/칩/카드/코너 브래킷), 액센트 역할 분리(Gold=경제·Info=시간·RedCTA=진행·팩션·상태), Do/Don't. **토큰 SSOT 는 `Source/.../AOSUIStyle.h`** — 이 문서는 그 해설/의도
+- **추천 대상**: `design-*`·`art-*`·`prog-ui` 에이전트, 모든 위젯 저작자
+
+### UI_Specs/ — 위젯 스펙 (DS 인지형, `/ui-spec` 형식)
+- [UI_Specs/CharacterSelect.md](./02_Design/UI_Specs/CharacterSelect.md) — 라운드 준비/배치 위젯(`WBP_CharacterSelect`/`UAOSCharacterSelectWidget`): 데이터 명세·BindWidget 계약·실현 순서·수용 기준 + 현재 코드 drift
+- [UI_Specs/Shop.md](./02_Design/UI_Specs/Shop.md) — 상점 팝업(`WBP_Shop`/`UAOSShopWidget`): 2뷰 흐름·구매 서버 권위·토큰 솔리드 크롬(장식 텍스처 제거)·BindWidget 계약 + drift
+- **추천 대상**: `prog-ui`(구현), `design-*`(설계), 위젯 마이그레이션 작업자
 
 ### [GAME_BALANCE_GUIDE.md](./02_Design/GAME_BALANCE_GUIDE.md)
 - **내용**: 모든 게임 수치 파라미터 + 조정 가이드
@@ -93,6 +103,10 @@ Guides/
 ### [ANIMATION_REQUEST_TEMPLATE.md](./03_Implementation/ANIMATION_REQUEST_TEMPLATE.md)
 - **내용**: 사용자가 원하는 모션(스킬 Q/W/E·Idle·Move·Death)을 **자유 서술로 적어 채워 넣는 기획 템플릿**. 하이브리드 애니 파이프라인(Blender 베이크 → UE 재임포트 → 몽타주)의 입력값(타이밍 비트·임팩트 순간·도약 여부)을 뽑아냄. R 슬램 완료작이 채워진 예시
 - **추천 대상**: 사용자(모션 발주), `art-anim`·`prog-anim` 에이전트
+
+### [UI_TEXTURE_KIT.md](./03_Implementation/UI_TEXTURE_KIT.md)
+- **내용**: AI 생성 UI 텍스처 파이프라인 — **v2 개정: AI=콘텐츠(초상화/아이콘) 전용, 크롬(패널/버튼/프레임)=토큰 솔리드**. 파일럿 상점 장식 텍스처(`T_UI_Shop_*`) 제거 방침, 배선 계약(`KitBrush`=콘텐츠 / `SolidBrush`=크롬), 크롬→솔리드 마이그레이션 백로그
+- **추천 대상**: `art-vfx`·`prog-ui` 에이전트, UI 리디자인 트랙. 방향 상세는 `02_Design/ART_DIRECTION.md`
 
 ---
 
@@ -180,6 +194,9 @@ Guides/
 **"새 스킬을 추가하고 싶다"**
 → [03_Implementation/SKILL_AUTHORING_GUIDE.md](./03_Implementation/SKILL_AUTHORING_GUIDE.md) (BP 자산만으로 5~10분)
 
+**"UI 를 디자인하거나 위젯을 만들고 싶다"**
+→ [02_Design/ART_DIRECTION.md](./02_Design/ART_DIRECTION.md) (디자인 시스템) → [02_Design/UI_Specs/](./02_Design/UI_Specs/) (위젯 스펙) → [03_Implementation/UI_TEXTURE_KIT.md](./03_Implementation/UI_TEXTURE_KIT.md) (콘텐츠 텍스처)
+
 ---
 
 ## 문서 통계
@@ -187,9 +204,9 @@ Guides/
 | 카테고리 | 문서 수 | 주요 대상 |
 |---------|--------|---------|
 | 01_GameOverview | 3개 | 전체 (GAME_VISION 1순위) |
-| 02_Design | 3개 | 기획자 에이전트 |
-| 03_Implementation | 9개 | 프로그래머 에이전트 |
+| 02_Design | 4개 + UI_Specs 2개 | 기획자 에이전트 (ART_DIRECTION ⭐) |
+| 03_Implementation | 11개 | 프로그래머 에이전트 |
 | 04_Testing | 7개 | 전체 |
 | 05_ProgressLog | 7개 | 발표/회고용 (TIMELINE 1순위) |
 | 06_BalanceLog | 1개 (README) | design-balance |
-| **총계** | **29개** | |
+| **총계** | **35개** | |

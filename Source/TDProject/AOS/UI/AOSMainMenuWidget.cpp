@@ -7,6 +7,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "AOSUIStyle.h"
 
 bool UAOSMainMenuWidget::Initialize()
 {
@@ -38,6 +39,7 @@ void UAOSMainMenuWidget::BuildUI()
 	TitleFont.Size = 48;
 	TitleText->SetFont(TitleFont);
 	TitleText->SetJustification(ETextJustify::Center);
+	TitleText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));
 	UVerticalBoxSlot* TitleSlot = VBox->AddChildToVerticalBox(TitleText);
 	TitleSlot->SetPadding(FMargin(0, 0, 0, 20));
 	TitleSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
@@ -49,12 +51,14 @@ void UAOSMainMenuWidget::BuildUI()
 	StatusFont.Size = 16;
 	StatusText->SetFont(StatusFont);
 	StatusText->SetJustification(ETextJustify::Center);
+	StatusText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextMuted));
 	UVerticalBoxSlot* StatusSlot = VBox->AddChildToVerticalBox(StatusText);
 	StatusSlot->SetPadding(FMargin(0, 0, 0, 20));
 	StatusSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
 	// StartGameButton
 	StartGameButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("StartGameButton"));
+	StartGameButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	UVerticalBoxSlot* StartSlot = VBox->AddChildToVerticalBox(StartGameButton);
 	StartSlot->SetPadding(FMargin(0, 0, 0, 10));
 	StartSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
@@ -64,11 +68,13 @@ void UAOSMainMenuWidget::BuildUI()
 	FSlateFontInfo StartFont = StartText->GetFont();
 	StartFont.Size = 24;
 	StartText->SetFont(StartFont);
+	StartText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));
 	StartGameButton->AddChild(StartText);
 	StartGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnStartGameClicked);
 
 	// ExitGameButton
 	ExitGameButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ExitGameButton"));
+	ExitGameButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
 	UVerticalBoxSlot* ExitSlot = VBox->AddChildToVerticalBox(ExitGameButton);
 	ExitSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
@@ -77,6 +83,7 @@ void UAOSMainMenuWidget::BuildUI()
 	FSlateFontInfo ExitFont = ExitText->GetFont();
 	ExitFont.Size = 24;
 	ExitText->SetFont(ExitFont);
+	ExitText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextMuted));
 	ExitGameButton->AddChild(ExitText);
 	ExitGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnExitGameClicked);
 

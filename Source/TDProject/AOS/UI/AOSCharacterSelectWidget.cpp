@@ -18,6 +18,7 @@
 #include "Components/SizeBoxSlot.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
 #include "Engine/Texture2D.h"
 #include "Styling/CoreStyle.h"
@@ -47,13 +48,13 @@ namespace
 	const FLinearColor CSBorderLight = AOSUIStyle::BorderSoft;   // 얇은 테두리
 	const FLinearColor CSTextDark    = AOSUIStyle::TextSlate;    // 본문 텍스트(슬레이트)
 	const FLinearColor CSTextGray    = AOSUIStyle::TextMuted;    // 보조 텍스트
-	const FLinearColor CSLockInBlue  = AOSUIStyle::Accent;       // 준비(LOCK IN) 버튼(활성)
+	const FLinearColor CSLockInBlue  = AOSUIStyle::RedCTA;       // 라운드 준비 버튼(활성) — 빨강(v2)
 	const FLinearColor CSLockInIdle  = AOSUIStyle::AccentIdle;   // 준비 버튼(완료/비활성)
 	const FLinearColor CSBanRed      = AOSUIStyle::BanRed;       // 장식 강조
 
 	// 배치 슬롯 상태색 (라이트)
-	const FLinearColor kSlotFilled(0.80f, 0.90f, 0.82f, 1.f);   // 배정됨 — 연한 그린
-	const FLinearColor kSlotHover(0.68f, 0.88f, 0.72f, 1.f);    // 드래그 호버 — 밝은 그린
+	const FLinearColor kSlotFilled(0.086f, 0.204f, 0.145f, 1.f); // 배정됨 — 딥 그린(다크)
+	const FLinearColor kSlotHover(0.122f, 0.298f, 0.212f, 1.f);  // 드래그 호버 — 밝은 그린(다크)
 
 	// 카드 그리드 최대 표시 높이(5행) — 벤픽과 동일 (CS 접두사: 유니티 빌드 충돌 회피)
 	constexpr float CSGridMaxHeight = 410.f;
@@ -300,13 +301,25 @@ bool UAOSCharacterSelectWidget::Initialize()
 	if (bSuccess)
 	{
 		LaneSlotWidgets.Init(nullptr, 6);
-		BuildUI();
 	}
 	return bSuccess;
 }
 
-void UAOSCharacterSelectWidget::BuildUI()
+TSharedRef<SWidget> UAOSCharacterSelectWidget::RebuildWidget()
 {
+	// WBP_CharacterSelect(Parent=UAOSCharacterSelectWidget)가 있으면 RootWidget 이 이미 채워짐 → 폴백 skip.
+	if (WidgetTree && !WidgetTree->RootWidget)
+	{
+		BuildFallbackFrame();
+	}
+	return Super::RebuildWidget();
+}
+
+void UAOSCharacterSelectWidget::BuildFallbackFrame()
+{
+	// WBP 가 트리를 저작했으면(RootWidget 존재) 폴백 skip — 멱등.
+	if (WidgetTree && WidgetTree->RootWidget) { return; }
+
 	// ── 루트: 바깥 오버레이(전체 배경 + ScaleBox 래퍼) — 벤픽 창과 동일한 반응형 캔버스 ──
 	//   창 비율이 바뀌어도 레이아웃이 깨지지 않게 콘텐츠를 1920x1080 고정 디자인 캔버스에 담고
 	//   ScaleBox(ScaleToFit)로 비율 유지 균일 스케일(레터박스). (Fill/수동 RenderScale 함정 회피.)
@@ -507,7 +520,6 @@ void UAOSCharacterSelectWidget::BuildUI()
 		LanePanel->SetContent(LaneWidthBox);
 		LaneFrame->SetContent(LanePanel);
 
-		const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
 		const FString LaneNames[] = { TEXT("TOP"), TEXT("MID"), TEXT("BOT") };
 
 		for (int32 L = 0; L < 3; ++L)
@@ -526,22 +538,13 @@ void UAOSCharacterSelectWidget::BuildUI()
 			LabelVSlot->SetPadding(FMargin(0, 0, 0, 6));
 			LabelVSlot->SetHorizontalAlignment(EHorizontalAlignment::HAlign_Center);
 
-			for (int32 S = 0; S < 2; ++S)
-			{
-				UAOSLaneSlotWidget* SlotWidget = WidgetTree->ConstructWidget<UAOSLaneSlotWidget>(
-					UAOSLaneSlotWidget::StaticClass(),
-					*FString::Printf(TEXT("LaneSlot_L%d_S%d"), L, S));
-				SlotWidget->OwnerLane = Lanes[L];
-				SlotWidget->SlotIndex = S;
-				SlotWidget->OwnerSelectWidget = this;
-				SlotWidget->BuildSlotUI(WidgetTree);
-
-				LaneSlotWidgets[L * 2 + S] = SlotWidget;
-
-				UVerticalBoxSlot* SlotVSlot = LaneCol->AddChildToVerticalBox(SlotWidget);
-				SlotVSlot->SetPadding(FMargin(0, 4));
-				SlotVSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
-			}
+			// 레인 슬롯 컨테이너 — C++ 가 PopulateLanes 에서 드래그 슬롯 2개를 채운다.
+			UVerticalBox* LaneBox = WidgetTree->ConstructWidget<UVerticalBox>(
+				UVerticalBox::StaticClass(), *FString::Printf(TEXT("LaneBox_%d"), L));
+			if (L == 0)      { TopLaneBox = LaneBox; }
+			else if (L == 1) { MidLaneBox = LaneBox; }
+			else             { BotLaneBox = LaneBox; }
+			LaneCol->AddChildToVerticalBox(LaneBox);
 		}
 
 		if (UVerticalBoxSlot* S = VBox->AddChildToVerticalBox(LaneFrame))
@@ -566,12 +569,12 @@ void UAOSCharacterSelectWidget::BuildUI()
 		}
 
 		ShopButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ShopButton"));
-		ShopButton->SetBackgroundColor(FLinearColor(0.55f, 0.57f, 0.62f, 1.f));
+		ShopButton->SetBackgroundColor(AOSUIStyle::PanelRaised);
 		{
 			UTextBlock* ShopBtnLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopButtonLabel"));
 			ShopBtnLabel->SetText(FText::FromString(TEXT("상점 열기")));
 			ShopBtnLabel->SetFont(CSMakeFont(18));
-			ShopBtnLabel->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+			ShopBtnLabel->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));
 			ShopButton->AddChild(ShopBtnLabel);
 		}
 		ShopButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnShopButtonClicked);
@@ -605,7 +608,7 @@ void UAOSCharacterSelectWidget::BuildUI()
 		GridFrame->SetBrushColor(CSBorderLight);
 		GridFrame->SetPadding(FMargin(1.f));
 		UBorder* GridPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("CSGridPanel"));
-		GridPanel->SetBrushColor(FLinearColor(0.90f, 0.90f, 0.93f, 1.f));
+		GridPanel->SetBrushColor(AOSUIStyle::PanelBase);
 		GridPanel->SetPadding(FMargin(14.f, 12.f));
 		GridPanel->SetContent(GridWidthBox);
 		GridFrame->SetContent(GridPanel);
@@ -673,21 +676,91 @@ void UAOSCharacterSelectWidget::BuildUI()
 		S->SetHorizontalAlignment(HAlign_Center);
 	}
 
-	// ── 상점 팝업: OuterRoot(ScaleBox 위)에 전체화면 오버레이로 추가 → 디자인 캔버스 스케일에 안 묶임 ──
-	ShopWidget = WidgetTree->ConstructWidget<UAOSShopWidget>(UAOSShopWidget::StaticClass(), TEXT("ShopPopup"));
-	ShopWidget->BuildShopUI();
-	if (UOverlaySlot* OS = OuterRoot->AddChildToOverlay(ShopWidget))   // 마지막 자식 = 최상위 z
+	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] 폴백 프레임 생성 완료 (다크 리스킨)"));
+}
+
+void UAOSCharacterSelectWidget::PopulateLanes()
+{
+	if (LaneSlotWidgets.Num() != 6) { LaneSlotWidgets.Init(nullptr, 6); }
+
+	UVerticalBox* Boxes[3]  = { TopLaneBox, MidLaneBox, BotLaneBox };
+	const EAOSLane Lanes[3] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+
+	for (int32 L = 0; L < 3; ++L)
 	{
-		OS->SetHorizontalAlignment(HAlign_Fill);
-		OS->SetVerticalAlignment(VAlign_Fill);
+		UVerticalBox* Box = Boxes[L];
+		if (!Box) { continue; }
+		Box->ClearChildren();
+		for (int32 S = 0; S < 2; ++S)
+		{
+			UAOSLaneSlotWidget* SlotWidget = WidgetTree->ConstructWidget<UAOSLaneSlotWidget>(
+				UAOSLaneSlotWidget::StaticClass(),
+				*FString::Printf(TEXT("LaneSlot_L%d_S%d"), L, S));
+			SlotWidget->OwnerLane = Lanes[L];
+			SlotWidget->SlotIndex = S;
+			SlotWidget->OwnerSelectWidget = this;
+			SlotWidget->BuildSlotUI(WidgetTree);
+			LaneSlotWidgets[L * 2 + S] = SlotWidget;
+			if (UVerticalBoxSlot* VS = Box->AddChildToVerticalBox(SlotWidget))
+			{
+				VS->SetPadding(FMargin(0, 4));
+				VS->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+			}
+		}
+	}
+}
+
+void UAOSCharacterSelectWidget::EnsureShopWidget()
+{
+	if (ShopWidget) { return; }
+
+	UClass* ShopClass = ShopWidgetClass ? ShopWidgetClass.Get() : nullptr;
+	if (!ShopClass)
+	{
+		ShopClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_Shop.WBP_Shop_C"));
+	}
+	if (!ShopClass)
+	{
+		ShopClass = UAOSShopWidget::StaticClass();
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[CharacterSelect] UI 동적 생성 완료 (벤픽 디자인 리스킨)"));
+	ShopWidget = WidgetTree->ConstructWidget<UAOSShopWidget>(ShopClass, TEXT("ShopPopup"));
+	if (!ShopWidget) { return; }
+	ShopWidget->BuildShopUI();   // WBP_Shop 이면 RebuildWidget 가드로 skip, 아니면 폴백 생성
+
+	// 루트(폴백=OuterRoot Overlay / WBP=디자이너 루트)에 전체화면 오버레이로 부착 → 최상위 z.
+	if (UPanelWidget* Host = Cast<UPanelWidget>(WidgetTree->RootWidget))
+	{
+		Host->AddChild(ShopWidget);
+		if (UOverlaySlot* OS = Cast<UOverlaySlot>(ShopWidget->Slot))
+		{
+			OS->SetHorizontalAlignment(HAlign_Fill);
+			OS->SetVerticalAlignment(VAlign_Fill);
+		}
+	}
 }
 
 void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>& Roster)
 {
 	CachedRoster = Roster;
+
+	// WBP 미저작 시 폴백 프레임 보장 → 레인 박스/카드 그리드/버튼이 존재하게 함.
+	if (WidgetTree && !WidgetTree->RootWidget)
+	{
+		BuildFallbackFrame();
+	}
+	PopulateLanes();      // 레인 박스(바인딩/폴백)에 드래그 슬롯 채움
+	EnsureShopWidget();   // 상점 팝업 생성/부착
+
+	// 버튼 바인딩 (WBP/폴백 단일 경로 — IsAlreadyBound 로 중복 방지)
+	if (ShopButton && !ShopButton->OnClicked.IsAlreadyBound(this, &UAOSCharacterSelectWidget::OnShopButtonClicked))
+	{
+		ShopButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnShopButtonClicked);
+	}
+	if (StartRoundButton && !StartRoundButton->OnClicked.IsAlreadyBound(this, &UAOSCharacterSelectWidget::OnStartRoundButtonClicked))
+	{
+		StartRoundButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnStartRoundButtonClicked);
+	}
 
 	// 기존 카드 제거
 	for (UAOSCharacterCardWidget* Card : CharacterCardWidgets)
@@ -948,7 +1021,7 @@ void UAOSCharacterSelectWidget::OnStartRoundButtonClicked()
 	if (StartRoundButtonText)
 	{
 		StartRoundButtonText->SetText(FText::FromString(TEXT("준비 완료 ✓")));
-		StartRoundButtonText->SetColorAndOpacity(FSlateColor(FLinearColor(0.16f, 0.42f, 0.18f, 1.0f)));
+		StartRoundButtonText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Success));
 	}
 
 	OnStartRoundClicked.Broadcast();
@@ -996,11 +1069,11 @@ void UAOSCharacterSelectWidget::UpdateTeamReadyStatus(bool bTeam1Ready, bool bTe
 	FLinearColor StatusColor;
 	if (bTeam1Ready && bTeam2Ready)
 	{
-		StatusColor = FLinearColor(0.16f, 0.42f, 0.18f, 1.0f);  // 녹색
+		StatusColor = AOSUIStyle::Success;  // 녹색
 	}
 	else if (bTeam1Ready || bTeam2Ready)
 	{
-		StatusColor = FLinearColor(0.80f, 0.52f, 0.05f, 1.0f);  // 호박색
+		StatusColor = AOSUIStyle::Gold;  // 호박색
 	}
 	else
 	{
@@ -1118,8 +1191,8 @@ void UAOSCharacterSelectWidget::UpdateRoundResult()
 		TEXT("지난 라운드 %d 결과:    %s    (%d/3 라인 승)"), R.RoundNumber, *Parts, WinCount)));
 
 	// 다수 라인 승=녹색, 1라인=호박색, 0라인=빨강 (라이트 배경 가독 색)
-	const FLinearColor Color = (WinCount >= 2) ? FLinearColor(0.16f, 0.42f, 0.18f, 1.0f)
-		: (WinCount == 1) ? FLinearColor(0.80f, 0.52f, 0.05f, 1.0f)
+	const FLinearColor Color = (WinCount >= 2) ? AOSUIStyle::Success
+		: (WinCount == 1) ? AOSUIStyle::Gold
 		: CSBanRed;
 	RoundResultText->SetColorAndOpacity(FSlateColor(Color));
 	RoundResultText->SetVisibility(ESlateVisibility::Visible);
