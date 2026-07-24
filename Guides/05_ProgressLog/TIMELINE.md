@@ -1984,4 +1984,27 @@
 - **MCP WBP 레시피 확립**: `manage_blueprint`(create+set_parent+add_overlay 루트) → 파이썬(`new_object`+`add_child`+스타일) → `close_all_editors_for_asset`+`compile`+`save`. 첫 컴파일만 GUID SEH로 느림(타임아웃돼도 에디터서 완료), 이후 빠름. WBP_CharacterSelect 는 `ScaleBox(ScaleToFit)`+1920×1080 캔버스+980px 컬럼으로 재구축(→ 화면 채움·레인 폭 확보).
 
 **결과**
-- 로비→메인메뉴→벤픽→배치→상점→정산 **전 흐름 다크·프리미엄 통일**, 상점 ComfyUI 액자 제거. `WBP_Shop`·`WBP_CharacterSelect` 가 **UMG 에디터에서 계층 편집 가능한 하이브리드**로 승격(사용자 PIE 검증: 렌더·드래그드롭·상점 구매·버튼 정상). **MCP로 BindWidget WBP 저작 가능**을 실증([[mcp-umg-authoring-recipe]]). 문서: `Guides/02_Design/ART_DIRECTION.md`+`UI_Specs/{Shop,CharacterSelect}.md` 신설, `UI_TEXTURE_KIT.md` "AI=콘텐츠, 크롬=토큰 솔리드"로 개정. **C++ 변경(다크 토큰·하이브리드 마이그레이션·버튼 바인딩)은 신규 UPROPERTY 포함 = 풀 리빌드+라이브코딩·커밋 대기.** 남은 폴리시 = 사용자 에디터 시각 다듬기(이제 가능) + 실초상화/아이콘(Phase 5).
+- 로비→메인메뉴→벤픽→배치→상점→정산 **전 흐름 다크·프리미엄 통일**, 상점 ComfyUI 액자 제거. `WBP_Shop`·`WBP_CharacterSelect` 가 **UMG 에디터에서 계층 편집 가능한 하이브리드**로 승격(사용자 PIE 검증: 렌더·드래그드롭·상점 구매·버튼 정상). **MCP로 BindWidget WBP 저작 가능**을 실증([[mcp-umg-authoring-recipe]]). 문서: `Guides/02_Design/ART_DIRECTION.md`+`UI_Specs/{Shop,CharacterSelect}.md` 신설, `UI_TEXTURE_KIT.md` "AI=콘텐츠, 크롬=토큰 솔리드"로 개정. **C++ 변경(다크 토큰·하이브리드 마이그레이션·버튼 바인딩)은 신규 UPROPERTY 포함 = 풀 리빌드+라이브코딩·커밋 대기.** 남은 폴리시 = 사용자 에디터 시각 다듬기(이제 가능) + 실초상화/아이콘(Phase 5). 커밋 `84a12d7`.
+
+---
+
+## 2026-07-24 — 나머지 화면 WBP 하이브리드 마이그레이션(MainMenu·Settlement·Lobby)
+
+**작업 내용**
+- 파일럿(Shop·CharacterSelect) 이후 남은 풀스크린 화면을 동일 레시피로 WBP 하이브리드화. **MainMenu·Settlement**: 순수 C++(`Initialize`+`BuildUI`) → `BindWidgetOptional`(StartGameButton/ExitGameButton/StatusText, ResultText/ReturnToMainMenuButton) + `RebuildWidget` 가드 + `BuildUI→BuildFallbackFrame`(멱등). **Lobby**: 이미 하이브리드였으나 ReadyButton 바인딩이 폴백 전용 경로에만 있어 WBP 생성 시 죽는 잠재 버그 → `NativeConstruct` 로 이동.
+- 버튼 `OnClicked` 바인딩을 **`NativeConstruct` 단일 경로**(WBP/폴백 공용, `IsAlreadyBound` 가드)로 통일 — 세 화면 모두 show 시 populate 함수가 없어 `NativeConstruct` 가 정답(Shop/CS 는 populate 함수에서 바인딩한 것과 대칭).
+- `AOSPlayerController` MainMenu·Settlement 주입부에 `StaticClass()` 최종 폴백 추가(Lobby·Minimap 과 일관 — WBP 부재/손상 시 C++ 폴백 생존).
+- **MCP WBP 저작**: `WBP_Lobby` 신설 + 기존 빈 래퍼 `WBP_MainMenu`·`WBP_Settlement` 트리 저작. 셋 다 `Overlay→BgFill(다크)+CenterBox(중앙)` + BindWidget 이름 계약대로 계층 구성, 다크 토큰 색(PanelRaised/Hi/Base 버튼 틴트) 적용.
+- **범위 판단**: Minimap(런타임 절차적 아이콘 + 자가 위치지정 HUD)·DamageNumber(피격당 순간 부유 텍스트)는 디자이너 편집 표면이 없고 WBP화가 런타임 수식을 깨뜨릴 위험이 있어 **순수 C++ 유지**.
+
+**문제점 / 발견**
+- 기존 `WBP_MainMenu`·`WBP_Settlement` = Parent=C++클래스 + **빈 트리(root=null)** "얇은 래퍼". `RebuildWidget` 가드가 `!RootWidget` 로 폴백을 타 크래시는 없으나 디자이너 편집 불가 → 삭제 불가(PC LoadClass 가 경로 참조, MainMenu/Settlement 는 StaticClass 폴백도 없었음)라 **트리 저작으로 해결**.
+- MCP Python API 교정: `wbp.get_editor_property('WidgetTree')` **protected → `load_object(wbp,'WidgetTree')`**; `TextBlock.set_justification()` **부재 → `set_editor_property('Justification', unreal.TextJustify.CENTER)`**; 부분 실패 후 재빌드 중복 방지 = `root.clear_children()` 선행.
+- **사용자 회귀 보고**: MainMenu 전체화면 불투명 `BgFill` 이 메뉴 맵의 캐릭터 3D 렌더를 가림("원래 캐릭터 렌더가 사라졌어") — MainMenu 는 원래 투명 UI(캐릭터 쇼케이스)였음.
+
+**해결 방법**
+- MainMenu `BgFill` 제거 → 루트 Overlay 에 `CenterBox` 만 남겨 배경 투명화(캐릭터 렌더 복귀). Lobby·Settlement 는 기능성 화면이라 다크 배경 유지.
+- 첫 컴파일 GUID ensure(line 794, 비치명 자동복구) 후 2차 컴파일 클린 확인 + BindWidget 계약 전 항목 존재를 트리 walk 로 검증.
+
+**결과**
+- MainMenu(투명·캐릭터 쇼케이스)·Settlement·Lobby **전부 UMG 에디터 편집 가능 WBP 하이브리드**로 승격 → 파일럿 포함 **주요 화면 7종 전부 하이브리드**(BanPick·Shop·CharacterSelect·HealthBar·MainMenu·Settlement·Lobby). 사용자 PIE 검증: 캐릭터 렌더 복귀 + 버튼 동작 정상. [[mcp-umg-authoring-recipe]] 레시피에 API 교정 3건 + 버튼 바인딩 위치 함정 반영. Minimap·DamageNumber 는 순수 C++ 유지(근거: 런타임 절차적).

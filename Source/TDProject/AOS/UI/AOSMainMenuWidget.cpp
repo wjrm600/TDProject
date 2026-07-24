@@ -9,18 +9,36 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "AOSUIStyle.h"
 
-bool UAOSMainMenuWidget::Initialize()
+TSharedRef<SWidget> UAOSMainMenuWidget::RebuildWidget()
 {
-	bool bSuccess = Super::Initialize();
-	if (bSuccess)
+	// WBP_MainMenu(Parent=UAOSMainMenuWidget)가 있으면 RootWidget 이 이미 채워짐 → 폴백 skip.
+	if (WidgetTree && !WidgetTree->RootWidget)
 	{
-		BuildUI();
+		BuildFallbackFrame();
 	}
-	return bSuccess;
+	return Super::RebuildWidget();
 }
 
-void UAOSMainMenuWidget::BuildUI()
+void UAOSMainMenuWidget::NativeConstruct()
 {
+	Super::NativeConstruct();
+
+	// 버튼 바인딩 (WBP/폴백 단일 경로 — IsAlreadyBound 로 중복 방지)
+	if (StartGameButton && !StartGameButton->OnClicked.IsAlreadyBound(this, &UAOSMainMenuWidget::OnStartGameClicked))
+	{
+		StartGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnStartGameClicked);
+	}
+	if (ExitGameButton && !ExitGameButton->OnClicked.IsAlreadyBound(this, &UAOSMainMenuWidget::OnExitGameClicked))
+	{
+		ExitGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnExitGameClicked);
+	}
+}
+
+void UAOSMainMenuWidget::BuildFallbackFrame()
+{
+	// WBP 가 트리를 저작했으면(RootWidget 존재) 폴백 skip — 멱등.
+	if (WidgetTree && WidgetTree->RootWidget) { return; }
+
 	// Root CanvasPanel
 	UCanvasPanel* RootPanel = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
 	WidgetTree->RootWidget = RootPanel;
@@ -70,7 +88,7 @@ void UAOSMainMenuWidget::BuildUI()
 	StartText->SetFont(StartFont);
 	StartText->SetColorAndOpacity(FSlateColor(AOSUIStyle::Gold));
 	StartGameButton->AddChild(StartText);
-	StartGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnStartGameClicked);
+	// OnClicked 바인딩은 NativeConstruct 에서 (WBP/폴백 공용 단일 경로)
 
 	// ExitGameButton
 	ExitGameButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("ExitGameButton"));
@@ -85,9 +103,9 @@ void UAOSMainMenuWidget::BuildUI()
 	ExitText->SetFont(ExitFont);
 	ExitText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextMuted));
 	ExitGameButton->AddChild(ExitText);
-	ExitGameButton->OnClicked.AddDynamic(this, &UAOSMainMenuWidget::OnExitGameClicked);
+	// OnClicked 바인딩은 NativeConstruct 에서 (WBP/폴백 공용 단일 경로)
 
-	UE_LOG(LogTemp, Warning, TEXT("[MainMenu] UI 동적 생성 완료"));
+	UE_LOG(LogTemp, Warning, TEXT("[MainMenu] 폴백 UI 생성 완료 (WBP_MainMenu 미사용)"));
 }
 
 void UAOSMainMenuWidget::OnStartGameClicked()

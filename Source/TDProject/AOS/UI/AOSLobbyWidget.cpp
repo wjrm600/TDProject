@@ -66,11 +66,10 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 			PanelSlot->SetSize(FVector2D(400.0f, 35.0f));
 		}
 
-		// 준비 버튼
+		// 준비 버튼 (OnClicked 바인딩은 NativeConstruct 에서 — WBP/폴백 공용 단일 경로)
 		ReadyButton = WidgetTree->ConstructWidget<UButton>(
 			UButton::StaticClass(), TEXT("ReadyButton"));
 		ReadyButton->SetStyle(AOSUIStyle::SolidButtonStyle(AOSUIStyle::PanelRaised));
-		ReadyButton->OnClicked.AddDynamic(this, &UAOSLobbyWidget::OnReadyButtonClicked);
 		Canvas->AddChild(ReadyButton);
 		if (UCanvasPanelSlot* PanelSlot = Cast<UCanvasPanelSlot>(ReadyButton->Slot))
 		{
@@ -88,6 +87,17 @@ TSharedRef<SWidget> UAOSLobbyWidget::RebuildWidget()
 	}
 
 	return Super::RebuildWidget();
+}
+
+void UAOSLobbyWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	// 버튼 바인딩 (WBP/폴백 단일 경로 — IsAlreadyBound 로 중복 방지)
+	if (ReadyButton && !ReadyButton->OnClicked.IsAlreadyBound(this, &UAOSLobbyWidget::OnReadyButtonClicked))
+	{
+		ReadyButton->OnClicked.AddDynamic(this, &UAOSLobbyWidget::OnReadyButtonClicked);
+	}
 }
 
 void UAOSLobbyWidget::UpdatePlayerCount(int32 Connected, int32 Required)

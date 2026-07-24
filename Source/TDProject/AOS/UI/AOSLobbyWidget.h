@@ -42,7 +42,11 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional))
 	UButton* ReadyButton;
 
+	// 하이브리드: WBP_Lobby(Parent=UAOSLobbyWidget) 있으면 디자이너 트리, 없으면 폴백 프레임 생성.
 	virtual TSharedRef<SWidget> RebuildWidget() override;
+
+	// 버튼 OnClicked 바인딩(WBP/폴백 공용 단일 경로 — 폴백에만 두면 WBP 경로에서 유실).
+	virtual void NativeConstruct() override;
 
 private:
 	UFUNCTION()

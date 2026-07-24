@@ -620,6 +620,10 @@ void AAOSPlayerController::ShowMainMenu()
 		{
 			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_MainMenu.WBP_MainMenu_C"));
 		}
+		if (!WidgetClass)
+		{
+			WidgetClass = UAOSMainMenuWidget::StaticClass();  // WBP 부재 시 C++ 폴백(RebuildWidget 가드)
+		}
 		if (WidgetClass)
 		{
 			MainMenuWidget = CreateWidget<UAOSMainMenuWidget>(this, WidgetClass);
@@ -681,6 +685,10 @@ void AAOSPlayerController::ShowSettlement(EAOSTeam WinningTeam)
 		if (!WidgetClass)
 		{
 			WidgetClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/AOS/UI/WBP_Settlement.WBP_Settlement_C"));
+		}
+		if (!WidgetClass)
+		{
+			WidgetClass = UAOSSettlementWidget::StaticClass();  // WBP 부재 시 C++ 폴백(RebuildWidget 가드)
 		}
 		if (WidgetClass)
 		{
@@ -757,7 +765,7 @@ void AAOSPlayerController::ShowCharacterSelect()
 
 	if (CharacterSelectWidget)
 	{
-		// AddToViewport 먼저 → Slate가 Initialize() → BuildUI() → CardGrid 생성
+		// AddToViewport 먼저 → Slate가 RebuildWidget()(WBP 없으면 BuildFallbackFrame) → CardGrid 실현
 		if (!CharacterSelectWidget->IsInViewport())
 		{
 			CharacterSelectWidget->AddToViewport(10);
