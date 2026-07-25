@@ -29,7 +29,7 @@
 #include "AOSUIStyle.h"
 
 // ─────────────────────────────────────────────────────────────
-// 라운드 준비 창 디자인 — 벤픽 창(UAOSBanPickWidget)과 동일한 화이트+파스텔 테마.
+// 라운드 준비 창 디자인 — 벤픽 창(UAOSBanPickWidget)과 동일한 다크·프리미엄 테마.
 //   ※ 색 토큰은 공유 헤더 AOSUIStyle.h 로 위임(단일 진실). CS* 이름은 호출부 보존용 별칭
 //     (CS 접두라 벤픽 k* 와 유니티 빌드 충돌 없음).
 // ─────────────────────────────────────────────────────────────
@@ -41,18 +41,19 @@ namespace
 	const TCHAR* CSLineTaperHPath = TEXT("/Game/AOS/UI/Assets/T_BanPick_LineTaperH.T_BanPick_LineTaperH");
 	const TCHAR* CSWingSidePath  = TEXT("/Game/AOS/UI/Assets/T_BanPick_WingSide.T_BanPick_WingSide");
 
-	// ── 팔레트: AOSUIStyle(공유 토큰)로 위임 — 화이트+파스텔, 벤픽과 동일 단일 진실(값 중앙화) ──
-	const FLinearColor CSBgLight     = AOSUIStyle::BgBase;       // 전체 배경(near-white)
-	const FLinearColor CSPanelLight  = AOSUIStyle::CardWhite;    // 패널/카드 바탕(흰색)
-	const FLinearColor CSCardEmpty   = AOSUIStyle::PanelSoft;    // 빈 슬롯
-	const FLinearColor CSBorderLight = AOSUIStyle::BorderSoft;   // 얇은 테두리
-	const FLinearColor CSTextDark    = AOSUIStyle::TextSlate;    // 본문 텍스트(슬레이트)
+	// ── 팔레트: AOSUIStyle(공유 토큰)로 위임 — v2 다크·프리미엄, 벤픽과 동일 단일 진실(값 중앙화) ──
+	//    로컬 핸들(CS*) 이름은 호출부 보존 위해 유지, 정의는 정식 시맨틱 토큰(구 라이트 별칭 제거).
+	const FLinearColor CSBgLight     = AOSUIStyle::BgBase;       // 화면 다크 베이스
+	const FLinearColor CSPanelLight  = AOSUIStyle::PanelRaised;  // 패널/카드 바탕(다크 2단)
+	const FLinearColor CSCardEmpty   = AOSUIStyle::PanelBase;    // 빈 슬롯(다크 1단)
+	const FLinearColor CSBorderLight = AOSUIStyle::Border;       // 얇은 구획선
+	const FLinearColor CSTextDark    = AOSUIStyle::TextPrimary;  // 본문 텍스트(다크 위 밝은 라이트)
 	const FLinearColor CSTextGray    = AOSUIStyle::TextMuted;    // 보조 텍스트
 	const FLinearColor CSLockInBlue  = AOSUIStyle::RedCTA;       // 라운드 준비 버튼(활성) — 빨강(v2)
-	const FLinearColor CSLockInIdle  = AOSUIStyle::AccentIdle;   // 준비 버튼(완료/비활성)
-	const FLinearColor CSBanRed      = AOSUIStyle::BanRed;       // 장식 강조
+	const FLinearColor CSLockInIdle  = AOSUIStyle::PanelHi;      // 준비 버튼(완료/비활성)
+	const FLinearColor CSBanRed      = AOSUIStyle::Danger;       // 장식 강조
 
-	// 배치 슬롯 상태색 (라이트)
+	// 배치 슬롯 상태색 (다크)
 	const FLinearColor kSlotFilled(0.086f, 0.204f, 0.145f, 1.f); // 배정됨 — 딥 그린(다크)
 	const FLinearColor kSlotHover(0.122f, 0.298f, 0.212f, 1.f);  // 드래그 호버 — 밝은 그린(다크)
 
@@ -988,7 +989,7 @@ void UAOSCharacterSelectWidget::UpdatePreparationTimer(float RemainingSeconds)
 	TimerText->SetText(FText::FromString(
 		FString::Printf(TEXT("준비 시간: %d초"), Seconds)));
 
-	// 10초 이하면 빨간색으로 강조 (라이트 배경 — 가독 색)
+	// 10초 이하면 빨간색으로 강조 (다크 배경 — 가독 색)
 	FLinearColor Color = (Seconds <= 10) ? CSBanRed : CSTextDark;
 	TimerText->SetColorAndOpacity(FSlateColor(Color));
 
@@ -1065,7 +1066,7 @@ void UAOSCharacterSelectWidget::UpdateTeamReadyStatus(bool bTeam1Ready, bool bTe
 		TeamLabel(bTeam1Ready), TeamLabel(bTeam2Ready));
 	TeamReadyStatusText->SetText(FText::FromString(StatusStr));
 
-	// 양 팀 모두 준비 → 녹색, 한쪽만 → 호박색, 둘 다 미준비 → 회색 (라이트 배경 가독 색)
+	// 양 팀 모두 준비 → 녹색, 한쪽만 → 호박색, 둘 다 미준비 → 회색 (다크 배경 가독 색)
 	FLinearColor StatusColor;
 	if (bTeam1Ready && bTeam2Ready)
 	{
@@ -1190,7 +1191,7 @@ void UAOSCharacterSelectWidget::UpdateRoundResult()
 	RoundResultText->SetText(FText::FromString(FString::Printf(
 		TEXT("지난 라운드 %d 결과:    %s    (%d/3 라인 승)"), R.RoundNumber, *Parts, WinCount)));
 
-	// 다수 라인 승=녹색, 1라인=호박색, 0라인=빨강 (라이트 배경 가독 색)
+	// 다수 라인 승=녹색, 1라인=호박색, 0라인=빨강 (다크 배경 가독 색)
 	const FLinearColor Color = (WinCount >= 2) ? AOSUIStyle::Success
 		: (WinCount == 1) ? AOSUIStyle::Gold
 		: CSBanRed;

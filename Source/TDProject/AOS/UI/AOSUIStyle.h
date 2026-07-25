@@ -8,11 +8,9 @@
 //   • 지반 = 진한 청색 편향 차콜(3단 패널 계층), 텍스트 = 밝은 라이트.
 //   • 액센트 역할 분리(중요): Gold = 경제/상점 CTA, Info(파랑) = 시간/타이머,
 //     RedCTA(빨강) = 진행/실행(라운드 준비). 팀 코랄/애저 = 팩션, Success/Danger = 상태.
-//   • 하위호환: 기존 심볼(BgBase/PanelSoft/CardWhite/TextSlate/Accent/BanRed/PreviewRing…)은
-//     이름을 유지하되 값만 다크로 갱신 → 모든 다운스트림이 재컴파일만으로 즉시 다크가 된다.
-//     신규 시맨틱 토큰(Gold/Info/RedCTA/Success/Danger/Panel*/Border*…)은 아래에 추가했다.
-//     (일부 옛 이름은 다크에서 의미가 어긋난다 — 예: "CardWhite" 는 이제 어두운 카드 바탕.
-//      각 위젯을 하이브리드 마이그레이션할 때 신규 시맨틱 이름으로 점진 교체한다.)
+//   • 토큰 = 시맨틱 단일 진실: 지반(Bg*/Panel*/Border*) · 텍스트(Text*) · 액센트(Gold/Info/
+//     RedCTA) · 상태(Success/Danger) · 팀(TeamAccent/TeamDeep). 위젯 .cpp 에 색을 흩뿌리지 말 것.
+//     (구 라이트 테마 별칭 CardWhite/TextSlate/Accent/BanRed/PreviewRing… 은 전 위젯 이행 완료로 제거됨.)
 //
 // 팀색은 게임 타입 의존을 피하려 bool bTeam1 로 받는다 (호출부: Team == EAOSTeam::Team1).
 // 값은 sRGB decimal(hex/255) 관례 — 이 코드베이스의 기존 FLinearColor 저작 방식과 동일.
@@ -56,15 +54,8 @@ namespace AOSUIStyle
 	inline const FLinearColor Success     = FLinearColor(0.306f, 0.796f, 0.518f, 1.f); // 유효/구매가능/배치완료
 	inline const FLinearColor Danger      = FLinearColor(0.878f, 0.357f, 0.329f, 1.f); // 밴/불가/제거
 
-	// ── 하위호환 별칭 (옛 이름 유지 → 재컴파일만으로 다크 적용) ──
-	inline const FLinearColor PanelSoft   = PanelBase;    // 옛 "옅은 패널 톤"
-	inline const FLinearColor CardWhite   = PanelRaised;  // 옛 "카드 바탕"(이제 다크)
-	inline const FLinearColor BorderSoft  = Border;       // 옛 "얇은 테두리"
-	inline const FLinearColor TextSlate   = TextPrimary;  // 옛 "본문/헤딩"(라이트→다크에서 밝은 텍스트)
-	inline const FLinearColor Accent      = Info;         // 옛 "LOCK IN 활성(블루)" → Info 로 통합
-	inline const FLinearColor AccentIdle  = PanelHi;      // 옛 "LOCK IN 비활성 바탕"
-	inline const FLinearColor BanRed      = Danger;       // 옛 "밴 X" → Danger
-	inline const FLinearColor PreviewRing = Gold;         // 옛 "미리보기/활성 슬롯 골드 링" → Gold
+	// (구 라이트 테마 하위호환 별칭 PanelSoft/CardWhite/BorderSoft/TextSlate/Accent/AccentIdle/
+	//  BanRed/PreviewRing 은 전 위젯이 정식 시맨틱 토큰으로 이행 완료되어 2026-07-25 제거됨.)
 
 	// 팀 파스텔 림 / 진한 텍스트 (bTeam1 ? 코랄 : 애저)
 	inline FLinearColor TeamAccent(bool bTeam1)

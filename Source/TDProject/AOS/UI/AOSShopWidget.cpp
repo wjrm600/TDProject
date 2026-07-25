@@ -36,7 +36,7 @@ void UAOSShopUnitButton::BuildButtonUI(const FText& UnitName, int32 /*OwnedItemC
 	FSlateFontInfo F = Label->GetFont();
 	F.Size = 16;
 	Label->SetFont(F);
-	Label->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextSlate));   // 라이트 버튼 대비
+	Label->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));   // 다크 버튼 위 밝은 라벨
 	Button->AddChild(Label);
 }
 
@@ -83,7 +83,7 @@ void UAOSShopItemButton::SetAffordable(bool bAffordable)
 	if (Label && !bRecommended)
 	{
 		Label->SetColorAndOpacity(FSlateColor(bAffordable
-			? AOSUIStyle::TextSlate
+			? AOSUIStyle::TextPrimary
 			: AOSUIStyle::TextFaint));   // 구매가능=본문 / 불가=흐린 회색
 	}
 }
@@ -166,7 +166,7 @@ void UAOSShopWidget::BuildShopUI()
 		UTextBlock* BackLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopBackLabel"));
 		BackLabel->SetText(FText::FromString(TEXT("◀ 뒤로")));
 		FSlateFontInfo BF = BackLabel->GetFont(); BF.Size = 15; BackLabel->SetFont(BF);
-		BackLabel->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextSlate));
+		BackLabel->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));
 		BackButton->AddChild(BackLabel);
 	}
 	UHorizontalBoxSlot* BackHS = Header->AddChildToHorizontalBox(BackButton);
@@ -176,7 +176,7 @@ void UAOSShopWidget::BuildShopUI()
 	TitleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopTitle"));
 	TitleText->SetText(FText::FromString(TEXT("상점 — 유닛 선택")));
 	FSlateFontInfo TF = TitleText->GetFont(); TF.Size = 26; TitleText->SetFont(TF);
-	TitleText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextSlate));   // 라이트 배경 대비
+	TitleText->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));   // 다크 배경 위 밝은 제목
 	UHorizontalBoxSlot* TitleHS = Header->AddChildToHorizontalBox(TitleText);
 	TitleHS->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	TitleHS->SetVerticalAlignment(EVerticalAlignment::VAlign_Center);
@@ -204,7 +204,7 @@ void UAOSShopWidget::BuildShopUI()
 		UTextBlock* CloseLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopCloseLabel"));
 		CloseLabel->SetText(FText::FromString(TEXT(" ✕ 닫기 ")));
 		FSlateFontInfo CF = CloseLabel->GetFont(); CF.Size = 15; CloseLabel->SetFont(CF);
-		CloseLabel->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextSlate));
+		CloseLabel->SetColorAndOpacity(FSlateColor(AOSUIStyle::TextPrimary));
 		CloseButton->AddChild(CloseLabel);
 	}
 	UHorizontalBoxSlot* CloseHS = Header->AddChildToHorizontalBox(CloseButton);
@@ -374,7 +374,7 @@ void UAOSShopWidget::RebuildItemButtons(const FAOSShopUnit& Unit)
 	{
 		UTextBlock* Err = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ShopItemErr"));
 		Err->SetText(FText::FromString(TEXT("아이템 테이블(DT_Items)을 찾을 수 없습니다.")));
-		Err->SetColorAndOpacity(FSlateColor(AOSUIStyle::BanRed));
+		Err->SetColorAndOpacity(FSlateColor(AOSUIStyle::Danger));
 		ItemStoreBox->AddChildToVerticalBox(Err);
 		return;
 	}

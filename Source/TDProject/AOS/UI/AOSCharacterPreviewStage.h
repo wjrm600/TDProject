@@ -76,10 +76,11 @@ protected:
 	FRotator MeshRelativeRotation = FRotator(0.f, -90.f, 0.f);
 
 	// 렌더 타깃 배경색 (ShowOnlyList 라 메시 외 영역은 이 클리어 컬러)
-	//  화이트+파스텔 UI: 빈 영역을 UI 배경과 동색(near-white)으로 → 다크 블록 제거, 캐릭터 플로팅.
+	//  v2 다크·프리미엄: 빈 영역을 호스트 패널과 동색으로 → 밝은 블록 없이 캐릭터가 패널 위 플로팅.
+	//  값은 AOSUIStyle::PanelBase(다크 패널 1단)와 일치. 호스트 패널 톤이 바뀌면 함께 갱신할 것.
 	//  (BP 서브클래스가 override 하면 그쪽도 갱신 필요 — 현재는 C++ 스폰이라 이 기본값이 적용됨.)
 	UPROPERTY(EditAnywhere, Category = "Preview|Lighting")
-	FLinearColor BackgroundColor = FLinearColor(0.957f, 0.965f, 0.973f, 1.f);
+	FLinearColor BackgroundColor = FLinearColor(0.055f, 0.078f, 0.125f, 1.f);
 
 	UPROPERTY(EditAnywhere, Category = "Preview|Lighting")
 	float KeyLightIntensity = 9000.f;

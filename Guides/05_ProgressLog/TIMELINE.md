@@ -2008,3 +2008,24 @@
 
 **결과**
 - MainMenu(투명·캐릭터 쇼케이스)·Settlement·Lobby **전부 UMG 에디터 편집 가능 WBP 하이브리드**로 승격 → 파일럿 포함 **주요 화면 7종 전부 하이브리드**(BanPick·Shop·CharacterSelect·HealthBar·MainMenu·Settlement·Lobby). 사용자 PIE 검증: 캐릭터 렌더 복귀 + 버튼 동작 정상. [[mcp-umg-authoring-recipe]] 레시피에 API 교정 3건 + 버튼 바인딩 위치 함정 반영. Minimap·DamageNumber 는 순수 C++ 유지(근거: 런타임 절차적).
+
+---
+
+## 2026-07-25 — 다크 토큰 정합 마무리(별칭 부채 청산) + 프리뷰/메인메뉴 회귀 2건 수정
+
+**작업 내용**
+- Phase 4 잔여 "다크 리테마 정합"을 파고들어 **시각 리테마는 이미 완료 상태**임을 확인 → 실제 남은 것은 **코드 부채 + 놓친 회귀**로 판명, 둘 다 처리.
+- **별칭 부채 청산**: 3개 메뉴 화면(BanPick·CharacterSelect·Shop)의 폐기 라이트 별칭 사용 **30곳**(`CardWhite`/`PanelSoft`/`BorderSoft`/`TextSlate`/`Accent`/`AccentIdle`/`BanRed`/`PreviewRing`) → 정식 다크 시맨틱 토큰(`PanelRaised`/`PanelBase`/`Border`/`TextPrimary`/`Info`/`PanelHi`/`Danger`/`Gold`). `AOSUIStyle.h` 의 **8-심볼 하위호환 별칭 블록 제거** + 상단 설명 주석 갱신. 스테일 주석 ~12곳("near-white/흰색/화이트/라이트 배경/파스텔/저채도·고명도") 다크 현실로 정정.
+- **검증(무변경)**: HealthBar(초록 HP+다크bg)·DamageNumber(호출부 주입색)·Minimap(배경 이미 다크, 팀 점=빨강/파랑 가독성)은 게임플레이 기능색이라 그대로 유지.
+
+**문제점 / 발견**
+- 별칭은 값이 정식 토큰과 **완전 동일**(예: `CardWhite===PanelRaised`) → repoint 은 **런타임 무변경**. 단 `AOSUIStyle::Accent` 가 `AccentIdle` 의 접두라 `replace_all` 부분매칭 위험 → def-block 정밀 Edit 선행 후 잔여만 replace_all.
+- **회귀 ①(프리뷰 흰 박스)**: `AOSCharacterPreviewStage::BackgroundColor` 가 near-white `(0.957,0.965,0.973)` 잔존 → 벤픽/캐릭터선택 3D 프리뷰 렌더타깃 클리어 컬러가 **다크 패널 위 밝은 사각형**으로 떠 보임(라이트→다크 전환에서 원 의도가 반전됨).
+- **회귀 ②(메인메뉴 검은 배경)**: 사용자 보고 "메인 화면 검은 배경에 캐릭터 렌더 안 보임". 조사 결과 **커밋된 `WBP_MainMenu` 에 전체화면 불투명 `Border(BgFill=BgDeep, a1.0)` 가 여전히 존재** — 2026-07-24 항목의 "BgFill 제거"가 **디스크에 persist 안 됨**(구조적 `remove_widget` 이 저장까지 안 내려가 라이브 인메모리에서만 사라졌던 것). 재빌드·에디터 재로드로 부활, 레벨 캐릭터를 검게 가림. **이번 C++ 변경과 무관**한 기존 에셋 문제.
+
+**해결 방법**
+- 프리뷰 배경 near-white → `AOSUIStyle::PanelBase` 동일값 `(0.055,0.078,0.125)` (액터 헤더라 Slate 무거운 `AOSUIStyle.h` include 대신 값 일치 + 주석에 토큰 근거).
+- **WBP_MainMenu 재발 방지**: 구조 제거 대신 **프로퍼티 변경**(BgFill `Visibility=Collapsed` + 브러시 알파 0) — 기존 위젯의 직렬화 프로퍼티라 compile/save/commit 파이프라인에서 persist 신뢰도↑. `close_all_editors_for_asset`(스테일 디자이너 카피 차단) → `compile_blueprint` → `save_asset(only_if_is_dirty=False)` 강제 저장 → **git 디스크 수정 확인**(2 ins/2 del)으로 persist 검증.
+
+**결과**
+- 메뉴 3화면 정식 토큰 단일화 + 하위호환 별칭 레이어 제거 → `AOSUIStyle.h` 시맨틱 SSOT 정리 완료(헤더가 예고했던 이행 종료). 프리뷰 흰박스·메인메뉴 검은배경 **회귀 2건 해소, 사용자 PIE 검증 "정상"**. 순수 C++ 색배선·인라인상수 제거·UPROPERTY 기본값 1개만 변경 = 핫리로드 호환(신규 UPROPERTY/USTRUCT 없음). [[mcp-umg-authoring-recipe]] 에 "구조 제거보다 프로퍼티 변경이 persist 신뢰도 높음" 교훈 추가 대상. (본 커밋)

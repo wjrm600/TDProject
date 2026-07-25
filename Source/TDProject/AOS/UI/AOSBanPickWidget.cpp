@@ -59,23 +59,23 @@ namespace
 		return F;
 	}
 
-	// 초상화 없는(플레이스홀더) 유닛용 컬러 타일 — AOSUIStyle 의 파스텔(저채도/고명도) 분산.
+	// 초상화 없는(플레이스홀더) 유닛용 컬러 타일 — AOSUIStyle 의 다크용(중채도/저명도) 분산.
 	FLinearColor PlaceholderColor(int32 Index)
 	{
 		return AOSUIStyle::PlaceholderColor(Index);
 	}
 
-	// ── 팔레트: 전부 AOSUIStyle(공유 토큰)로 위임 — 화이트+파스텔 블렌드, 값 중앙화(중복 제거).
-	//    이름(k*)은 호출부 보존 위해 유지하되 정의는 AOSUIStyle 단일 진실 (CS-접두와 이름이 달라 충돌 없음).
-	const FLinearColor kBgLight    = AOSUIStyle::BgBase;      // 전체 배경(near-white)
-	const FLinearColor kPanelLight = AOSUIStyle::CardWhite;   // 패널/카드 바탕(흰색)
-	const FLinearColor kCardEmpty  = AOSUIStyle::PanelSoft;   // 빈 슬롯
-	const FLinearColor kBorderLight= AOSUIStyle::BorderSoft;  // 얇은 테두리
-	const FLinearColor kTextDark   = AOSUIStyle::TextSlate;   // 본문 텍스트(슬레이트)
+	// ── 팔레트: 전부 AOSUIStyle(공유 토큰)로 위임 — v2 다크·프리미엄, 값 중앙화(중복 제거).
+	//    로컬 핸들(k*) 이름은 호출부 보존 위해 유지, 정의는 정식 시맨틱 토큰(구 라이트 별칭 제거).
+	const FLinearColor kBgLight    = AOSUIStyle::BgBase;      // 화면 다크 베이스
+	const FLinearColor kPanelLight = AOSUIStyle::PanelRaised; // 패널/카드 바탕(다크 2단)
+	const FLinearColor kCardEmpty  = AOSUIStyle::PanelBase;   // 빈 슬롯(다크 1단)
+	const FLinearColor kBorderLight= AOSUIStyle::Border;      // 얇은 구획선
+	const FLinearColor kTextDark   = AOSUIStyle::TextPrimary; // 본문 텍스트(다크 위 밝은 라이트)
 	const FLinearColor kTextGray   = AOSUIStyle::TextMuted;   // 보조 텍스트
-	const FLinearColor kLockInBlue = AOSUIStyle::Accent;      // LOCK IN 버튼(활성)
-	const FLinearColor kLockInIdle = AOSUIStyle::AccentIdle;  // LOCK IN 버튼(비활성)
-	const FLinearColor kBanRed     = AOSUIStyle::BanRed;      // 밴 X / 장식 강조
+	const FLinearColor kLockInBlue = AOSUIStyle::Info;        // LOCK IN 버튼(활성) — Info(파랑)
+	const FLinearColor kLockInIdle = AOSUIStyle::PanelHi;     // LOCK IN 버튼(비활성 바탕)
+	const FLinearColor kBanRed     = AOSUIStyle::Danger;      // 밴 X / 장식 강조
 
 	// 그리드 최대 표시 높이 = 5행. 행 높이 ≈ 카드(58+보더4)=62 + 이름(11+패딩2)=13 + 랩패딩6 ≈ 81 → 81×5 ≈ 405 + 여유
 	constexpr float kGridMaxHeight = 410.f;
@@ -563,7 +563,7 @@ void UAOSBanPickWidget::PopulateBanRow(EAOSTeam Team)
 		Box->SetHeightOverride(40.f);
 
 		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius, AOSUIStyle::BorderSoft, 1.f));
+		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::PanelRaised, AOSUIStyle::SlotRadius, AOSUIStyle::Border, 1.f));
 		Frame->SetPadding(FMargin(2.f));
 		UBorder* Inner = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		Inner->SetBrushColor(kCardEmpty);
@@ -612,8 +612,8 @@ void UAOSBanPickWidget::PopulatePickRow(EAOSTeam Team)
 	for (int32 i = 0; i < PicksPerTeam; ++i)
 	{
 		// 레퍼런스 카드: [초상화 영역] + "SELECTED HERO" + 이름(CHOOSE HERO) + 슬롯탭(R1/B1)
-		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());   // 둥근 흰 카드 + 팀 파스텔 보더(RefreshSlots 가 상태별 교체)
-		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius,
+		UBorder* Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());   // 둥근 다크 카드 + 팀 액센트 보더(RefreshSlots 가 상태별 교체)
+		Frame->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::PanelRaised, AOSUIStyle::SlotRadius,
 			AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1), 1.5f));
 		Frame->SetPadding(FMargin(6.f));
 		UBorder* Inner = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
@@ -713,8 +713,8 @@ void UAOSBanPickWidget::InitializeWithRoster(const TArray<FCharacterRosterEntry>
 				*FString::Printf(TEXT("BPCard_%d"), i));
 			Card->SetVisibility(ESlateVisibility::HitTestInvisible); // 클릭은 루트가 히트테스트로 처리
 			// 소프트 카드: 둥근 흰 프레임 + 얇은 소프트 보더 (RefreshCards 가 상태별로 보더 색/두께 교체)
-			Card->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::CardRadius,
-				AOSUIStyle::BorderSoft, 1.f));
+			Card->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::PanelRaised, AOSUIStyle::CardRadius,
+				AOSUIStyle::Border, 1.f));
 			Card->SetPadding(FMargin(4.f));
 
 			USizeBox* CardSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -1012,12 +1012,12 @@ void UAOSBanPickWidget::RefreshCards()
 		// 소프트 카드: 흰 채움 유지 + 상태별 보더(색/두께)로 표현
 		if (CardBorders[i])
 		{
-			FLinearColor Outline = AOSUIStyle::BorderSoft; float Width = 1.f;       // 기본 = 소프트 보더
-			if (i == PendingIndex)                               { Outline = AOSUIStyle::PreviewRing; Width = 2.5f; } // 미리보기 = 골드 ring
-			else if (GS->IsUnitBanned(i))                        { Outline = AOSUIStyle::BanRed;            Width = 2.f; }            // 밴
+			FLinearColor Outline = AOSUIStyle::Border; float Width = 1.f;       // 기본 = 소프트 보더
+			if (i == PendingIndex)                               { Outline = AOSUIStyle::Gold; Width = 2.5f; } // 미리보기 = 골드 ring
+			else if (GS->IsUnitBanned(i))                        { Outline = AOSUIStyle::Danger;            Width = 2.f; }            // 밴
 			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team1)) { Outline = AOSUIStyle::TeamAccent(true);  Width = 2.f; }            // T1 픽 = 코랄
 			else if (GS->IsUnitPickedByTeam(i, EAOSTeam::Team2)) { Outline = AOSUIStyle::TeamAccent(false); Width = 2.f; }            // T2 픽 = 블루
-			CardBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::CardRadius, Outline, Width));
+			CardBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::PanelRaised, AOSUIStyle::CardRadius, Outline, Width));
 		}
 	}
 }
@@ -1089,14 +1089,14 @@ void UAOSBanPickWidget::RefreshSlots()
 					PickNames[i]->SetColorAndOpacity(FSlateColor(bActive ? TeamColor(Team) : kTextGray));
 				}
 			}
-			// 슬롯 테두리: 둥근 흰 카드 유지 + 상태별 보더(활성=골드 / 채워짐=팀 파스텔 / 빈=소프트)
+			// 슬롯 테두리: 둥근 다크 카드 유지 + 상태별 보더(활성=골드 / 채워짐=팀 액센트 / 빈=소프트)
 			if (PickBorders.IsValidIndex(i) && PickBorders[i])
 			{
-				const FLinearColor Outline = bActive ? AOSUIStyle::PreviewRing
+				const FLinearColor Outline = bActive ? AOSUIStyle::Gold
 					: bFilled ? AOSUIStyle::TeamAccent(Team == EAOSTeam::Team1)
-					          : AOSUIStyle::BorderSoft;
+					          : AOSUIStyle::Border;
 				const float Width = bActive ? 2.5f : bFilled ? 2.f : 1.f;
-				PickBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::CardWhite, AOSUIStyle::SlotRadius, Outline, Width));
+				PickBorders[i]->SetBrush(FSlateRoundedBoxBrush(AOSUIStyle::PanelRaised, AOSUIStyle::SlotRadius, Outline, Width));
 			}
 		}
 	};
