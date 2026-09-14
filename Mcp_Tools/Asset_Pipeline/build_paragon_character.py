@@ -12,9 +12,10 @@ build_paragon_character.py — Paragon 히어로를 고유 캐릭터로 편입�
     open(r'E:/.../Saved/Temp/bpc.log','w',encoding='utf-8').write("\n".join(log))
   (execute_python 은 예외 시 stdout 을 버리므로 로그는 파일로 남겨 Read 로 확인.)
 
-[BS 리빌드 = 유일한 MCP 후처리] BlendSpace 그리드 삼각분할은 Python 네이티브 API 가
-없다 → run() 직후 MCP 로 1줄:
-    animation_physics force_rebuild_blend_space  /Game/AOS/Anim/BS_<Name>_Locomotion
+[BS 그리드 리베이크 = 자동] BlendSpace 는 샘플만 써넣고 저장하면 평가용 삼각분할
+(GridSamples)이 빈 채 직렬화돼 런타임/ABP 가 ref 포즈(T포즈)로 떨어진다. build_blendspace()
+가 에셋 에디터 open→save→close 로 리베이크를 자동 수행하고 파일 크기(>15KB)로 검증한다.
+(구: MCP `animation_physics force_rebuild_blend_space` 수동 호출 — 누락 빈발로 자동화됨)
 
 [캐릭터당 남는 수동(에디터)] ① ABP AnimGraph 배선(BS→DefaultSlot→Output, ABP_Kwang 복사)
 ② AM_<Name>_Attack 에 B·C 클립 + AttackA/AttackB/Crit 3섹션(크리 시스템 활성).
@@ -34,6 +35,8 @@ build_paragon_character.py — Paragon 히어로를 고유 캐릭터로 편입�
                    'R':'Ability_Ultimate','Death':'Death','HitReact':'HitReact_Front'},
     }
 """
+import os
+
 import unreal
 
 eal = unreal.EditorAssetLibrary
@@ -92,8 +95,23 @@ def build_blendspace(cfg):
         s.set_editor_property('sample_value', unreal.Vector(float(sx), float(sy), 0.0))
         samples.append(s)
     bs.set_editor_property('sample_data', samples)
+
+    # ⚠️ 그리드 리베이크 필수. 샘플만 써넣고 저장하면 평가용 삼각분할(GridSamples)이 빈 채로
+    #    직렬화돼, 런타임/ABP 가 ref 포즈(T포즈)로 떨어진다 — 데이터는 멀쩡한데 인덱스만 빈 상태.
+    #    (2026-09-15: 로스터 BS 15개 중 10개가 이 단계 누락으로 전부 T포즈였음.)
+    #    에셋 에디터를 열면 ValidateSampleData/ResampleData 가 돌아 그리드가 구워지므로
+    #    open → 강제 save → close 로 자동화한다.
+    aes = unreal.get_editor_subsystem(unreal.AssetEditorSubsystem)
+    aes.open_editor_for_assets([bs])
     eal.save_asset(bs_path, False)
-    log.append(f"[BS] {bs_path}  샘플 {len(samples)}  ⚠️ MCP force_rebuild_blend_space 필요")
+    aes.close_all_editors_for_asset(bs)
+
+    # 베이크 검증: 정상 BS 는 ~19KB 이상, 미베이크는 ~10KB 에 머문다.
+    content_dir = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir())
+    disk = os.path.join(content_dir, bs_path.replace("/Game/", "", 1) + ".uasset")
+    size = os.path.getsize(disk) if os.path.exists(disk) else -1
+    verdict = "리베이크 OK" if size > 15000 else "⚠️ 베이크 실패 의심 — BS 에디터 수동 확인 필요"
+    log.append(f"[BS] {bs_path}  샘플 {len(samples)}  {verdict} ({size}B)")
     return log
 
 
@@ -244,15 +262,15 @@ def build_abilities(cfg):
 
 
 def run(cfg):
-    """골든 경로 5단계 실행. 반환 = 로그 리스트. 실행 후 BS 리빌드(MCP) 잊지 말 것."""
+    """골든 경로 5단계 실행. 반환 = 로그 리스트. BS 그리드 리베이크는 ① 에서 자동 수행."""
     log = [f"=== build_paragon_character: {cfg['name']} (roster {cfg['roster_index']}) ==="]
     log += build_blendspace(cfg)     # ①
     log += build_abp(cfg)            # ②
     log += build_character_bp(cfg)   # ③ (ABP 참조 → ② 뒤)
     log += build_montages(cfg)       # ④ (BP 배선 → ③ 뒤)
     log += build_abilities(cfg)      # ⑤ (BP 배선 → ③ 뒤)
-    log.append(f"=== 완료. 다음: (1) MCP force_rebuild_blend_space {AOS_ANIM}/BS_{cfg['name']}_Locomotion "
-               f"(2) 에디터: ABP AnimGraph 배선 + AM_{cfg['name']}_Attack 3섹션 ===")
+    log.append(f"=== 완료. 다음(에디터 수동): (1) ABP AnimGraph 배선 "
+               f"(2) AM_{cfg['name']}_Attack 에 B·C 클립 + AttackA/AttackB/Crit 3섹션 ===")
     return log
 
 
