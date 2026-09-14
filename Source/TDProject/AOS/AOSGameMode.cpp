@@ -15,6 +15,10 @@
 #include "EngineUtils.h"
 #include "TimerManager.h"
 #include "GameFramework/PlayerState.h"
+// EndGame() 의 전투 정지용 (StateTree 중단 + 이동 정지)
+#include "AIController.h"
+#include "BrainComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 AAOSGameMode::AAOSGameMode()
 {
@@ -324,15 +328,60 @@ void AAOSGameMode::EndGame(EAOSTeam WinningTeam)
 		return;
 	}
 
+	// 재진입 가드 — CheckVictoryConditions() 는 구조물이 파괴될 때마다 호출되므로,
+	// 종료 후에도 전투가 이어지면 EndGame 이 반복 호출된다(정산 위젯 재표시·로그 폭주).
+	if (AOSGameState == EAOSGameState::Settlement)
+	{
+		return;
+	}
+
 	// 라운드 종료 타이머가 남아있으면 정리
 	if (GetWorldTimerManager().IsTimerActive(RoundEndTimerHandle))
 	{
 		GetWorldTimerManager().ClearTimer(RoundEndTimerHandle);
 	}
 
+	// ── 전투 정지 ──
+	// 상태만 Settlement 로 바꾸면 StateTree 와 구조물 Tick 이 계속 돌아, 정산(승리) 화면 뒤에서
+	// AI 가 계속 싸우고 데미지 숫자가 화면 위로 새어나온다. 실제 전투를 멈춰야 한다.
+	// ※ 헤더 무변경(= 핫 리로드 호환)을 위해 별도 함수를 만들지 않고 여기서 직접 처리한다.
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AAOSCharacter> It(World); It; ++It)
+		{
+			AAOSCharacter* Char = *It;
+			if (!Char)
+			{
+				continue;
+			}
+			// StateTree 중단 = 공격/이동 결정 자체를 멈춤 (사망 처리와 동일한 패턴)
+			if (AAIController* AIC = Cast<AAIController>(Char->GetController()))
+			{
+				if (UBrainComponent* Brain = AIC->GetBrainComponent())
+				{
+					Brain->StopLogic(TEXT("Game ended"));
+				}
+				AIC->StopMovement();
+			}
+			if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+			{
+				CMC->StopMovementImmediately();
+			}
+		}
+
+		// 타워/커맨드센터는 Tick 안에서 FireAtTarget() 을 호출하므로 Tick 을 끄면 사격이 멈춘다.
+		for (TActorIterator<AAOSStructure> It(World); It; ++It)
+		{
+			if (AAOSStructure* Structure = *It)
+			{
+				Structure->SetActorTickEnabled(false);
+			}
+		}
+	}
+
 	SetGameState(EAOSGameState::Settlement);
 
-	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 종료! 승리 팀: %s (라운드 %d)"),
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 게임 종료! 승리 팀: %s (라운드 %d) — 전투 정지 완료"),
 		WinningTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"), CurrentRound);
 }
 

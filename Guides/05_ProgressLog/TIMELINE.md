@@ -2105,3 +2105,26 @@
 - **교훈 2**: Lumen/VSM/레이트레이싱은 **런타임 CVar 로 꺼도 메모리가 안 돌아온다**(영구 풀). 계측은 `rhi.DumpMemory`, 적용은 Config + 재시작
 - **교훈 3**: 순수 CVar 를 `[/Script/Engine.RendererSettings]` 에 적으면 무시된다 → `[SystemSettings]` 사용
 - 되돌리기 대비로 Config 각 줄에 (구) 값과 근거를 주석 보존. 조명 품질이 필요해지면 `r.RayTracing=False`·VSM off 는 유지한 채 **Lumen GI 만 소프트웨어 모드로 복귀**하는 절충안 가능
+
+---
+
+## 2026-09-15 — 승리 후에도 전투가 계속되던 버그 수정 (EndGame 전투 정지 + 재진입 가드)
+
+**작업 내용**
+- 플레이테스트 발견: 상대 커맨드센터를 파괴해 승리했는데 ① 캐릭터들이 계속 공격해 데미지 숫자가 화면에 새어나오고 ② 메인메뉴 복귀 버튼이 보이지 않음
+
+**문제점**
+- `AAOSGameMode::EndGame()` 이 하던 일이 `SetGameState(Settlement)` **단 한 줄**. 상태만 바뀌고 AI StateTree 와 구조물 Tick 은 그대로 돌아 전투가 계속됨
+- **증상 2개가 실은 한 원인**: 데미지 숫자 위젯은 `AddToViewport(ZOrder=30)`, 정산(승리) 위젯은 `AddToViewport(ZOrder=10)` → 전투가 안 멈추니 데미지 숫자가 계속 Z=30 으로 쌓여 **승리 화면 위를 덮었고**, 그 아래의 `ReturnToMainMenuButton` 이 가려졌다. 버튼 자체는 처음부터 정상이었음(WBP 존재·`VISIBLE`·opacity 1.0·라벨 "메인 메뉴로"·거의 흰색 라벨 색·`OnClicked` 바인딩까지 전부 확인함)
+- `CheckVictoryConditions()` 는 구조물이 파괴될 때마다 호출되므로, 종료 후에도 전투가 이어지면 `EndGame` 이 반복 호출됨(정산 위젯 재표시 시도·로그 폭주)
+
+**해결 방법**
+- `EndGame()` 에 전투 정지 추가 — `TActorIterator<AAOSCharacter>` 로 `Brain->StopLogic()` + `AIC->StopMovement()` + `CMC->StopMovementImmediately()`(사망 처리와 동일 패턴), `TActorIterator<AAOSStructure>` 로 `SetActorTickEnabled(false)`. 타워/CC 는 `Tick` 안에서 `FireAtTarget()` 을 호출하므로 **Tick 정지 = 사격 정지**
+- **재진입 가드**: 이미 `Settlement` 상태면 조기 반환
+- 별도 함수를 만들지 않고 `EndGame()` 본문에서 직접 처리 → **헤더 무변경 = 핫 리로드 호환**(신규 UFUNCTION/UPROPERTY 없음). 사용자 Live Coding 후 PIE 검증 완료
+
+**결과**
+- 승리 시 전투가 즉시 멈추고 데미지 숫자가 더 이상 생기지 않음. **메인메뉴 복귀 버튼 정상 표시 + 클릭 동작까지 확인**(사용자) (이 커밋)
+- **교훈 1**: "UI 가 안 보인다"가 UI 버그가 아닐 수 있다. 위젯 속성(Visibility/색/배치/바인딩)이 전부 정상이면 **Z-order 로 무엇이 덮고 있는지** 확인할 것 — 이번엔 게임플로우 버그(전투 미정지)가 UI 증상으로 드러났다
+- **교훈 2**: 게임 종료는 **상태 전이만으로 끝나지 않는다**. AI·구조물처럼 스스로 도는 주체는 명시적으로 멈춰야 한다
+- ⚠️ **잠재 이슈(미처리)**: 전면 UI(Z=10) < 데미지 숫자(Z=30) 구조는 여전히 취약. 향후 일시정지/항복 팝업 추가 시 같은 방식으로 재발 가능 → 전면 UI Z-order 상향(50+) 검토 필요
