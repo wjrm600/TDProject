@@ -2079,3 +2079,29 @@
 - **교훈 1**: "샘플·스켈레톤 다 맞는데 T포즈" = BlendSpace **그리드 미베이크** 의심. `.uasset` 파일 크기가 가장 빠른 판별자(정상 ~19KB / 미베이크 ~10KB)
 - **교훈 2**: "에디터를 열면 고쳐진다"는 증상은 곧 **에디터 전용 재계산 결과가 디스크에 없다**는 뜻 — 열고 **저장까지** 해야 영구 반영
 - **교훈 3**: 스크립트가 주석으로 남긴 "수동 후처리 필요"는 결국 누락된다. 자동화 가능하면 자동화하고, 불가능하면 **자가 검증(크기/개수)으로 실패를 시끄럽게** 만들 것
+
+---
+
+## 2026-09-15 — 에디터 VRAM 고갈 해소: UE5 고사양 렌더링 스택 해제 (15.2GB → 3.1GB)
+
+**작업 내용**
+- 플레이테스트 중 `Video memory has been exhausted (974.289 MB over budget)` 가 반복 표시 → `rhi.DumpMemory` 로 계측 후 `DefaultEngine.ini` 렌더러 설정 조정
+
+**문제점**
+- RTX 3080(VRAM 10GB)인데 실측 **요구 15,256MB**. 내역: Texture2D 3,711 · UAV Texture 3,681 · RenderTarget2D 2,644 · Reserved Texture 1,536 · Vertex Buffer 848 · RT 가속구조 355
+- 프로젝트가 **Lumen GI + Lumen 반사 + 가상그림자맵 + 레이트레이싱 + 메시거리장**을 전부 켠 UE5 최고사양 구성 — 캐릭터가 화면상 100~200px 인 탑다운 MOBA 에는 과잉
+- **오진 2회**: ① 텍스처 화질(`r.MipMapLODBias` 1→2)을 낮췄으나 무효 — 텍스처는 덩어리의 일부였음 ② `r.Streaming.PoolSize` 1000→3000 으로 올려 스트리밍 경고(`TEXTURE STREAMING POOL OVER`)는 없앴지만 **VRAM 을 2GB 더 점유해 실제 고갈을 악화**시킴
+
+**해결 방법**
+- 분기점은 **정확한 로그 문구 확인**이었다: `TEXTURE STREAMING POOL OVER`(스트리밍 풀 부족) ≠ `Video memory has been exhausted`(실제 VRAM 고갈). 후자였음
+- ⚠️ **런타임 CVar 로는 회수 불가** — Lumen 서피스캐시·VSM 페이지풀·RT 가속구조는 렌더러 초기화 시 잡히는 **영구 할당**. 런타임 off 실측 결과 15,256 → 15,237MB(**19MB 뿐**). Config + 에디터 재시작 필수
+- `[/Script/Engine.RendererSettings]`: `r.DynamicGlobalIlluminationMethod=0` · `r.ReflectionMethod=2`(SSR) · `r.Shadow.Virtual.Enable=0` · `r.RayTracing=False` · `r.RayTracing.RayTracingProxies.ProjectEnabled=False` · `r.GenerateMeshDistanceFields=False`
+- 신규 `[SystemSettings]` 섹션: `r.Streaming.PoolSize=1000`(기본 원복) + `r.Streaming.LimitPoolSizeToVRAM=1`. ※ `r.Streaming.*` 는 프로젝트 설정으로 노출되지 않는 순수 CVar 라 `RendererSettings` 에 적으면 무시된다
+
+**결과**
+- **15,256MB → 3,101MB (약 12.1GB, 80% 감소)**, 경고 문구 소멸. 사용자 PIE 확인 "괜찮아 보여" — 조명 룩 저하도 체감되지 않음 (이 커밋)
+- 기여도 순: Lumen GI·반사 off(UAV 3,681→279, 최대) > VSM off(RenderTarget 2,644→206) > PoolSize 원복(Reserved 1,536→0) > 레이트레이싱 off(355→0 + 스켈레탈 20체 BVH 매프레임 재빌드 제거)
+- **교훈 1(최重要)**: VRAM 문제는 **정확한 문구부터 확인**. `TEXTURE STREAMING POOL OVER`(풀 크기)와 `Video memory has been exhausted`(실제 고갈)는 원인도 해법도 정반대 — 전자는 풀을 키워 해결, 후자는 **풀을 키우면 악화**된다
+- **교훈 2**: Lumen/VSM/레이트레이싱은 **런타임 CVar 로 꺼도 메모리가 안 돌아온다**(영구 풀). 계측은 `rhi.DumpMemory`, 적용은 Config + 재시작
+- **교훈 3**: 순수 CVar 를 `[/Script/Engine.RendererSettings]` 에 적으면 무시된다 → `[SystemSettings]` 사용
+- 되돌리기 대비로 Config 각 줄에 (구) 값과 근거를 주석 보존. 조명 품질이 필요해지면 `r.RayTracing=False`·VSM off 는 유지한 채 **Lumen GI 만 소프트웨어 모드로 복귀**하는 절충안 가능
