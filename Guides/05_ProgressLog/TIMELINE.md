@@ -2029,3 +2029,28 @@
 
 **결과**
 - 메뉴 3화면 정식 토큰 단일화 + 하위호환 별칭 레이어 제거 → `AOSUIStyle.h` 시맨틱 SSOT 정리 완료(헤더가 예고했던 이행 종료). 프리뷰 흰박스·메인메뉴 검은배경 **회귀 2건 해소, 사용자 PIE 검증 "정상"**. 순수 C++ 색배선·인라인상수 제거·UPROPERTY 기본값 1개만 변경 = 핫리로드 호환(신규 UPROPERTY/USTRUCT 없음). [[mcp-umg-authoring-recipe]] 에 "구조 제거보다 프로퍼티 변경이 persist 신뢰도 높음" 교훈 추가 대상. (본 커밋)
+
+---
+
+## 2026-09-15 — 2개월 방치된 미커밋 잔여분 회수 (애니 틱 최적화 + Grux·Aurora 공격 3섹션)
+
+**작업 내용**
+- 약 7주 공백 후 재개. 미커밋 53개를 감사해 **실제 작업물 3개**만 선별 커밋·푸시 (`f6fc679`)
+- (1) `BP_Character` 애니 틱 최적화(URO + `OnlyTickMontagesWhenNotRendered`), (2) `AM_Grux_Attack`·`AM_Aurora_Attack` 공격 3섹션 규격 완결
+
+**문제점**
+- 2026-07-19 작업분이 이후 커밋 6개(07-19~07-25)의 **선별 스테이징에서 매번 누락** → 실제 작업물이 약 2개월간 작업 트리에만 존재. 신규 Paragon 캐릭터만 골라 담는 동안 부모 BP·기존 캐릭터 몽타주 변경이 계속 제외됨
+- `.uasset` 은 바이너리라 diff 로 실변경/재저장 구분 불가. 게다가 `git diff --stat` 이 `BP_Char_Ken: 46845 → 130 bytes` 로 표시돼 **에셋 손상으로 오인**할 뻔함
+- 판별 시점에 에디터가 꺼져 있어 MCP 라이브 조회 불가
+
+**해결 방법**
+- **130바이트의 정체 = Git LFS 포인터**(`.gitattributes` forward-only 마이그레이션). HEAD 는 원본 바이너리, 작업본은 포인터로 clean 돼 크기 급감처럼 보인 것 — 디스크 실파일은 44.9KB 정상, 손상 아님
+- **에디터 없이 판별하는 법**: `git cat-file --filters HEAD:<path>` 로 LFS smudge 를 적용해 HEAD 원본 바이트를 복원 → 양쪽에서 **printable 문자열(에셋 경로·프로퍼티명) 추출 후 `Compare-Object`**. 의미 있는 식별자가 늘면 실변경, GUID/압축 노이즈만 다르면 재저장
+- 에디터 재가동 후 **라이브 확정**: CDO 조회(`enable_update_rate_optimizations`, `visibility_based_anim_tick_option`) + 몽타주 `get_num_sections()`/`get_section_name(i)` 로 섹션 구성 대조. ⚠️ `composite_sections`·`slot_anim_tracks` 는 UE 5.7 Python 미노출 → 위 메서드 API 사용
+
+**결과**
+- 실변경 3개만 커밋·푸시(`f6fc679`). 공격 몽타주 3섹션(`AttackA`/`AttackB`/`Crit`) 규격이 **11개 전부 완결**(근접 10종 + Alex 백본). 원거리 4종(Belica·Murdock·Revenant·Sparrow)은 단발 애니(0.4~1.17s)라 `Default` 1섹션이 설계상 정상
+- 나머지 30개(자식 `BP_Char_*` 20 · `ST_AOSCharacterAI` · `LevelPrototyping` 9)는 의미 변화 0 인 재직렬화로 판정 → 미커밋 유지(되돌리기 대기). 자식 BP 는 URO 값을 저장하지 않고 **상속만** 함을 CDO 조회로 확인 → 되돌려도 안전
+- **교훈 1**: LFS 저장소에서 `git diff --stat` 의 극단적 크기 감소(→130B)는 손상이 아니라 **LFS 포인터 전환** 신호. 디스크 실파일 크기부터 확인할 것
+- **교훈 2**: 바이너리 에셋의 실변경 여부는 **`git cat-file --filters` + 문자열 비교**로 에디터 없이 판별 가능
+- **교훈 3**: 선별 스테이징은 노이즈를 막아주지만 **부모 클래스·기존 에셋 변경을 조용히 누락**시킬 수 있다. 작업 세션 종료 시 미커밋 목록을 한 번 훑을 것
