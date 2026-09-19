@@ -2128,3 +2128,27 @@
 - **교훈 1**: "UI 가 안 보인다"가 UI 버그가 아닐 수 있다. 위젯 속성(Visibility/색/배치/바인딩)이 전부 정상이면 **Z-order 로 무엇이 덮고 있는지** 확인할 것 — 이번엔 게임플로우 버그(전투 미정지)가 UI 증상으로 드러났다
 - **교훈 2**: 게임 종료는 **상태 전이만으로 끝나지 않는다**. AI·구조물처럼 스스로 도는 주체는 명시적으로 멈춰야 한다
 - ⚠️ **잠재 이슈(미처리)**: 전면 UI(Z=10) < 데미지 숫자(Z=30) 구조는 여전히 취약. 향후 일시정지/항복 팝업 추가 시 같은 방식으로 재발 가능 → 전면 UI Z-order 상향(50+) 검토 필요
+
+---
+
+## 2026-09-19 — AI 스킬 W·E 가 꺼져 있던 것 복구 (+ StateTree MCP 도구 5/20 미등록 원인 규명)
+
+**작업 내용**
+- `unreal-statetree` MCP 로 `ST_AOSCharacterAI` 구조를 점검하다가, 스킬 상태 `UseW`·`UseE` 가 **비활성(`bEnabled=false`)** 인 것을 발견 → 재활성화 후 컴파일·저장
+
+**문제점**
+- 로스터 14종이 전부 풀스킬(Q/W/E/R) 자산을 갖고 있는데, AI 트리에서 **W·E 가 꺼져 있어 실제로는 R·Q 만 사용**하고 있었다. 특정 스킬만 따로 확인하려고 임시로 끈 뒤 원복하지 않은 흔적(사용자 확인)
+- 트리 자체는 **Design B(재선택 패턴)** 설계대로 정상이었다 — RUNNING 유지 상태 3개(`AttackEnemy`/`AttackStructure`/`PushLane`)만 `OnTick → Root` 트랜지션을 갖고, 즉시 완료되는 스킬 4개는 트랜지션 없음
+- **MCP 도구가 5개만 잡힘**: `describe`/`add_state`/`compile`/`save`/`capabilities` 뿐이라 상태 활성화 도구(`set_state_properties`)가 없었다
+- UE Python 우회도 불가 — `UStateTree.EditorData` 가 **protected 라 읽기조차 거부**(`Property 'EditorData' ... is protected and cannot be read`). CLAUDE.md 의 "파이썬으로는 불가능" 이 바로 이 지점이며, 전용 C++ 플러그인이 존재하는 이유
+
+**해결 방법**
+- 도구 누락 원인 = **연결된 MCP 프로세스가 구버전**. 판별법: 서버 소스에 `@mcp.tool()` 이 20개 있는데 세션엔 5개뿐 → `server.py` 의 **mtime 이 MCP 프로세스 기동 시각보다 나중**이면 stale 확정. `unreal-statetree` 는 project 스코프 서버라 에이전트가 재연결 불가 → **Claude 세션 재시작**으로 20종 복구
+- `statetree_set_state_properties(state_id, {"bEnabled": true})` × 2 → `statetree_compile(save=True)` → `statetree_describe` 로 8개 상태 전부 `enabled: true` 검증
+
+**결과**
+- `compiled: true, saved: true, messages: []` (경고 0건). AI 가 W·E 스킬을 다시 사용 (이 커밋)
+- ⚠️ **행동 변화 주의**: 형제 순서 = 우선순위이므로 이제 `UseR → UseW → UseQ → UseE` 순. 체력이 `HealthBelowPct` 아래이고 W 쿨이 돌아왔으면 **적이 앞에 있어도 Q 대신 W 를 먼저** 쓴다. 로스터 14종이 같은 트리를 공유하므로, W 가 공격기인 캐릭터에선 어색할 수 있음 → 필요 시 `statetree_move_state` 로 순서 조정
+- **교훈 1**: MCP 도구가 기대보다 적으면 "기능 없음"이 아니라 **stale 프로세스**를 먼저 의심. 서버 소스의 도구 개수와 파일 mtime 을 대조하면 즉시 판별된다
+- **교훈 2**: StateTree 상태의 `bEnabled` 는 **컴파일 경고를 내지 않는다**. 꺼진 상태는 조용히 건너뛰어지므로 로그로는 절대 안 드러나고 `statetree_describe` 로만 보인다 → 스킬이 안 나간다는 제보를 받으면 GAS/쿨다운보다 **트리의 `enabled` 를 먼저 확인**할 것
+- ⚠️ **미처리**: `PushLane` 에 빈 태스크 슬롯 1개(ID 전부 0)가 남아 있다. 컴파일 경고·동작 영향 **모두 없음**(순수 잔여물). MCP 로는 제거 불가 — `StateTreeMCPCompat.cpp::RemoveNode()` 가 `if (!NodeID.IsValid()) return false;` 로 무효 GUID 를 진입부에서 거부하기 때문. **StateTree 에디터에서 수동 삭제**하거나, 플러그인이 빈 슬롯 제거를 지원하도록 고쳐야 함(플러그인 수정 시 에디터 종료 + 풀 리빌드 필요)
