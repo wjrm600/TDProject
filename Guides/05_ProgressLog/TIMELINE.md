@@ -2152,3 +2152,37 @@
 - **교훈 1**: MCP 도구가 기대보다 적으면 "기능 없음"이 아니라 **stale 프로세스**를 먼저 의심. 서버 소스의 도구 개수와 파일 mtime 을 대조하면 즉시 판별된다
 - **교훈 2**: StateTree 상태의 `bEnabled` 는 **컴파일 경고를 내지 않는다**. 꺼진 상태는 조용히 건너뛰어지므로 로그로는 절대 안 드러나고 `statetree_describe` 로만 보인다 → 스킬이 안 나간다는 제보를 받으면 GAS/쿨다운보다 **트리의 `enabled` 를 먼저 확인**할 것
 - ⚠️ **미처리**: `PushLane` 에 빈 태스크 슬롯 1개(ID 전부 0)가 남아 있다. 컴파일 경고·동작 영향 **모두 없음**(순수 잔여물). MCP 로는 제거 불가 — `StateTreeMCPCompat.cpp::RemoveNode()` 가 `if (!NodeID.IsValid()) return false;` 로 무효 GUID 를 진입부에서 거부하기 때문. **StateTree 에디터에서 수동 삭제**하거나, 플러그인이 빈 슬롯 제거를 지원하도록 고쳐야 함(플러그인 수정 시 에디터 종료 + 풀 리빌드 필요)
+
+---
+
+## 2026-09-23~24 — 첫 패키징 성공 (Development Win64) + 2인 리슨서버 검증
+
+**작업 내용**
+- 지금까지의 작업물을 **처음으로 패키징**해 에디터 밖에서 검증. `RunUAT BuildCookRun -platform=Win64 -clientconfig=Development -build -cook -stage -pak -archive`
+- 한 PC에서 두 인스턴스(`?listen` + `127.0.0.1`)로 2인 접속 → 벤픽 14스텝 → 전투까지 완주 확인
+
+**문제점** — 여섯 관문에 걸렸고 **전부 에디터에서는 드러나지 않던 것들**
+
+1. **쿡 범위 미설정**: `[/Script/UnrealEd.ProjectPackagingSettings]` 섹션 자체가 없어 Content **47GB 전부**를 구우려 함. 실제 필요분은 두 맵의 참조 폐쇄 2,679 패키지뿐이고 ParagonProps(12G)·KiteDemo(3.8G)·ParagonBoris(1.4G)·SampleMap·AnimStarterPack·Variant_* 는 참조 그래프에 **아예 없다**
+2. **전투맵이 쿡에서 누락될 뻔**: `AOSGameMode::GameMapName` 이 `FName` 문자열이라 하드 참조가 없다. 에셋 레지스트리 의존성 그래프에 안 잡힘
+3. **WBP 6종이 의존성 그래프 밖**: `WBP_MainMenu/Settlement/CharacterSelect/BanPick/Lobby` + `T_BanPick_*` 를 `AOSPlayerController` 가 `LoadClass(TEXT("/Game/AOS/UI/..."))` 로만 로드. 누락돼도 **크래시가 아니라 C++ 폴백 UI 로 조용히 대체**되므로 알아채기 어렵다
+4. **MSVC 툴체인 불일치 → 링크 실패**: `LNK2019 x7` (`__std_search_1`·`__std_mismatch_4`·`__std_minmax_element_f` 등 STL 벡터화 헬퍼). 엔진 오브젝트는 14.44 로 빌드됐는데 UBT 가 14.38.33130 을 선택. **에디터 타깃은 모듈러(DLL)라 이 불일치가 안 드러나고, Game 타깃(모놀리식)에서만 터진다**
+5. **쿡 에러 1,479건**: 전부 한 원인 — `WidgetBlueprintCompiler.cpp:794` 의 `ValidateAndFixUpVariableGuids` ensure. MCP/Python 으로 저작한 위젯이 `WidgetVariableNameToGuidMap` 에 등록되지 않음(`WBP_CharacterSelect` 29개). **에디터는 컴파일마다 자동 복구하지만 저장을 안 하니 디스크에는 안 남고**, `-unattended` 쿡에서는 ensure 가 곧 에러
+6. **PSO 프리캐시 어서션 크래시**: `PSOPrecacheMaterial.cpp:574` `EState=2(Compiling), ActivePSOPrecacheRequests.Num()=7`. RHI 브레드크럼이 `AOSCharacterPreviewStage` 를 지목 — 벤픽에서 캐릭터를 고르면 Paragon 메시가 프리뷰에 스폰되며 PSO 요청이 폭주
+
+**해결 방법**
+- (1)(2)(3) → `Config/DefaultGame.ini` 에 `ProjectPackagingSettings` 신설. `+MapsToCook` 2개(**전투맵 명시 필수**) + `+DirectoriesToAlwaysCook` 3개(`/Game/AOS`·`/Game/Characters`·`/Game/Input` — 합쳐 230MB 뿐이라 폴더째 넣는 게 안전)
+- (4) → `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml` 에 `<CompilerVersion>14.44.35207</CompilerVersion>` 고정. ⚠️ **저장소 밖 파일이라 커밋되지 않음 — 새 머신에서 재현 필요**. UE 5.7 은 `Engine/Config/Windows/Windows_SDK.json` 에서 `14.44.0-14.44.35210` 을 금지하는데, VS 2022 17.14.41 로 업데이트해 보니 **폴더명은 35207 그대로인 채 내용물만 35229 로 교체**돼 있었다(`cl.exe` 배너 `19.44.35229`, `libcpmt.lib` 에 문제 심볼 4/4 존재). UBT 는 폴더명으로 판단하므로 멀쩡한 툴체인을 금지 버전으로 오인 → 강제 지정이 필요
+- (5) → WBP 7개를 `close_editors → compile → save_asset(force)`. `WBP_CharacterSelect` 는 ensure 29건 × 스택덤프 2초로 **컴파일에만 135초** 소요(MCP 30초 타임아웃을 넘으므로 하나씩 처리). 크기 변화 = GUID 기록 증거: CharacterSelect +18.9KB, MainMenu +7.0KB, BanPick +3.2KB
+- (6) → `Config/DefaultEngine.ini` `[SystemSettings]` 에 `r.PSOPrecaching=0`
+
+**결과**
+- **패키징 성공. 4.67GB** (Content 47GB 대비 — 쿡 범위 설정이 작동한 증거). 재빌드는 **2분 30초**(DDC 캐시 덕) (이 커밋)
+- 2인 테스트에서 **접속 → 팀배정 → Ready → 벤픽 14스텝 → 전투** 완주. 설정으로 막아둔 항목이 전부 실증됨
+- **부수 효과: 캐릭터 프리뷰가 즉시 뜨게 됨.** 이전에는 선택 후 수 초간 안 보였는데, 원인은 로딩이 아니라 엔진 기본값 `r.PSOPrecache.ProxyCreationWhenPSOReady=1` + `ProxyCreationDelayStrategy=0` = **"PSO 컴파일이 끝날 때까지 렌더 프록시를 만들지 마라"**. 프리캐싱을 끄니 기다릴 대상이 사라져 게이트가 열렸다. 비용은 사라진 게 아니라 "수 초간 안 보임" → "1프레임 힛칭"으로 이동
+- **교훈 1(핵심)**: **문자열로 로드하는 애셋은 쿡에서 사라진다.** `FName`/`TEXT("/Game/...")` 는 의존성 그래프에 안 잡힌다. `TSoftObjectPtr` 를 쓰면 추적되지만 헤더 변경 = 풀 리빌드이므로, 당장은 `DirectoriesToAlwaysCook` 으로 덮는 게 현실적
+- **교훈 2**: **에디터가 자동 복구해 주는 것은 저장해야 남는다.** WBP GUID 는 이번 세션 초반의 BlendSpace 그리드 리베이크와 **완전히 같은 패턴**이었다 — 메모리에서는 고쳐지지만 강제 저장이 없으면 디스크에 반영되지 않고, 에디터에서는 영원히 정상으로 보인다
+- **교훈 3**: **모놀리식 빌드는 모듈러가 숨기던 불일치를 드러낸다.** 에디터(DLL 분리)가 몇 달간 멀쩡했다고 Game 타깃이 빌드된다는 보장이 없다
+- **교훈 4**: 패키징은 단순 배포 작업이 아니라 **검증 수단**이다. 이번 여섯 개는 모두 에디터 테스트로는 원리적으로 못 잡는 종류였다
+- ⚠️ **미처리 1**: `AOSCharacterPreviewStage::SetCapturing()` 이 `bCaptureEveryFrame=true` 로 켠 뒤 `CaptureScene()` 을 또 호출해 **같은 프레임을 두 번 렌더**한다(로그에 `major inefficiency` 경고 14회 연속). 새로 켜는 순간에만 호출하도록 4줄 수정이면 되고 cpp 전용이라 핫 리로드 가능. PSO 수정 검증과 섞지 않으려고 미뤘다
+- ⚠️ **미처리 2**: 메인메뉴에 Host/Join UI 가 없어 패키지 테스트는 커맨드라인 인자(`?listen` / IP)로만 가능. `AreAllPlayersReady()` 가 `GetNumPlayers() >= 2` 를 요구하므로 1인 테스트 불가
