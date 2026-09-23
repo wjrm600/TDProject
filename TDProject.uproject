@@ -58,6 +58,10 @@
 		{
 			"Name": "McpAutomationBridge",
 			"Enabled": true
+		},
+		{
+			"Name": "StateTreeMCP",
+			"Enabled": true
 		}
 	]
 }

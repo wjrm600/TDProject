@@ -2186,3 +2186,30 @@
 - **교훈 4**: 패키징은 단순 배포 작업이 아니라 **검증 수단**이다. 이번 여섯 개는 모두 에디터 테스트로는 원리적으로 못 잡는 종류였다
 - ⚠️ **미처리 1**: `AOSCharacterPreviewStage::SetCapturing()` 이 `bCaptureEveryFrame=true` 로 켠 뒤 `CaptureScene()` 을 또 호출해 **같은 프레임을 두 번 렌더**한다(로그에 `major inefficiency` 경고 14회 연속). 새로 켜는 순간에만 호출하도록 4줄 수정이면 되고 cpp 전용이라 핫 리로드 가능. PSO 수정 검증과 섞지 않으려고 미뤘다
 - ⚠️ **미처리 2**: 메인메뉴에 Host/Join UI 가 없어 패키지 테스트는 커맨드라인 인자(`?listen` / IP)로만 가능. `AreAllPlayersReady()` 가 `GetNumPlayers() >= 2` 를 요구하므로 1인 테스트 불가
+
+---
+
+## 2026-09-24 — StateTree MCP 플러그인 저장소 편입 (전용 C++ 플러그인 + 3번째 MCP 서버)
+
+**작업 내용**
+- StateTree 저작을 위한 전용 C++ 플러그인(`StateTreeMCP`)과 MCP 서버(`unreal-statetree`, `statetree_*` 도구 20종)를 프로젝트에 정식 편입
+- `TDProject.uproject` 플러그인 등록 + `.gitignore` 에 `Plugins/StateTreeMCP/` 추가 + CLAUDE.md 에 사용 규칙 문서화
+
+**문제점**
+- StateTree 는 **파이썬으로 편집이 불가능**하다. `UStateTree.EditorData` 가 protected 라 읽기조차 거부되고(`Property 'EditorData' ... is protected and cannot be read`), `SubTrees`/`Children` 이 스크립트에 노출되지 않는다. 그래서 전용 C++ 플러그인이 필요했다
+- 플러그인 소스의 진실 공급원은 별도 저장소([github.com/wjrm600/Unreal-StateTree-MCP](https://github.com/wjrm600/Unreal-StateTree-MCP))이고, 프로젝트의 `Plugins/StateTreeMCP` 는 거기로의 **junction** 이다. 양쪽에 소스를 두면 어느 쪽이 진짜인지 모호해진다
+
+**해결 방법**
+- junction 을 `.gitignore` 로 제외해 **소스는 저장소 쪽만 진실**로 유지. 프로젝트에는 "이 플러그인을 쓴다"는 등록(`TDProject.uproject`)만 커밋
+- CLAUDE.md 「Build & MCP」에 사용 규칙 명시 — 쓰기 전 `statetree_list_node_types` 로 실제 노드 타입 확인(추측 금지), **형제 순서 = 우선순위**라 `add_state` 후 `move_state` 로 위치 조정 필요, 플러그인 코드 수정 시 에디터 종료 + 풀 리빌드
+
+**결과**
+- StateTree 편집이 MCP 로 가능해졌다. 실제 성과 = 2026-09-19 의 `UseW`/`UseE` 재활성화(위 항목) — 에디터 UI 없이 `set_state_properties` → `compile` → `describe` 검증까지 처리 (이 커밋)
+- ⚠️ **새 머신 셋업 시 필수 작업(ParagonKwang 과 같은 성격의 외부 의존성)**:
+  1. `unreal-statetree-mcp` 저장소를 클론
+  2. `Plugins/StateTreeMCP` → `<저장소>/UnrealPlugin/StateTreeMCP` junction 생성
+  3. 풀 리빌드
+  4. `.mcp.json` 에 `unreal-statetree` 서버 등록 (`PYTHONPATH=<저장소>/mcp-server`, `python -m statetree_mcp`)
+  안 하면 `TDProject.uproject` 가 없는 플러그인을 참조해 프로젝트가 정상 오픈되지 않는다
+- ⚠️ **문서 공백(미처리)**: CLAUDE.md 는 "새 머신 셋업 = `Mcp_Tools/README.md`" 로 안내하는데, 그 README 는 `unreal-engine`·`unreal-rag` **2서버만** 다루고 statetree 언급이 0건이다. 위 4단계를 README 에 절로 추가해야 한다
+- ⚠️ `.mcp.json` 은 머신 고유 절대경로(`E:\...`, `C:\Users\wjrm7\...`)를 담고 있어 커밋 대상이 아니다. 서버 등록 내용은 위 4번 항목과 `Mcp_Tools/README.md` 로 전달할 것
