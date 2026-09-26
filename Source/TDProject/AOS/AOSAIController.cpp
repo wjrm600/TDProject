@@ -201,7 +201,9 @@ void AAOSAIController::Tick(float DeltaTime)
 	    DrawDebugPath();
 	}
 
-	// ─── 디버그: 공격 범위 / 감지 범위 (AOS.Debug.ShowAttackRange — AOSMapManager.cpp 정의) ───
+	// ─── 디버그: 감지 범위 (AOS.Debug.ShowAttackRange — AOSMapManager.cpp 정의) ───
+	// 공격 범위 원은 AOSCharacter::Tick 이 AttributeSet 값(팀 색)으로 그린다. 여기서 멤버 AttackRange
+	// (GetEffectiveAttackRange 의 fallback 일 뿐)를 또 그리면 실제 사거리와 다른 원이 겹쳐 보여 제거함.
 	// DS 모드에서는 렌더 파이프라인이 없으므로 스킵
 	if (GetNetMode() != NM_DedicatedServer)
 	{
@@ -209,14 +211,6 @@ void AAOSAIController::Tick(float DeltaTime)
 		if (ControlledCharacter && GetWorld() && ShowAttackRangeCVar && ShowAttackRangeCVar->GetInt())
 		{
 			FVector CharPos = ControlledCharacter->GetActorLocation();
-
-			// 공격 범위 (AttackRange): 노란색 수평 원 + 라벨
-			DrawDebugCircle(GetWorld(), CharPos, AttackRange, 32,
-				FColor::Yellow, false, 0.0f, 0, 3.0f,
-				FVector(1, 0, 0), FVector(0, 1, 0), false);
-			DrawDebugString(GetWorld(), CharPos + FVector(AttackRange, 0, 50.0f),
-				FString::Printf(TEXT("[캐릭터] 공격 %.0f"), AttackRange),
-				nullptr, FColor::Yellow, 0.0f, true, 1.2f);
 
 			// 감지 범위 (EnemyDetectionRange): 흰색 수평 원 + 라벨 (더 큰 원)
 			DrawDebugCircle(GetWorld(), CharPos, EnemyDetectionRange, 32,

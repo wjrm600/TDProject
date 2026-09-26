@@ -2252,3 +2252,23 @@
 - ⏳ 사용자 확인 대기 기본값: 긴급 스킬 Q→E(원문 "Q, W"에 W↔E 정정 적용) · 7번 대신 8번 · 60초 쿨은 도착 시점부터
 - 🔎 **교훈 1**: 요구사항은 구현 전에 **실측과 대조**한다 — 몽타주 길이·사거리·실제 스킬 효과 3건이 원문과 어긋나 있었고, 구현 전에 보고해 v2 에서 한 번에 확정했다
 - 🔎 **교훈 2**: 코드 논리로 설명되지 않는 현상은 추측을 늘리지 말고 **값을 찍는 로그**부터. 단 StateTree 조건 안의 로그는 매 틱 호출됨(단락 평가 없음)을 감안할 것
+
+---
+
+## 2026-09-27 — 공격 범위 디버그 표시 정리 (`AOS.Debug.ShowAttackRange`) — 가짜 사거리 원 제거 + 팀 색 통일
+
+**작업 내용**
+- `AOS.Debug.ShowAttackRange 1` 로 보이는 원 중 **노란 원("[캐릭터] 공격")** 제거 (`AAOSAIController::Tick`). 흰색 감지 범위 원(1500)은 유지
+- 타워·본진 공격/감지 범위 원(`AAOSStructure::Tick`)과 `AOS.Debug.ShowStructureBoxes` 타워 박스(`AAOSMapManager`)의 팀 색을 **Team1 빨강 / Team2 파랑**으로 통일
+
+**문제점**
+1. 캐릭터 주변에 "공격" 라벨이 붙은 원이 **두 개**(팀 색 + 노랑) 떠서 어느 쪽이 사거리인지 알 수 없었다. Kwang 이면 팀 색 200, 노랑 500
+2. 같은 팀인데 캐릭터 원은 빨강, 타워 원은 파랑 — 디버그 표시 두 곳만 팀 색이 반대였다 (HP바·타워 메시·캐릭터는 모두 Team1=빨강)
+
+**해결 방법**
+- (1) 노란 원은 AIController 멤버 `AttackRange`(기본 500)를 그리고 있었다. 실제 거리 판정 `GetEffectiveAttackRange()` 는 캐릭터 AttributeSet 의 `AttackRange`(DataTable 값)를 먼저 쓰고, 멤버 값은 AttributeSet 이 없을 때의 fallback 일 뿐이다. 판정 경로가 AttributeSet 으로 옮겨질 때 디버그만 옛 값을 계속 그리던 잔재 → 실제 사거리는 `AAOSCharacter` 의 팀 색 원이 이미 같은 값을 그리므로 노란 원은 삭제하고 이유를 주석으로 남김
+- (2) `AOSStructure.cpp`·`AOSMapManager.cpp` 의 `Team1 ? Blue : Red` 두 곳을 `Red : Blue` 로 반전. 감지 범위 원은 팀 색을 밝게 섞어 만들므로 함께 바뀐다
+
+**결과**
+- Live Coding 적용 후 사용자 PIE 확인 "잘 보여" — 캐릭터는 팀 색 공격 원 + 흰색 감지 원, 타워·본진은 같은 팀 색 (이 커밋)
+- 참고: 흰색 감지 원은 서버에만 있는 AIController 가 그리므로 **Play As Dedicated Server 의 클라이언트 화면에는 안 보인다**(팀 색 원은 모든 모드에서 보임)

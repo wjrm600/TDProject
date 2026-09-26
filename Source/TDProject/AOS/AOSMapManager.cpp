@@ -625,8 +625,8 @@ void AAOSMapManager::DrawRuntimeStructureDebug()
 		}
 		else
 		{
-			// Tower: 파랑(T1) / 빨강(T2)
-			FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+			// Tower: 빨강(T1) / 파랑(T2) — 캐릭터·HP바·타워 메시 팀 색과 동일
+			FColor BoxColor = (Team == EAOSTeam::Team1) ? FColor::Red : FColor::Blue;
 
 			DrawDebugBox(GetWorld(), Pos,
 				FVector(DebugBoxSize, DebugBoxSize, DebugBoxSize),

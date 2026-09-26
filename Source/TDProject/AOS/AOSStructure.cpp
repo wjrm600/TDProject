@@ -350,7 +350,8 @@ void AAOSStructure::Tick(float DeltaTime)
 		IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("AOS.Debug.ShowAttackRange"));
 		if (CVar && CVar->GetInt())
 		{
-			FColor TeamColor = (OwnerTeam == EAOSTeam::Team1) ? FColor::Blue : FColor::Red;
+			// 팀 색 = 캐릭터·HP바·타워 메시와 동일 (Team1 빨강 / Team2 파랑)
+			FColor TeamColor = (OwnerTeam == EAOSTeam::Team1) ? FColor::Red : FColor::Blue;
 			FVector Pos = GetActorLocation();
 			const FString TypeStr = (StructureType == EStructureType::Tower) ? TEXT("타워") : TEXT("본진");
 
