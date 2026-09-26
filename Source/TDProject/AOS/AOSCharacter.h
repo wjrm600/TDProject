@@ -19,6 +19,7 @@ class UWidgetComponent;
 class UAOSHealthBarWidget;
 class UStaticMeshComponent;
 class UStaticMesh;
+class UStateTree;
 struct FOnAttributeChangeData;
 
 /**
@@ -185,6 +186,23 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "AOS|Weapon")
 	UStaticMeshComponent* GetWeaponMeshComponent() const { return WeaponMeshComponent; }
+
+	// === AI 개성 (캐릭터별 StateTree) ===
+	// 지정하면 이 캐릭터의 AI 는 공용 ST_AOSCharacterAI 대신 이 트리를 실행한다 (예: ST_KwangAI).
+	// AAOSAIController::StartDeployment 가 StartLogic 직전에 SetStateTree 로 교체. 비우면 공용 트리.
+	// ⚠️ 스키마는 공용 트리와 같아야 한다 (StateTreeAIComponentSchema, Context Actor = AOSCharacter).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|AI")
+	TObjectPtr<UStateTree> AIStateTreeOverride;
+
+	UStateTree* GetAIStateTreeOverride() const;
+
+	// 기본공격 쿨다운 고정값(초). 0 이하 = 기본 규칙(1 / AttackSpeed).
+	// 몽타주 재생 속도는 계속 AttackSpeed 를 따르므로 "모션은 그대로, 공격 간격만" 바꿀 때 쓴다.
+	// (예: Kwang 옆걸음 확인용 5초 — 공격 모션 ≈1.3초 뒤 ≈3.7초의 틈이 생긴다)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS|GAS", meta = (ClampMin = "0.0"))
+	float BasicAttackCooldownOverride = 0.0f;
+
+	float GetBasicAttackCooldownOverride() const { return BasicAttackCooldownOverride; }
 
 protected:
 	// 팀 및 라인 정보 — DS 클라가 팀을 알아야 HP 바 색상을 칠할 수 있으므로 Replicated

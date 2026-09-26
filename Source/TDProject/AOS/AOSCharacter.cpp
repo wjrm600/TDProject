@@ -24,6 +24,7 @@
 #include "GameplayEffect.h"
 #include "GameplayEffectTypes.h"
 #include "Abilities/GameplayAbility.h"
+#include "StateTree.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
 
@@ -670,6 +671,11 @@ UAnimMontage* AAOSCharacter::GetSkillMontage(FGameplayTag SkillTag) const
 		return *Found;
 	}
 	return nullptr;
+}
+
+UStateTree* AAOSCharacter::GetAIStateTreeOverride() const
+{
+	return AIStateTreeOverride;
 }
 
 FVector AAOSCharacter::GetLaneStartPosition() const

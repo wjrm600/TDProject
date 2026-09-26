@@ -2213,3 +2213,42 @@
   안 하면 `TDProject.uproject` 가 없는 플러그인을 참조해 프로젝트가 정상 오픈되지 않는다
 - ⚠️ **문서 공백(미처리)**: CLAUDE.md 는 "새 머신 셋업 = `Mcp_Tools/README.md`" 로 안내하는데, 그 README 는 `unreal-engine`·`unreal-rag` **2서버만** 다루고 statetree 언급이 0건이다. 위 4단계를 README 에 절로 추가해야 한다
 - ⚠️ `.mcp.json` 은 머신 고유 절대경로(`E:\...`, `C:\Users\wjrm7\...`)를 담고 있어 커밋 대상이 아니다. 서버 등록 내용은 위 4번 항목과 `Mcp_Tools/README.md` 로 전달할 것
+
+---
+
+## 2026-09-27 — Kwang 전용 AI StateTree (`ST_KwangAI`) — 캐릭터별 AI 개성 첫 사례 (🧪 테스트용)
+
+**작업 내용**
+- Kwang 의 선호 행동 3종(옆걸음 · 저체력 후퇴 · 최대 체력 최저 적 집중) + 스킬 규칙(Q/E · W · R)을 전용 StateTree 로 구현. 흐름: v1(원문대로 구현) → 실측 충돌 보고 → 사용자 확정(v2) → 재구현 → PIE 3회. **공용 `ST_AOSCharacterAI` 는 무수정**, 다른 13 캐릭터 영향 0
+- **캐릭터별 트리 지정 경로 신설**: `AAOSCharacter::AIStateTreeOverride` 에 트리를 넣으면 `AAOSAIController::StartDeployment` 가 `StartLogic` 직전 `SetStateTree` 로 교체 (비우면 공용 트리). 다음 캐릭터부터는 BP 칸 하나로 개성 부여
+- **캐릭터별 기본공격 쿨다운 고정값** `AAOSCharacter::BasicAttackCooldownOverride` (0 = 기존 `1/AttackSpeed`) — `GA_Attack` 이 쿨다운에만 반영, 몽타주 속도는 AttackSpeed 유지
+- **AI 전투 메모리**(`AAOSAIController`): ASC `Ability.Attack.Basic` 태그 이벤트로 기본공격 횟수·공격 종료 시각 기록(기존 `SendAttackEvent` 무수정) · 옆걸음(원호 150, 좌우 반복, 회전 모드 전환/원복) · **키 기반 행동 쿨다운**(`MarkBehaviorUsed`/`IsBehaviorReady`)
+- **신규 노드 10종** `AI/AOSStateTreeBehaviorNodes.h/.cpp` — 조건 6(Owner Has Tag · Enemy Count In Radius · Basic Attack Count At Least · Friendly Tower Distance · Behavior Cooldown Ready · In Post-Attack Window[현재 미사용]) · 태스크 4(Select Lowest Max-Health Enemy · Strafe Around Target · Retreat To Friendly Tower · Activate Ability (Reset Attack Count)). 파라미터 전부 InstanceData
+- **데이터**: Kwang 사거리 300→200(`DT_CharacterAttributes` Kwang 전용 행, JSON 라운드트립 17행 보존) · R 쿨 1→45초 · 기본공격 쿨 5초
+- **최종 트리 우선순위**: `UseR` → `LowHP_Retreat▣`(긴급 Q→E → 아군 타워 200 안까지 후퇴, 60초 쿨) → `SkillQE▣`(공격 3회+200 안 1명=Q / 2명+=E, 발동 시 카운트 0) → `UseW`(400 안 적) → `FocusLowestMaxHP`(500 안 2명+) → `AttackEnemy` → `StrafeStructure` → `AttackStructure` → `PushLane`. 교전 state 마다 Strafe(공격 쿨다운 중 + 공격 모션 끝남)/Engage 자식
+- 문서 [`KWANG_AI_STATETREE.md`](../03_Implementation/KWANG_AI_STATETREE.md) — 원문→확정→구현 표, 기본값 표, 트리 구조·우선순위 근거, 동작 원리, 체크리스트, 튜닝 표, 변경 이력, 테스트 결과. CLAUDE.md 에 캐릭터별 AI 지정 방식·MCP 함정 각 1줄
+
+**문제점**
+1. **옆걸음 틈이 원래 0**: `AM_Kwang_Attack` 섹션 ≈1.3초 > 기본공격 쿨다운 1.0초(=1/공속). 모션이 끝나는 순간 이미 다음 공격이 가능하고, 공속이 올라도 둘이 같은 비율로 줄어 틈은 항상 0
+2. **쿨다운 5초를 AttackSpeed 로는 못 만든다**: 같은 AttackSpeed 가 몽타주 재생 속도도 정해서, 공속 0.2 로 쿨 5초를 만들면 공격 모션이 5배 느려진다
+3. **MCP 로는 노드 본체 속성을 못 바꾼다**: 플러그인 `set_node_properties` 는 InstanceData 전용. 공용 조건의 `bInvert`, `SendAttackEvent.bTargetCurrentEnemy` 는 노드 본체 속성이라 새로 만든 노드에서 설정할 방법이 없다
+4. **요구사항 vs 실측 충돌**: Q/W 반경 200 < 사거리 300(AI 는 사거리 진입 즉시 정지 → 교전 거리 ≈280~300) · 원문 "E=버프"는 착오(실제 W=보호막, E=반경 250 회전) · R 쿨 1초(테스트값 잔재) · v1 후퇴(타워 앞 대기)는 회복 수단이 없어 라인 푸시 영구 중단 · 사용자 답변 7번(100 이동 후 재교전)과 8번(타워까지 후퇴) 상충
+5. **첫 빌드 에러**: `'Failed': 'EPathFollowingRequestResult'의 멤버가 아닙니다` — UE 5.7 `AIController.h` 는 이 열거형을 `enum Type : int;` 로 **전방 선언만** 한다
+6. **1차 PIE 후퇴 반복**: 후퇴 완료 직후 `후퇴 시작`이 다시 찍히며 타워 200 경계에서 왔다갔다 (60초 쿨이 막지 못함)
+
+**해결 방법**
+- (1)(2) → 캐릭터별 쿨다운 고정값(5초)으로 모션 ≈1.3초 + **틈 ≈3.7초**. 옆걸음 조건은 "공격 쿨다운 중 + 공격 모션 끝남" = 원문 "공격 후 ~ 다음 공격 전" 직역. v1 의 "공격 후 0.5초 창"(DPS −28%) 방식은 폐기, 노드만 보관
+- 옆걸음 동작: 타겟 중심 원호 위 150(최대 사거리×0.9) + `bOrientRotationToMovement=false`/`bUseControllerDesiredRotation=true` + AI 포커스 고정 → 몸은 적, 다리는 옆(BS Jog_Left/Right). 도착/1.5초 막힘마다 방향 반전. 종료 시 원복하되 `StopMovement` 는 부르지 않음(사망 root motion 보호 규칙)
+- (3) → 트리를 **복제**해 기존 노드의 반전 값 보존(UseR/UseW 쿨다운 조건, AttackStructure) + 새 판정은 전부 InstanceData 파라미터 노드. CLAUDE.md MCP 규칙에 함정으로 기록
+- (4) → 사용자 확정: 사거리 200 · **W 버프 / Q·E 게이트** · R 45초 · **8번 채택**(타워 200 안까지 한 번에 후퇴 → 도착 순간 60초 쿨 → 라인 푸시 재개). 후퇴는 도중 재평가 없이 커밋 — 후퇴 중 Q 쿨이 돌아와도 다시 멈추지 않게. 가던 타워가 부서지면 다음 타워로, 타워 중심이 내비 밖이면 경로 끝을 완료로 처리
+- 설계 전 엔진 소스로 확인한 동작: ① 전이 없는 state 가 끝나면 루트로 복귀("jump back to root state") ② `TrySelectChildrenInOrder` 부모는 자식이 하나도 안 되면 자신도 선택 실패 → Group 으로 묶어도 안전 ③ Context 속성 자동 바인딩 ④ 조건은 **단락 평가 없이 전부** 평가(`TestAllConditionsInternal`)
+- (5) → `Navigation/PathFollowingComponent.h` include 1줄. 기존 코드는 `MoveToLocation` 반환값을 비교한 적이 없어 드러나지 않던 것
+- (6) → 코드 논리·MCP 값 변환(`FJsonObjectConverter`, 기본값도 동일)·조건 연산자(기본 AND)·엔진의 진입 조건 검사 모두 정상 → 추측을 멈추고 진단 로그(쿨 기록 / 조건 통과 / 후퇴 진입)를 Live Coding 으로 투입. 2차에서 키·컨트롤러 일치와 정상 동작 확인. 방어 수정: 완료 시 `RetreatTarget` 을 비우지 않음(완료 직후 Tick 이 한 번 더 와도 "목표 변경"으로 오인해 이동을 재요청하지 않게). 3차 정상 → 진단 로그 제거(기존 `후퇴 시작`/`후퇴 완료` 로그는 재발 신호로 유지)
+
+**결과**
+- 트리 20 state, 컴파일 메시지 0. 디스크 검증: `BP_Char_Kwang` 에 `AIStateTreeOverride=ST_KwangAI`·`BasicAttackCooldownOverride=5`, 표본(Greystone·Grux·Sparrow)은 비어 있음 = 기존 규칙 유지 (이 커밋)
+- PIE: 저체력 후퇴 → 타워 200 도착 → 라인 푸시 재개 ✅, 60초 쿨 재진입 없음 ✅ (2·3차). 1차 반복의 원인은 **미확정** — 재발하면 `후퇴 시작`/`후퇴 완료` 가 연달아 찍히는지 볼 것
+- ⏳ 미확인 체크리스트: 옆걸음(교전·타워·종료 후 회전 원복) · Q/E 3회 게이트 · W · R 45초 · 집중 타겟 · 다른 캐릭터 회귀
+- ⏳ 사용자 확인 대기 기본값: 긴급 스킬 Q→E(원문 "Q, W"에 W↔E 정정 적용) · 7번 대신 8번 · 60초 쿨은 도착 시점부터
+- 🔎 **교훈 1**: 요구사항은 구현 전에 **실측과 대조**한다 — 몽타주 길이·사거리·실제 스킬 효과 3건이 원문과 어긋나 있었고, 구현 전에 보고해 v2 에서 한 번에 확정했다
+- 🔎 **교훈 2**: 코드 논리로 설명되지 않는 현상은 추측을 늘리지 말고 **값을 찍는 로그**부터. 단 StateTree 조건 안의 로그는 매 틱 호출됨(단락 평가 없음)을 감안할 것

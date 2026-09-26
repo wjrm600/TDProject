@@ -6,6 +6,8 @@
 #include "AbilitySystemComponent.h"
 #include "GameplayTagContainer.h"
 #include "Components/StateTreeAIComponent.h"
+#include "StateTree.h"
+#include "Navigation/PathFollowingComponent.h"	// EPathFollowingRequestResult 값 정의 (AIController.h 는 전방 선언만)
 #include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
@@ -115,6 +117,30 @@ void AAOSAIController::OnPossess(APawn* InPawn)
 	UE_LOG(LogTemp, Warning,
 		TEXT("[AI Controller] Possessed %s — ControlledCharacter 캐시됨 (StartLogic 은 StartDeployment 에서 호출)"),
 		*InPawn->GetName());
+
+	// 선호 행동 메모리: 기본공격 시작/종료를 ASC 태그 이벤트로 기록 (공격을 어디서 발동하든 한 곳에서 집계).
+	// GA_Attack 의 ActivationOwnedTags(Ability.Attack.Basic) 가 붙으면 시작(+1), 떨어지면 종료 시각 기록.
+	if (UAbilitySystemComponent* ASC = ControlledCharacter->GetAbilitySystemComponent())
+	{
+		static const FGameplayTag AttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
+		BasicAttackTagHandle = ASC->RegisterGameplayTagEvent(AttackTag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &AAOSAIController::OnBasicAttackTagChanged);
+		BoundAbilitySystem = ASC;
+	}
+}
+
+void AAOSAIController::OnUnPossess()
+{
+	if (UAbilitySystemComponent* ASC = BoundAbilitySystem.Get())
+	{
+		static const FGameplayTag AttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
+		ASC->RegisterGameplayTagEvent(AttackTag, EGameplayTagEventType::NewOrRemoved).Remove(BasicAttackTagHandle);
+	}
+	BoundAbilitySystem.Reset();
+	BasicAttackTagHandle.Reset();
+	EndStrafe();
+
+	Super::OnUnPossess();
 }
 
 void AAOSAIController::BeginPlay()
@@ -223,6 +249,15 @@ void AAOSAIController::StartDeployment(EAOSLane Lane)
 	//  이 시점엔 pawn 이 possess 된 상태라 schema 의 context actor(AOSCharacter) binding 도 정상.)
 	if (StateTreeComponent && !StateTreeComponent->IsRunning())
 	{
+		// 캐릭터별 AI 개성: BP_Char_* 에 AIStateTreeOverride 가 있으면 공용 트리 대신 그 트리를 실행.
+		// SetStateTree 는 실행 중엔 거부되므로 반드시 StartLogic 직전(여기)에서 교체한다.
+		if (UStateTree* OverrideTree = ControlledCharacter ? ControlledCharacter->GetAIStateTreeOverride() : nullptr)
+		{
+			StateTreeComponent->SetStateTree(OverrideTree);
+			UE_LOG(LogTemp, Warning, TEXT("[AI Controller] %s → 전용 StateTree '%s' 사용"),
+				*ControlledCharacter->GetName(), *OverrideTree->GetName());
+		}
+
 		StateTreeComponent->StartLogic();
 		UE_LOG(LogTemp, Warning,
 			TEXT("[AI Controller] StartDeployment → StateTree StartLogic() 호출, IsRunning=%s"),
@@ -586,6 +621,252 @@ void AAOSAIController::AdvanceToNextWaypoint()
 		CurrentWaypointIndex, WaypointQueue.Num() - 1);
 
 	CurrentMoveTarget = GetNextTargetLocation();
+}
+
+// =============================================================================
+// 선호 행동(캐릭터별 AI 개성) 헬퍼 — AI/AOSStateTreeBehaviorNodes 가 사용
+// =============================================================================
+
+void AAOSAIController::OnBasicAttackTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	if (NewCount > 0)
+	{
+		// 공격 시작 (GA_Attack 활성화) — 1회로 집계
+		++BasicAttackCount;
+	}
+	else if (const UWorld* World = GetWorld())
+	{
+		// 공격 종료 (몽타주 끝 → EndAbility) — 옆걸음 창의 시작점
+		LastBasicAttackEndTime = World->GetTimeSeconds();
+	}
+}
+
+bool AAOSAIController::IsBasicAttackActive() const
+{
+	const UAbilitySystemComponent* ASC = BoundAbilitySystem.Get();
+	if (!ASC) return false;
+	static const FGameplayTag AttackTag = FGameplayTag::RequestGameplayTag(FName("Ability.Attack.Basic"));
+	return ASC->HasMatchingGameplayTag(AttackTag);
+}
+
+bool AAOSAIController::IsInPostAttackWindow(float WindowSeconds) const
+{
+	if (LastBasicAttackEndTime < 0.0 || IsBasicAttackActive()) return false;
+	const UWorld* World = GetWorld();
+	if (!World) return false;
+	return (World->GetTimeSeconds() - LastBasicAttackEndTime) < WindowSeconds;
+}
+
+int32 AAOSAIController::CountEnemiesInRadius(float Radius) const
+{
+	if (!ControlledCharacter) return 0;
+
+	const FVector MyLoc = ControlledCharacter->GetActorLocation();
+	const EAOSTeam MyTeam = ControlledCharacter->GetTeam();
+	int32 Count = 0;
+	for (TActorIterator<AAOSCharacter> It(GetWorld()); It; ++It)
+	{
+		const AAOSCharacter* Other = *It;
+		if (!Other || !Other->IsAlive() || Other->GetTeam() == MyTeam) continue;
+		if (FVector::Dist(MyLoc, Other->GetActorLocation()) <= Radius)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+AAOSCharacter* AAOSAIController::FindLowestMaxHealthEnemyInRadius(float Radius) const
+{
+	if (!ControlledCharacter) return nullptr;
+
+	const FVector MyLoc = ControlledCharacter->GetActorLocation();
+	const EAOSTeam MyTeam = ControlledCharacter->GetTeam();
+	AAOSCharacter* Best = nullptr;
+	float BestMaxHealth = FLT_MAX;
+	float BestDist = FLT_MAX;
+	for (TActorIterator<AAOSCharacter> It(GetWorld()); It; ++It)
+	{
+		AAOSCharacter* Other = *It;
+		if (!Other || !Other->IsAlive() || Other->GetTeam() == MyTeam) continue;
+
+		const float Dist = FVector::Dist(MyLoc, Other->GetActorLocation());
+		if (Dist > Radius) continue;
+
+		// 최대 체력 오름차순, 동률(0.5 이내)이면 가까운 쪽 — 매 tick 재선택해도 타겟이 흔들리지 않게
+		const float OtherMax = Other->GetMaxHealth();
+		const bool bLower = OtherMax < BestMaxHealth - 0.5f;
+		const bool bTieCloser = FMath::Abs(OtherMax - BestMaxHealth) <= 0.5f && Dist < BestDist;
+		if (bLower || bTieCloser)
+		{
+			Best = Other;
+			BestMaxHealth = OtherMax;
+			BestDist = Dist;
+		}
+	}
+	return Best;
+}
+
+AAOSStructure* AAOSAIController::FindNearestFriendlyStructure() const
+{
+	if (!ControlledCharacter) return nullptr;
+
+	const FVector MyLoc = ControlledCharacter->GetActorLocation();
+	const EAOSTeam MyTeam = ControlledCharacter->GetTeam();
+	AAOSStructure* NearestTower = nullptr;
+	AAOSStructure* CommandCenter = nullptr;
+	float NearestDist = FLT_MAX;
+	for (TActorIterator<AAOSStructure> It(GetWorld()); It; ++It)
+	{
+		AAOSStructure* S = *It;
+		if (!S || S->IsDestroyed() || S->GetOwnerTeam() != MyTeam) continue;
+
+		if (S->GetStructureType() == EStructureType::CommandCenter)
+		{
+			CommandCenter = S;
+			continue;
+		}
+		const float Dist = FVector::Dist(MyLoc, S->GetActorLocation());
+		if (Dist < NearestDist)
+		{
+			NearestDist = Dist;
+			NearestTower = S;
+		}
+	}
+	return NearestTower ? NearestTower : CommandCenter;
+}
+
+void AAOSAIController::BeginStrafe(AActor* FocusActor)
+{
+	ACharacter* Char = Cast<ACharacter>(GetPawn());
+	if (!Char || !FocusActor) return;
+
+	if (!bStrafing)
+	{
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			// 이동 방향이 아니라 컨트롤러(= 포커스 타겟) 방향을 바라보게 → BlendSpace 가 Jog_Left/Right 로 옆걸음
+			bSavedOrientRotationToMovement = CMC->bOrientRotationToMovement;
+			bSavedUseControllerDesiredRotation = CMC->bUseControllerDesiredRotation;
+			CMC->bOrientRotationToMovement = false;
+			CMC->bUseControllerDesiredRotation = true;
+		}
+		bStrafing = true;
+	}
+	// 타겟이 바뀌었을 수 있으므로 매번 포커스 갱신 (Gameplay 우선순위 > 경로추종의 Move 포커스)
+	SetFocus(FocusActor, EAIFocusPriority::Gameplay);
+}
+
+void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance)
+{
+	if (!ControlledCharacter || !Target) return;
+	BeginStrafe(Target);
+
+	const FVector MyLoc = ControlledCharacter->GetActorLocation();
+	const FVector TargetLoc = Target->GetActorLocation();
+	const float Range = GetEffectiveAttackRange();
+
+	// 사거리 밖으로 벌어졌으면 옆걸음 대신 접근 (타겟을 바라본 채)
+	if (FVector::Dist(MyLoc, TargetLoc) > Range)
+	{
+		if (FVector::Dist(LastNavMoveTarget, TargetLoc) > 50.0f)
+		{
+			LastNavMoveActor = nullptr;
+			MoveToLocation(TargetLoc, Range * 0.8f,
+				/*bStopOnOverlap=*/true,
+				/*bUsePathfinding=*/true,
+				/*bProjectDestinationToNavigation=*/true,
+				/*bCanStrafe=*/true);
+			LastNavMoveTarget = TargetLoc;
+		}
+		bHasStrafeGoal = false;
+		return;
+	}
+
+	// 진행 중인 걸음이 있으면 도착(30 이내)하거나 막힐(1.5초) 때까지 그대로 둔다.
+	// 끝나면 방향을 뒤집어(좌↔우) 다음 걸음 → 호출되는 동안 좌우로 계속 오간다.
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	if (bHasStrafeGoal)
+	{
+		const bool bReached = FVector::Dist2D(MyLoc, StrafeGoal) <= 30.0f;
+		const bool bStuck = (Now - StrafeStepStartTime) > 1.5;
+		if (!bReached && !bStuck) return;
+	}
+	StrafeSign = -StrafeSign;
+
+	FVector Offset = MyLoc - TargetLoc;
+	Offset.Z = 0.0f;
+	if (Offset.IsNearlyZero())
+	{
+		Offset = -ControlledCharacter->GetActorForwardVector();
+		Offset.Z = 0.0f;
+	}
+	// 타겟 중심 원호 위로 이동 → 거리(=사거리 안)를 유지한 채 옆으로 비킨다
+	const float OrbitRadius = FMath::Clamp(static_cast<float>(Offset.Size()), 100.0f, FMath::Max(100.0f, Range * 0.9f));
+	const float AngleRad = (StepDistance / OrbitRadius) * StrafeSign;
+	const FVector NewOffset = Offset.GetSafeNormal().RotateAngleAxisRad(AngleRad, FVector::UpVector) * OrbitRadius;
+	FVector Goal = TargetLoc + NewOffset;
+	Goal.Z = MyLoc.Z;
+
+	StrafeGoal = Goal;
+	StrafeStepStartTime = Now;
+	bHasStrafeGoal = true;
+
+	LastNavMoveActor = nullptr;
+	LastNavMoveTarget = FVector::ZeroVector;
+	MoveToLocation(Goal, 10.0f,
+		/*bStopOnOverlap=*/false,
+		/*bUsePathfinding=*/true,
+		/*bProjectDestinationToNavigation=*/true,
+		/*bCanStrafe=*/true);
+}
+
+void AAOSAIController::EndStrafe()
+{
+	bHasStrafeGoal = false;
+	if (!bStrafing) return;
+	bStrafing = false;
+
+	if (ACharacter* Char = Cast<ACharacter>(GetPawn()))
+	{
+		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
+		{
+			CMC->bOrientRotationToMovement = bSavedOrientRotationToMovement;
+			CMC->bUseControllerDesiredRotation = bSavedUseControllerDesiredRotation;
+		}
+	}
+	ClearFocus(EAIFocusPriority::Gameplay);
+}
+
+bool AAOSAIController::RequestMoveStep(const FVector& Goal, float AcceptanceRadius)
+{
+	if (!ControlledCharacter) return false;
+
+	LastNavMoveActor = nullptr;
+	LastNavMoveTarget = FVector::ZeroVector;
+	const EPathFollowingRequestResult::Type Result = MoveToLocation(Goal, AcceptanceRadius,
+		/*bStopOnOverlap=*/false,
+		/*bUsePathfinding=*/true,
+		/*bProjectDestinationToNavigation=*/true,
+		/*bCanStrafe=*/false);
+	return Result != EPathFollowingRequestResult::Failed;
+}
+
+void AAOSAIController::MarkBehaviorUsed(FName Key)
+{
+	if (Key.IsNone()) return;
+	if (const UWorld* World = GetWorld())
+	{
+		BehaviorLastUsedTime.Add(Key, World->GetTimeSeconds());
+	}
+}
+
+bool AAOSAIController::IsBehaviorReady(FName Key, float CooldownSeconds) const
+{
+	const double* LastUsed = BehaviorLastUsedTime.Find(Key);
+	if (!LastUsed) return true;
+	const UWorld* World = GetWorld();
+	return !World || (World->GetTimeSeconds() - *LastUsed) >= CooldownSeconds;
 }
 
 void AAOSAIController::DrawDebugPath()

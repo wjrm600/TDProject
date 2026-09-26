@@ -32,6 +32,7 @@ Claude Code 가 이 저장소에서 작업할 때의 지침입니다. **이 파�
 - **StateTree 편집은 `unreal-statetree` MCP 로** (`statetree_*` 도구 20종 — 에셋 생성·상태·태스크·조건·트랜지션·바인딩·컴파일). 파이썬으로는 불가능한 작업이라 전용 C++ 플러그인을 만들었다 — `SubTrees`/`Children` 이 스크립트에 노출되지 않기 때문. 저장소 [github.com/wjrm600/Unreal-StateTree-MCP](https://github.com/wjrm600/Unreal-StateTree-MCP), 플러그인은 `Plugins/StateTreeMCP`(저장소로의 **junction** — 소스는 저장소 쪽이 진실, `.gitignore` 로 제외됨).
   - 쓰기 전에 **`statetree_list_node_types`** 로 이 프로젝트의 태스크/조건을 확인할 것(커스텀 6+7종). 추측 금지.
   - **형제 순서 = 우선순위**. `add_state` 는 항상 맨 뒤에 붙으므로, 먼저 평가돼야 하는 상태는 `move_state` 로 올릴 것.
+  - ⚠️ MCP 는 노드의 **InstanceData 속성만** 설정한다. 노드 본체 속성(공용 조건의 `bInvert`, `SendAttackEvent.bTargetCurrentEnemy`)은 못 바꾼다 → 기존 트리를 **복제**해 값을 보존하거나, 파라미터를 InstanceData 에 둔 노드(`AI/AOSStateTreeBehaviorNodes`)를 쓸 것.
   - 플러그인 코드를 고쳤다면 **에디터 종료 후 풀 리빌드** 필요(핫 리로드 불가).
 
 ## 핵심 아키텍처 (불변)
@@ -71,6 +72,7 @@ SpawnPoint `SpawnCharacter` → `InitializeCharacter`(팀/레인) → AIControll
 AI 행동 결정은 **State Tree** (`Source/TDProject/AOS/AI/`). 이전 `UpdateAIBehavior` if/else 제거됨.
 - `UStateTreeAIComponent` 가 `AAOSAIController` 에 부착. **`bStartLogicAutomatically=false`** + `StartDeployment()` 에서 수동 `StartLogic()` (팀 확정 후 시작 — 안 그러면 아군 오사).
 - 자산 `/Game/AOS/AI/ST_AOSCharacterAI`. **스키마=StateTreeAIComponentSchema, ContextActorClass=`AOSCharacter`(Pawn, AIController 아님!).**
+- **캐릭터별 AI 개성**: `AAOSCharacter::AIStateTreeOverride` 에 전용 트리를 지정하면 `StartDeployment` 가 `StartLogic` 직전 `SetStateTree` 로 교체(비우면 공용 트리). 전투 메모리(기본공격 횟수·공격 종료 시각)는 AIController 가 ASC `Ability.Attack.Basic` 태그 이벤트로 기록. 첫 사례 `ST_KwangAI`(🧪테스트) → [`KWANG_AI_STATETREE.md`](Guides/03_Implementation/KWANG_AI_STATETREE.md).
 - **Design B (재선택 패턴)**: 우선순위 = 자식 노드 순서 한 곳(`UseR→UseW→UseQ→UseE→AttackEnemy→AttackStructure→PushLane`, PushLane 은 조건 없는 fallback 이라 **맨 마지막**). RUNNING 유지 state(PushLane/AttackEnemy)만 `On Tick → Root` 재선택 트랜지션. 스킬 task 는 즉시 완료형이라 트랜지션 불필요.
 
 **자주 빠지는 함정** (대부분 여기서 해결):

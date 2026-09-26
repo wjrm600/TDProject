@@ -89,7 +89,16 @@ void UGA_Attack::ActivateAbility(
 			CooldownGameplayEffectClass, 1.0f, CDCtx);
 		if (CDSpec.IsValid())
 		{
-			const float CooldownDuration = 1.0f / AttackSpeed;
+			float CooldownDuration = 1.0f / AttackSpeed;
+			// 캐릭터별 고정 쿨다운(BP_Char_* 의 BasicAttackCooldownOverride > 0)이 있으면 그 값.
+			// 몽타주 Rate 는 아래에서 그대로 AttackSpeed — 공격 간격만 늘어난다.
+			if (const AAOSCharacter* OwnerChar = Cast<AAOSCharacter>(ActorInfo->AvatarActor.Get()))
+			{
+				if (OwnerChar->GetBasicAttackCooldownOverride() > 0.0f)
+				{
+					CooldownDuration = OwnerChar->GetBasicAttackCooldownOverride();
+				}
+			}
 			CDSpec.Data->SetSetByCallerMagnitude(
 				FGameplayTag::RequestGameplayTag(FName("Data.Duration")),
 				CooldownDuration);
