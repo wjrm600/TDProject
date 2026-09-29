@@ -716,6 +716,99 @@ bool RemoveNode(UStateTreeEditorData* EditorData, const FGuid& NodeID)
 #endif
 }
 
+int32 RemoveEmptyNodes(UStateTreeEditorData* EditorData, TArray<FEmptyNodeInfo>& OutRemoved)
+{
+	OutRemoved.Reset();
+
+#if STATETREEMCP_HAS_STATETREE
+	if (!EditorData)
+	{
+		return 0;
+	}
+
+	auto IsEmpty = [](const FStateTreeEditorNode& Node) { return !Node.Node.IsValid(); };
+
+	// An empty slot can still hold an id if its type was cleared after the fact,
+	// and bindings may point at that id.
+	TSet<FGuid> RemovedIDs;
+
+	auto Strip = [&](TArray<FStateTreeEditorNode>& List, UObject* Owner, const FString& Location)
+	{
+		if (!List.ContainsByPredicate(IsEmpty))
+		{
+			return;
+		}
+
+		for (int32 Index = 0; Index < List.Num(); ++Index)
+		{
+			if (IsEmpty(List[Index]))
+			{
+				OutRemoved.Add({ Location, Index });
+				if (List[Index].ID.IsValid())
+				{
+					RemovedIDs.Add(List[Index].ID);
+				}
+			}
+		}
+
+		Owner->Modify();
+		List.RemoveAll(IsEmpty);
+	};
+
+	Strip(EditorData->Evaluators, EditorData, TEXT("evaluators"));
+	Strip(EditorData->GlobalTasks, EditorData, TEXT("global tasks"));
+
+	// Considerations are probed by reflection, as GetCapabilities does, so this
+	// still compiles on engines that predate them. The element type is checked
+	// against Tasks' because FStateTreeEditorNode is not exported, so its
+	// StaticStruct() cannot be linked from here.
+	const UClass* StateClass = UStateTreeState::StaticClass();
+	const FArrayProperty* TasksProperty = FindFProperty<FArrayProperty>(StateClass, TEXT("Tasks"));
+	const FArrayProperty* ConsiderationsProperty = FindFProperty<FArrayProperty>(StateClass, TEXT("Considerations"));
+	const FStructProperty* NodeType =
+		TasksProperty ? CastField<FStructProperty>(TasksProperty->Inner) : nullptr;
+	const FStructProperty* ConsiderationType =
+		ConsiderationsProperty ? CastField<FStructProperty>(ConsiderationsProperty->Inner) : nullptr;
+	const bool bConsiderationsAreNodes =
+		NodeType && ConsiderationType && ConsiderationType->Struct == NodeType->Struct;
+
+	VisitAllStates(EditorData, [&](UStateTreeState& State, UStateTreeState*, int32)
+	{
+		const FString Prefix = FString::Printf(TEXT("state '%s' "), *State.Name.ToString());
+
+		Strip(State.Tasks, &State, Prefix + TEXT("tasks"));
+		Strip(State.EnterConditions, &State, Prefix + TEXT("enter conditions"));
+
+		if (bConsiderationsAreNodes)
+		{
+			TArray<FStateTreeEditorNode>& Considerations =
+				*ConsiderationsProperty->ContainerPtrToValuePtr<TArray<FStateTreeEditorNode>>(&State);
+			Strip(Considerations, &State, Prefix + TEXT("considerations"));
+		}
+
+		for (int32 TransitionIndex = 0; TransitionIndex < State.Transitions.Num(); ++TransitionIndex)
+		{
+			Strip(State.Transitions[TransitionIndex].Conditions, &State,
+				Prefix + FString::Printf(TEXT("transition %d conditions"), TransitionIndex));
+		}
+	});
+
+	if (RemovedIDs.Num() > 0)
+	{
+		EditorData->Modify();
+		EditorData->EditorBindings.RemoveBindings(
+			[&RemovedIDs](FPropertyBindingBinding& Binding)
+			{
+				return RemovedIDs.Contains(Binding.GetTargetPath().GetStructID());
+			});
+	}
+
+	return OutRemoved.Num();
+#else
+	return 0;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // Bindings
 // ---------------------------------------------------------------------------

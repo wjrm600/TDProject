@@ -896,6 +896,15 @@ void UStateTreeMCPSubsystem::RegisterHandlers()
 				return false;
 			}
 
+			// describe_tree reports an all-zero id for slots that were never given a
+			// type. Say so, rather than the misleading "no node with that id".
+			if (!NodeId.IsValid())
+			{
+				OutError = TEXT("An all-zero id means an empty slot with no type, which has no id to "
+					"remove by. Use remove_empty_nodes to clear those.");
+				return false;
+			}
+
 			if (!StateTreeMCPCompat::RemoveNode(EditorData, NodeId))
 			{
 				OutError = FString::Printf(TEXT("No node with id '%s'."), *NodeId.ToString());
@@ -905,6 +914,43 @@ void UStateTreeMCPSubsystem::RegisterHandlers()
 			Tree->MarkPackageDirty();
 			OutResult = MakeShared<FJsonObject>();
 			OutResult->SetBoolField(TEXT("removed"), true);
+			return true;
+		});
+
+	Handlers.Add(TEXT("remove_empty_nodes"),
+		[](const TSharedPtr<FJsonObject>& Params, TSharedPtr<FJsonObject>& OutResult, FString& OutError)
+		{
+			if (!StateTreeMCPCompat::IsStateTreeAvailable(OutError))
+			{
+				return false;
+			}
+
+			UStateTree* Tree = nullptr;
+			UStateTreeEditorData* EditorData =
+				LoadEditorData(Params->GetStringField(TEXT("assetPath")), Tree, OutError);
+			if (!EditorData)
+			{
+				return false;
+			}
+
+			TArray<StateTreeMCPCompat::FEmptyNodeInfo> Removed;
+			if (StateTreeMCPCompat::RemoveEmptyNodes(EditorData, Removed) > 0)
+			{
+				Tree->MarkPackageDirty();
+			}
+
+			TArray<TSharedPtr<FJsonValue>> Entries;
+			for (const StateTreeMCPCompat::FEmptyNodeInfo& Info : Removed)
+			{
+				TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+				Entry->SetStringField(TEXT("location"), Info.Location);
+				Entry->SetNumberField(TEXT("index"), Info.Index);
+				Entries.Add(MakeShared<FJsonValueObject>(Entry));
+			}
+
+			OutResult = MakeShared<FJsonObject>();
+			OutResult->SetNumberField(TEXT("removedCount"), Removed.Num());
+			OutResult->SetArrayField(TEXT("removed"), Entries);
 			return true;
 		});
 

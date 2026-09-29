@@ -84,6 +84,7 @@ UnrealPlugin/StateTreeMCP/Source/StateTreeMCP/
 | **노드 (태스크·조건·평가자)** | |
 | `statetree_list_node_types` | 쓸 수 있는 노드 타입 + 설정 가능한 프로퍼티 |
 | `statetree_add_node` · `set_node_properties` · `remove_node` | 추가 · 설정 변경 · 삭제 |
+| `statetree_remove_empty_nodes` | 타입 없는 빈 칸 일괄 삭제 (id 가 없어 `remove_node` 로는 못 지움) |
 | **트랜지션** | |
 | `statetree_add_transition` · `remove_transition` | 추가 · 삭제 |
 | **바인딩** | |

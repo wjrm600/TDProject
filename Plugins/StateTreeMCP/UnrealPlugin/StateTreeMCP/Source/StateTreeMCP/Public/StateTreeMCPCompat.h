@@ -213,6 +213,23 @@ namespace StateTreeMCPCompat
 	/** Removes a node, and any bindings that targeted it. Returns false if not found. */
 	STATETREEMCP_API bool RemoveNode(UStateTreeEditorData* EditorData, const FGuid& NodeID);
 
+	/** Where RemoveEmptyNodes found a slot, so the caller can say what went. */
+	struct FEmptyNodeInfo
+	{
+		FString Location;   // e.g. "state 'PushLane' tasks"
+		int32 Index = 0;    // the slot's position in that list before removal
+	};
+
+	/**
+	 * Removes every node slot that has no type, across all node lists.
+	 *
+	 * The editor leaves these behind when "+" is pressed and no type is picked.
+	 * The compiler skips them, but they usually carry no id, so RemoveNode
+	 * cannot name them. Returns how many were removed.
+	 */
+	STATETREEMCP_API int32 RemoveEmptyNodes(
+		UStateTreeEditorData* EditorData, TArray<FEmptyNodeInfo>& OutRemoved);
+
 	// ---- Bindings ---------------------------------------------------------
 	//
 	// A task rarely carries its inputs as literals: it reads them from context

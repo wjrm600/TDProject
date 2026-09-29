@@ -73,7 +73,8 @@ def statetree_describe(asset_path: str) -> str:
     Returns a flat list of states, each carrying `id`, `name`, `depth` and
     `parentId`, so the full tree shape can be reconstructed, along with the
     tasks, conditions, transitions and bindings on each. The ids it reports are
-    what the editing tools take.
+    what the editing tools take. A node of type "(empty)" is a slot with no type;
+    clear those with `statetree_remove_empty_nodes`.
     """
     return _call("describe_tree", assetPath=asset_path)
 
@@ -255,6 +256,23 @@ def statetree_remove_node(asset_path: str, node_id: str) -> str:
     fail to resolve later.
     """
     return _call("remove_node", assetPath=asset_path, nodeId=node_id)
+
+
+@mcp.tool()
+def statetree_remove_empty_nodes(asset_path: str) -> str:
+    """Remove every task, condition, evaluator or consideration slot that has no type.
+
+    Args:
+        asset_path: Content path of the asset, e.g. "/Game/AI/ST_Grunt".
+
+    `statetree_describe` shows these as type "(empty)" with an all-zero id. The
+    editor leaves them behind when "+" is pressed and no type is chosen. The
+    compiler skips them, so removing one never changes behaviour, but having no
+    id they cannot be removed with `statetree_remove_node`.
+
+    Returns how many were removed and where each one was.
+    """
+    return _call("remove_empty_nodes", assetPath=asset_path)
 
 
 @mcp.tool()

@@ -87,6 +87,7 @@ UnrealPlugin/StateTreeMCP/Source/StateTreeMCP/
 | **Nodes (tasks, conditions, evaluators)** | |
 | `statetree_list_node_types` | Available node types and their settable properties |
 | `statetree_add_node` · `set_node_properties` · `remove_node` | Add · change settings · remove |
+| `statetree_remove_empty_nodes` | Clear slots left with no type (they have no id, so `remove_node` cannot reach them) |
 | **Transitions** | |
 | `statetree_add_transition` · `remove_transition` | Add · remove |
 | **Bindings** | |
