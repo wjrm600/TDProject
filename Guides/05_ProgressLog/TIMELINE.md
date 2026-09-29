@@ -2295,3 +2295,26 @@
 **결과**
 - 새 장비 절차 = pull → `.uproject` 열어 리빌드 → Claude Code 에서 새 서버 승인. 별도 clone·junction·경로 수정 없음. 커밋된 파일만 꺼낸 폴더에서 `.mcp.json` 설정 그대로 서버 기동 + 도구 목록 조회로 검증 (이 커밋)
 - ⚠️ 원칙 변경: 09-24 의 "소스는 저장소 쪽만 진실" → **TDProject 안의 사본에서 수정하고 subtree push**. `E:\Unreal Project\unreal-statetree-mcp` 로컬 clone 은 이제 편집 위치가 아니다(공개 저장소 반영 후 `git pull` 로 따라가기만)
+
+---
+
+## 2026-09-30 — StateTree MCP `statetree_remove_empty_nodes` 추가 + `ST_AOSCharacterAI` PushLane 빈 태스크 삭제
+
+**작업 내용**
+- 플러그인에 21번째 도구 `statetree_remove_empty_nodes` 추가 — 타입이 지정되지 않은 노드 칸을 에셋 전체에서 일괄 삭제. 대상 목록: 전역 평가자·전역 태스크·상태별 태스크·진입 조건·트랜지션 조건·고려사항(utility). 결과로 어느 목록의 몇 번째 칸을 지웠는지 반환
+- `remove_node` 에 ID 0 이 들어오면 "노드 없음" 대신 빈 칸이라는 설명 + 새 도구 안내
+- 이 도구로 `ST_AOSCharacterAI` 의 `PushLane` 태스크 2번째 빈 칸 삭제 → 컴파일·저장
+- 수정 파일: `Plugins/StateTreeMCP` 의 `StateTreeMCPCompat.h/.cpp`·`StateTreeMCPSubsystem.cpp`·`mcp-server/statetree_mcp/server.py`·README 2종, CLAUDE.md(도구 20종 → 21종)
+
+**문제점**
+- `statetree_describe` 로 `PushLane` 태스크 목록에 `type "(empty)"`, ID 가 전부 0 인 칸이 보였다. 에디터에서 태스크 "+" 만 누르고 타입을 고르지 않은 흔적으로 보인다
+- `remove_node` 는 ID 로 노드를 찾는데 ID 0 은 첫 줄에서 거부한다(엉뚱한 노드를 지우지 않으려는 안전장치). 실제 호출도 `No node with id '000…'` 로 실패 → MCP 로 지울 방법이 없었다
+- 동작 영향은 없었다: 엔진 컴파일러가 빈 노드를 건너뛴다(`StateTreeCompiler.cpp` "Silently ignore empty nodes")
+
+**해결 방법**
+- ID 대신 "타입이 없음"(`!Node.Node.IsValid()`)으로 찾아 지우는 별도 함수 `RemoveEmptyNodes` 를 Compat 계층에 추가. 타입이 있는 노드는 건드리지 않으므로 컴파일 결과가 바뀌지 않는다. 빈 칸에 ID 가 남아 있으면 그 ID 를 가리키던 바인딩도 함께 제거(`RemoveNode` 와 같은 규칙)
+- 기존 `ForEachNodeList` 는 트랜지션 조건·고려사항을 순회하지 않아 새 함수에서 직접 순회. 고려사항은 5.5 이후 추가된 필드라 기존 `GetCapabilities` 처럼 **리플렉션으로 탐지**(구버전 엔진에서도 컴파일). 원소 타입 확인은 `FStateTreeEditorNode::StaticStruct()` 대신 `Tasks` 배열의 원소 타입과 비교 — `FStateTreeEditorNode` 는 모듈 API 로 export 되지 않아 다른 모듈에서 링크할 수 없다
+
+**결과**
+- `TDProjectEditor` 풀 빌드 후 검증: ① `remove_node` ID 0 → 새 안내 메시지 ② `remove_empty_nodes` → `removedCount 1`(`state 'PushLane' tasks`, index 1) ③ 컴파일 메시지 0 + 저장 ④ `describe` 로 PushLane = `MoveToCurrentWaypoint` 1개, 다른 상태의 ID·순서 무변경 ⑤ 재실행 → `removedCount 0`(지울 것이 없으면 아무것도 바꾸지 않음) (이 커밋)
+- 참고: 실행 중인 MCP 서버는 시작할 때의 도구 목록을 유지하므로, 새 도구는 Claude Code 를 재시작해야 목록에 보인다

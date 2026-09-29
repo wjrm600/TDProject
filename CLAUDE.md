@@ -29,7 +29,7 @@ Claude Code 가 이 저장소에서 작업할 때의 지침입니다. **이 파�
 ```
 - VS 2026 + Unreal Build Accelerator(UBA). 에디터에서 `TDProject.uproject` 열면 자동 컴파일.
 - **MCP 3서버**: `unreal-engine`(에디터 자동화 — 에디터가 WebSocket `:8091` → `unreal-engine-mcp-server`(npx) 중계) + `unreal-rag`(C++ 코드 RAG, `Mcp_Tools/ue_rag_mcp.py`) + `unreal-statetree`(StateTree 저작, 아래). 새 머신 셋업 = [`Mcp_Tools/README.md`](Mcp_Tools/README.md).
-- **StateTree 편집은 `unreal-statetree` MCP 로** (`statetree_*` 도구 20종 — 에셋 생성·상태·태스크·조건·트랜지션·바인딩·컴파일). 파이썬으로는 불가능한 작업이라 전용 C++ 플러그인을 만들었다 — `SubTrees`/`Children` 이 스크립트에 노출되지 않기 때문. 공개 저장소 [github.com/wjrm600/Unreal-StateTree-MCP](https://github.com/wjrm600/Unreal-StateTree-MCP) 를 `Plugins/StateTreeMCP` 에 **git subtree** 로 포함(플러그인 = `UnrealPlugin/StateTreeMCP`, 서버 = `mcp-server`) → 새 장비도 pull + 빌드만으로 동작.
+- **StateTree 편집은 `unreal-statetree` MCP 로** (`statetree_*` 도구 21종 — 에셋 생성·상태·태스크·조건·트랜지션·바인딩·컴파일·빈 칸 정리). 파이썬으로는 불가능한 작업이라 전용 C++ 플러그인을 만들었다 — `SubTrees`/`Children` 이 스크립트에 노출되지 않기 때문. 공개 저장소 [github.com/wjrm600/Unreal-StateTree-MCP](https://github.com/wjrm600/Unreal-StateTree-MCP) 를 `Plugins/StateTreeMCP` 에 **git subtree** 로 포함(플러그인 = `UnrealPlugin/StateTreeMCP`, 서버 = `mcp-server`) → 새 장비도 pull + 빌드만으로 동작.
   - 플러그인 수정은 **`Plugins/StateTreeMCP` 안에서** 하고 커밋 후 공개 저장소로 올린다: `git subtree push --prefix=Plugins/StateTreeMCP https://github.com/wjrm600/Unreal-StateTree-MCP.git main`. 공개 저장소 쪽 변경을 받을 땐 `git subtree pull --prefix=Plugins/StateTreeMCP <같은 URL> main --squash`.
   - 쓰기 전에 **`statetree_list_node_types`** 로 이 프로젝트의 태스크/조건을 확인할 것(커스텀 6+7종). 추측 금지.
   - **형제 순서 = 우선순위**. `add_state` 는 항상 맨 뒤에 붙으므로, 먼저 평가돼야 하는 상태는 `move_state` 로 올릴 것.
