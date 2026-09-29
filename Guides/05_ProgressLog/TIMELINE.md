@@ -2277,6 +2277,27 @@
 
 ## 2026-09-30 — StateTree MCP 를 git subtree 로 편입 — 새 장비에서 pull 만으로 동작
 
+**쉽게 보기**
+- **한 줄 요약**: 다른 폴더에 있던 StateTree MCP 의 플러그인·서버 코드를 TDProject 저장소 안에 **진짜 파일로** 넣었다. 이제 pull 만 하면 필요한 파일이 전부 딸려 온다
+- **전 / 후**
+  ```
+  전 (이 장비에서만 동작)                        후 (모든 장비)
+  Plugins/StateTreeMCP → 바로가기(junction)      Plugins/StateTreeMCP/           ← 진짜 파일, git 에 포함
+    · 실제 파일은 옆 폴더에만 있음                   ├─ UnrealPlugin/StateTreeMCP/   (에디터 플러그인)
+    · git 제외라 다른 장비엔 빈 자리                 └─ mcp-server/                  (Claude 가 붙는 서버)
+  ```
+- **용어**
+  - **junction** = Windows 의 폴더 바로가기. git 은 바로가기 안의 내용을 담지 못한다
+  - **git subtree** = 다른 저장소의 내용을 통째로 넣는 방식(원본 저장소와 주고받기 가능). submodule(하위 모듈)은 "다른 저장소 주소"만 적어 두는 방식이라 pull 뒤 내용을 받는 명령을 따로 실행해야 해서 쓰지 않았다
+  - **Binaries** = C++ 를 컴파일한 결과물(DLL). git 에는 소스만 올리고 결과물은 장비마다 빌드한다
+  - **`.mcp.json` 의 두 버전** = 저장소의 **공용 템플릿**(상대 경로, 어느 장비에서나 동작) vs 이 장비의 **개인 설정**(`npx.cmd` 절대 경로·blender 서버). 개인 설정은 커밋하면 다른 장비에서 깨지므로 커밋 금지 → 이 장비 `git status` 에 늘 "수정됨"으로 보이는 게 정상이고, 커밋할 때 빼면 된다
+- **이 장비에서 한 일**
+  - 바로가기만 삭제, 원본 폴더는 그대로. 같은 자리에 진짜 폴더를 넣어야 했고, 둘 다 두면 같은 이름 플러그인이 2개가 되어 엔진이 충돌한다
+  - 기존 빌드 결과물을 새 위치로 복사 → 에디터를 다시 열 때 리빌드 질문 없이 바로 뜬다
+  - 개인 `.mcp.json` 은 서버 경로만 새 위치로 바꿔 로컬 유지. 앱을 재시작해야 적용된다(MCP 서버는 앱 시작 때 한 번 켜지고, 이미 켜진 서버는 옛 설정 그대로)
+- **다른 장비에서 할 일**: ① `git pull` ② `TDProject.uproject` 열고 빌드 질문에 **Yes** ③ Claude Code 가 새 MCP 서버 승인을 물으면 승인. Python 패키지 `mcp` 는 기존 셋업의 `Mcp_Tools/requirements.txt` 에 이미 들어 있다
+- **바뀐 규칙**: 플러그인은 TDProject 안의 `Plugins/StateTreeMCP` 에서 고치고 → 커밋 → `git subtree push` 로 공개 저장소에 올린다 (첫 사례 = 아래 `remove_empty_nodes` 항목)
+
 **작업 내용**
 - 공개 저장소 `unreal-statetree-mcp`(e08580e) 전체를 `Plugins/StateTreeMCP` 에 **git subtree(--squash)** 로 편입. 플러그인 = `Plugins/StateTreeMCP/UnrealPlugin/StateTreeMCP`, MCP 서버 = `Plugins/StateTreeMCP/mcp-server`
 - `.mcp.json` 에 `unreal-statetree` 서버 등록(상대 경로 `PYTHONPATH=Plugins/StateTreeMCP/mcp-server`) + `.gitignore` 의 `Plugins/StateTreeMCP/` 제외 규칙 삭제
@@ -2293,7 +2314,8 @@
 - 동기화 규칙: 플러그인 수정은 `Plugins/StateTreeMCP` 안에서 → 커밋 → `git subtree push`. 공개 저장소 변경은 `git subtree pull ... --squash`
 
 **결과**
-- 새 장비 절차 = pull → `.uproject` 열어 리빌드 → Claude Code 에서 새 서버 승인. 별도 clone·junction·경로 수정 없음. 커밋된 파일만 꺼낸 폴더에서 `.mcp.json` 설정 그대로 서버 기동 + 도구 목록 조회로 검증 (이 커밋)
+- 새 장비 절차 = pull → `.uproject` 열어 리빌드 → Claude Code 에서 새 서버 승인. 별도 clone·junction·경로 수정 없음. 커밋된 파일만 꺼낸 폴더에서 `.mcp.json` 설정 그대로 서버 기동 + 도구 목록 조회로 검증 (`d2a35e4`·`9d9f472` subtree 편입, `c43cf71` 등록·문서)
+- 에디터 재실행 후 확인: 플러그인 DLL 이 새 경로(`Plugins/StateTreeMCP/UnrealPlugin/StateTreeMCP/Binaries`)에서 로드되고, 브리지 8092 가 열리고, `statetree_describe` 로 `ST_AOSCharacterAI` 읽기까지 정상
 - ⚠️ 원칙 변경: 09-24 의 "소스는 저장소 쪽만 진실" → **TDProject 안의 사본에서 수정하고 subtree push**. `E:\Unreal Project\unreal-statetree-mcp` 로컬 clone 은 이제 편집 위치가 아니다(공개 저장소 반영 후 `git pull` 로 따라가기만)
 
 ---
@@ -2316,5 +2338,5 @@
 - 기존 `ForEachNodeList` 는 트랜지션 조건·고려사항을 순회하지 않아 새 함수에서 직접 순회. 고려사항은 5.5 이후 추가된 필드라 기존 `GetCapabilities` 처럼 **리플렉션으로 탐지**(구버전 엔진에서도 컴파일). 원소 타입 확인은 `FStateTreeEditorNode::StaticStruct()` 대신 `Tasks` 배열의 원소 타입과 비교 — `FStateTreeEditorNode` 는 모듈 API 로 export 되지 않아 다른 모듈에서 링크할 수 없다
 
 **결과**
-- `TDProjectEditor` 풀 빌드 후 검증: ① `remove_node` ID 0 → 새 안내 메시지 ② `remove_empty_nodes` → `removedCount 1`(`state 'PushLane' tasks`, index 1) ③ 컴파일 메시지 0 + 저장 ④ `describe` 로 PushLane = `MoveToCurrentWaypoint` 1개, 다른 상태의 ID·순서 무변경 ⑤ 재실행 → `removedCount 0`(지울 것이 없으면 아무것도 바꾸지 않음) (이 커밋)
+- `TDProjectEditor` 풀 빌드 후 검증: ① `remove_node` ID 0 → 새 안내 메시지 ② `remove_empty_nodes` → `removedCount 1`(`state 'PushLane' tasks`, index 1) ③ 컴파일 메시지 0 + 저장 ④ `describe` 로 PushLane = `MoveToCurrentWaypoint` 1개, 다른 상태의 ID·순서 무변경 ⑤ 재실행 → `removedCount 0`(지울 것이 없으면 아무것도 바꾸지 않음) (`740139a` 플러그인 → 공개 저장소 `af172e6`, `b3eeefa` 에셋·문서)
 - 참고: 실행 중인 MCP 서버는 시작할 때의 도구 목록을 유지하므로, 새 도구는 Claude Code 를 재시작해야 목록에 보인다
