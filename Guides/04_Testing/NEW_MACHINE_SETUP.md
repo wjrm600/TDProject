@@ -19,13 +19,15 @@
 3. RAG MCP 준비
    └── pip install -r requirements.txt   (경로는 자동 추론)
 
-4. Unreal Editor 실행 → 플러그인 컴파일
+4. Unreal Editor 실행 → 플러그인 컴파일 (McpAutomationBridge + StateTreeMCP)
 
 5. 동작 확인
 ```
 
 > **MCP 서버 설정 파일(`.mcp.json`)은 저장소에 이미 포함**되어 있어 별도 JSON 작성 불필요.
-> 두 MCP 서버(`unreal-engine`, `unreal-rag`) 모두 클론 후 자동 인식됩니다.
+> 세 MCP 서버(`unreal-engine`, `unreal-rag`, `unreal-statetree`) 모두 클론 후 자동 인식됩니다.
+> `unreal-statetree` 의 플러그인·서버 코드도 `Plugins/StateTreeMCP/` 에 들어 있어 따로 받을 것이 없습니다.
+> (Claude Code 가 처음 실행될 때 새 프로젝트 MCP 서버 승인을 물으면 승인하세요.)
 
 ---
 
@@ -142,7 +144,7 @@ pip install -r Mcp_Tools/requirements.txt
 
 1. `TDProject.uproject` 더블클릭
 2. **"Would you like to rebuild now?"** 팝업 → **Yes**
-   - `McpAutomationBridge` 플러그인 포함 전체 C++ 컴파일 (5~15분)
+   - `McpAutomationBridge`·`StateTreeMCP` 플러그인 포함 전체 C++ 컴파일 (5~15분)
 3. 에디터 열린 후 플러그인 활성화 확인:
    - 메뉴 → **Edit → Plugins** → 검색창에 `MCP` 입력
    - `MCP Automation Bridge` → **Enabled** 체크 확인
@@ -150,6 +152,9 @@ pip install -r Mcp_Tools/requirements.txt
 
 > 플러그인(0.5.30)이 활성화되면 에디터 실행 중 **WebSocket 서버**(`127.0.0.1:8091`, 8090 도 함께)가 자동 기동됩니다.
 > Claude 쪽 `unreal-engine` MCP(`.mcp.json` 의 `npx unreal-engine-mcp-server`)가 이 `:8091` 에 붙어 중계합니다 — 그래서 Node.js 18+ 가 필요합니다.
+>
+> `StateTreeMCP` 플러그인은 **HTTP 서버 `127.0.0.1:8092`** 를 띄웁니다(출력 로그 `LogStateTreeMCP: ... listening on http://127.0.0.1:8092/rpc`).
+> `unreal-statetree` MCP(`.mcp.json` 의 `python -m statetree_mcp`)가 여기에 붙습니다. Python 의존성(`mcp`)은 3단계에서 이미 설치됩니다.
 
 ---
 
@@ -160,8 +165,9 @@ pip install -r Mcp_Tools/requirements.txt
 **Unreal Editor가 열린 상태에서** 터미널에서 플러그인 WebSocket 포트 확인:
 
 ```powershell
-netstat -ano | findstr ":8091"
-# TCP    127.0.0.1:8091    0.0.0.0:0    LISTENING  <PID>  ← 이렇게 나오면 정상 (8090 도 함께 열릴 수 있음)
+netstat -ano | findstr ":8091 :8092"
+# TCP    127.0.0.1:8091    0.0.0.0:0    LISTENING  <PID>  ← unreal-engine (8090 도 함께 열릴 수 있음)
+# TCP    127.0.0.1:8092    0.0.0.0:0    LISTENING  <PID>  ← unreal-statetree
 ```
 
 ### Claude Code에서 MCP 연결 확인
@@ -179,17 +185,18 @@ Claude Code 세션 안에서:
 /mcp
 ```
 
-아래 두 서버가 모두 **connected** 상태여야 합니다:
+아래 세 서버가 모두 **connected** 상태여야 합니다:
 
 ```
-unreal-engine   connected   (Unreal Editor 실행 중일 때만 active)
-unreal-rag      connected
+unreal-engine      connected   (Unreal Editor 실행 중일 때만 active)
+unreal-rag         connected
+unreal-statetree   connected   (도구 호출은 Unreal Editor 실행 중일 때만 동작)
 ```
 
 ### 안티그라비티(Antigravity) IDE 사용 시
 
 안티그라비티는 프로젝트 `.mcp.json` 이 아니라 `~/.gemini/config/mcp_config.json`
-(IDE·CLI 공용)을 읽습니다. 설정 방법은 [`Mcp_Tools/README.md` §4-4](../../Mcp_Tools/README.md) 참고 —
+(IDE·CLI 공용)을 읽습니다. 설정 방법은 [`Mcp_Tools/README.md` §5-4](../../Mcp_Tools/README.md) 참고 —
 빈 파일이면 IDE 에 MCP 가 "No MCP Servers" 로 뜨므로, 직접 `mcpServers` 형식으로 채운 뒤
 `Refresh ↻` 로 인식시킵니다. (에디터를 켜둬야 `unreal-engine` 이 connected 됩니다.)
 
@@ -211,6 +218,12 @@ unreal-rag      connected
 - `McpAutomationBridge` 플러그인 활성화 여부 확인
 - 방화벽에서 포트 8091(및 8090) 차단 여부 확인
 - `npx unreal-engine-mcp-server` 가 한 번 받아지도록 Node.js 18+ / 인터넷 연결 확인
+
+### unreal-statetree 가 "Could not reach the Unreal Editor on port 8092" 로 답함
+
+- Unreal Editor 가 실행 중인지 확인 (도구 호출이 에디터 플러그인으로 전달됨)
+- 출력 로그에 `LogStateTreeMCP: StateTree MCP bridge listening on http://127.0.0.1:8092/rpc` 가 있는지 확인 — 없으면 `StateTreeMCP` 플러그인이 빌드·활성화되지 않은 것
+- 서버 자체가 안 뜨면(`/mcp` 에서 failed) 프로젝트 루트에서 `python -c "import mcp"` 로 의존성 확인 (없으면 3-2단계)
 
 ### unreal-rag 가 잘못된 폴더를 인덱싱
 
@@ -237,6 +250,7 @@ $env:TDPROJECT_RAG_DB = "C:\UnrealProject\TDProject\Mcp_Tools\chroma_db"
 
 ```powershell
 Remove-Item -Recurse -Force Binaries, Intermediate, Plugins\McpAutomationBridge\Binaries, Plugins\McpAutomationBridge\Intermediate
+# StateTreeMCP 플러그인까지 다시 빌드하려면 Plugins\StateTreeMCP\UnrealPlugin\StateTreeMCP 의 Binaries·Intermediate 도 같은 방식으로 지운다
 # TDProject.uproject 다시 더블클릭
 ```
 
@@ -254,7 +268,7 @@ Remove-Item -Recurse -Force Binaries, Intermediate, Plugins\McpAutomationBridge\
 [ ] git clone
 [ ] pip install -r Mcp_Tools/requirements.txt
 [ ] TDProject.uproject 열기 → Yes (플러그인 컴파일)
-[ ] McpAutomationBridge 플러그인 Enabled 확인
-[ ] netstat으로 포트 8091 LISTENING 확인
-[ ] claude 실행 → /mcp → unreal-engine + unreal-rag connected 확인
+[ ] McpAutomationBridge · StateTreeMCP 플러그인 Enabled 확인
+[ ] netstat으로 포트 8091 · 8092 LISTENING 확인
+[ ] claude 실행 → /mcp → unreal-engine + unreal-rag + unreal-statetree connected 확인
 ```

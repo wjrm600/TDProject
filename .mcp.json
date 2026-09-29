@@ -13,6 +13,15 @@
       "type": "stdio",
       "command": "python",
       "args": ["Mcp_Tools/ue_rag_mcp.py"]
+    },
+    "unreal-statetree": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "statetree_mcp"],
+      "env": {
+        "PYTHONPATH": "Plugins/StateTreeMCP/mcp-server",
+        "STATETREE_MCP_PORT": "8092"
+      }
     }
   }
 }

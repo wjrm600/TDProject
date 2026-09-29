@@ -2272,3 +2272,26 @@
 **결과**
 - Live Coding 적용 후 사용자 PIE 확인 "잘 보여" — 캐릭터는 팀 색 공격 원 + 흰색 감지 원, 타워·본진은 같은 팀 색 (이 커밋)
 - 참고: 흰색 감지 원은 서버에만 있는 AIController 가 그리므로 **Play As Dedicated Server 의 클라이언트 화면에는 안 보인다**(팀 색 원은 모든 모드에서 보임)
+
+---
+
+## 2026-09-30 — StateTree MCP 를 git subtree 로 편입 — 새 장비에서 pull 만으로 동작
+
+**작업 내용**
+- 공개 저장소 `unreal-statetree-mcp`(e08580e) 전체를 `Plugins/StateTreeMCP` 에 **git subtree(--squash)** 로 편입. 플러그인 = `Plugins/StateTreeMCP/UnrealPlugin/StateTreeMCP`, MCP 서버 = `Plugins/StateTreeMCP/mcp-server`
+- `.mcp.json` 에 `unreal-statetree` 서버 등록(상대 경로 `PYTHONPATH=Plugins/StateTreeMCP/mcp-server`) + `.gitignore` 의 `Plugins/StateTreeMCP/` 제외 규칙 삭제
+- 문서: CLAUDE.md(junction 설명 → subtree + 동기화 명령), `Mcp_Tools/README.md` §4 신설(기존 §4~6 → §5~7), `claude_desktop_config.example.json`, `NEW_MACHINE_SETUP.md`(3서버 기준)
+
+**문제점**
+- 09-24 편입 때 플러그인은 junction + `.gitignore` 제외, 서버 등록은 머신 고유 절대 경로라 커밋하지 않았다. 그래서 다른 장비에서 pull 하면 ① `.uproject` 가 요구하는 `StateTreeMCP` 플러그인이 없어 에디터가 정상적으로 열리지 않고 ② MCP 서버 코드도 없고 ③ 서버 등록도 없었다. 09-24 항목의 "문서 공백(미처리)" 도 남아 있었다
+- junction 은 Windows 링크라 git 이 내용을 담지 못한다. junction 을 둔 채 다른 경로에 사본을 두면 같은 이름의 플러그인이 둘이 되어 엔진이 충돌한다
+
+**해결 방법**
+- 다른 저장소의 내용을 일반 파일로 들여오면서 원본과 동기화할 수 있는 **git subtree** 사용. submodule 은 pull 만으로는 내용이 채워지지 않아(`git submodule update --init` 필요) 요구 조건에 맞지 않았다
+- 저장소 전체를 넣어도 엔진이 `.uplugin` 을 **재귀 탐색**(`FPluginManager::FindPluginsInDirectory`)하므로 중첩 경로 그대로 인식된다 → 플러그인과 서버가 한 폴더에 있고, 서버는 상대 경로로 가리킬 수 있다
+- 이 장비: junction 은 링크만 제거(`rmdir`, `/s` 없이 — 원본 저장소 파일 유지)하고, 기존 빌드 결과물(`Binaries`, gitignore 대상)을 새 위치로 복사해 에디터 재실행 시 리빌드가 필요 없게 했다. 머신 고유 `.mcp.json`(npx.cmd 절대 경로·blender 등)은 README 규칙대로 커밋하지 않고 로컬 유지
+- 동기화 규칙: 플러그인 수정은 `Plugins/StateTreeMCP` 안에서 → 커밋 → `git subtree push`. 공개 저장소 변경은 `git subtree pull ... --squash`
+
+**결과**
+- 새 장비 절차 = pull → `.uproject` 열어 리빌드 → Claude Code 에서 새 서버 승인. 별도 clone·junction·경로 수정 없음. 커밋된 파일만 꺼낸 폴더에서 `.mcp.json` 설정 그대로 서버 기동 + 도구 목록 조회로 검증 (이 커밋)
+- ⚠️ 원칙 변경: 09-24 의 "소스는 저장소 쪽만 진실" → **TDProject 안의 사본에서 수정하고 subtree push**. `E:\Unreal Project\unreal-statetree-mcp` 로컬 clone 은 이제 편집 위치가 아니다(공개 저장소 반영 후 `git pull` 로 따라가기만)

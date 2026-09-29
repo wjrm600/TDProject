@@ -25,6 +25,15 @@
       "_comment": "프로젝트 C++ 코드베이스 RAG 검색 서버. python 인터프리터 + langchain/chromadb 의존성 필요 (Mcp_Tools/requirements.txt 참고).",
       "command": "python",
       "args": [ "${PROJECT_ROOT}\\Mcp_Tools\\ue_rag_mcp.py" ]
+    },
+    "unreal-statetree": {
+      "_comment": "StateTree 저작 서버. 에디터 안의 StateTreeMCP 플러그인(HTTP :8092)에 붙음. 서버 코드는 저장소의 Plugins/StateTreeMCP/mcp-server (git subtree). 의존성 mcp 는 Mcp_Tools/requirements.txt 에 포함.",
+      "command": "python",
+      "args": [ "-m", "statetree_mcp" ],
+      "env": {
+        "PYTHONPATH": "${PROJECT_ROOT}\\Plugins\\StateTreeMCP\\mcp-server",
+        "STATETREE_MCP_PORT": "8092"
+      }
     }
   }
 }

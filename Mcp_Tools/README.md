@@ -1,12 +1,13 @@
 # MCP Tools — 새 컴퓨터에서의 셋업 가이드
 
-이 폴더는 TDProject에서 사용하는 **두 개의 MCP(Model Context Protocol) 서버**를
+이 폴더는 TDProject에서 사용하는 **세 개의 MCP(Model Context Protocol) 서버**를
 다른 컴퓨터에서도 똑같이 재현할 수 있도록 모아둔 곳입니다.
 
 | MCP 서버 | 역할 | 실행 방식 |
 |---------|------|----------|
 | `unreal-engine` | UE 에디터 자동화(액터/에셋/레벨/머티리얼/AI 제어 등) | **`McpAutomationBridge`(0.5.30) 플러그인**이 에디터 안에서 WebSocket 서버(`:8090`/`:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`**(`npx`)가 거기에 붙어 Claude에 MCP를 중계. |
 | `unreal-rag` | 프로젝트 C++ 코드베이스 의미 검색(RAG) | **`ue_rag_mcp.py`** 가 ChromaDB + HuggingFace 임베딩으로 `Source/` 인덱싱 |
+| `unreal-statetree` | StateTree 에셋 저작(상태·태스크·조건·트랜지션·바인딩·컴파일) | **`StateTreeMCP` 플러그인**이 에디터 안에서 HTTP 서버(`127.0.0.1:8092/rpc`)를 띄우고, Python 서버 **`statetree_mcp`** 가 거기에 붙어 중계. 둘 다 `Plugins/StateTreeMCP/` 에 포함(§4). |
 
 ---
 
@@ -103,7 +104,7 @@ auto-memory 갱신 → `.claude/settings.local.json` 패치까지 한 번에
 `Plugins/McpAutomationBridge/`(0.5.30) 플러그인이 에디터 안에서 **WebSocket 서버**(기본
 `:8090`, `:8091`)를 띄우고, Node 패키지 **`unreal-engine-mcp-server`** 가 거기에 붙어
 Claude에 MCP(stdio)를 중계합니다. Node 서버는 `npx` 로 자동 실행되어 사전 설치는 불필요합니다
-(Node.js 18+ 필요). 설정은 §4-2 참고.
+(Node.js 18+ 필요). 설정은 §5-2 참고.
 
 확인 방법:
 1. 프로젝트를 빌드하고 에디터 실행 (플러그인 첫 로드 시 리빌드를 요구할 수 있음 → 빌드)
@@ -161,9 +162,46 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 
 ---
 
-## 4. Claude Desktop / Claude Code 설정 등록
+## 4. unreal-statetree MCP — 셋업
 
-### 4-1. 설정 파일 위치
+StateTree 는 파이썬으로 편집할 수 없어서(`SubTrees`/`Children` 이 스크립트에 노출되지 않음) 전용
+C++ 플러그인을 씁니다. 공개 저장소 [Unreal-StateTree-MCP](https://github.com/wjrm600/Unreal-StateTree-MCP)
+전체가 **git subtree** 로 `Plugins/StateTreeMCP/` 에 들어 있으므로 **clone/pull 만 하면 추가 작업이 없습니다.**
+
+| 구성 | 위치 |
+|------|------|
+| 에디터 플러그인 (C++) | `Plugins/StateTreeMCP/UnrealPlugin/StateTreeMCP/` — 엔진이 `.uplugin` 을 재귀 탐색하므로 중첩 경로 그대로 인식 |
+| MCP 서버 (Python) | `Plugins/StateTreeMCP/mcp-server/` — `.mcp.json` 이 상대 경로 `PYTHONPATH` 로 가리킴 |
+| Python 의존성 | `mcp` 하나 — §3-1 의 `requirements.txt` 에 이미 포함 |
+
+확인 방법:
+1. `TDProject.uproject` 를 열 때 리빌드 → `StateTreeMCP` 모듈도 함께 빌드됨 (새 모듈이라 핫 리로드 불가)
+2. 출력 로그에 `LogStateTreeMCP: StateTree MCP bridge listening on http://127.0.0.1:8092/rpc`
+3. MCP 서버 없이 브리지 단독 테스트:
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8092/rpc -ContentType application/json -Body '{"action":"capabilities"}'
+   ```
+
+**플러그인 코드 수정 → 공개 저장소 반영** (TDProject 안의 사본을 고치고 빌드·검증·커밋한 뒤):
+
+```bash
+git subtree push --prefix=Plugins/StateTreeMCP https://github.com/wjrm600/Unreal-StateTree-MCP.git main
+```
+
+**공개 저장소 쪽 변경 받기** (`--squash` 필수 — 처음에 squash 로 편입했으므로):
+
+```bash
+git subtree pull --prefix=Plugins/StateTreeMCP https://github.com/wjrm600/Unreal-StateTree-MCP.git main --squash
+```
+
+> 포트를 바꾸려면 에디터 실행 인자 `-StateTreeMCPPort=<포트>` + 서버 env `STATETREE_MCP_PORT=<포트>` 를 맞춥니다.
+> 도구 목록·설계 배경은 [`Plugins/StateTreeMCP/README.md`](../Plugins/StateTreeMCP/README.md).
+
+---
+
+## 5. Claude Desktop / Claude Code 설정 등록
+
+### 5-1. 설정 파일 위치
 
 | 클라이언트 | Windows 경로 |
 |-----------|-------------|
@@ -172,7 +210,7 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 | Claude Code | `%USERPROFILE%\.claude\config.json` (또는 프로젝트별 `.claude/settings.json`) |
 | 안티그라비티(Antigravity) | `%USERPROFILE%\.gemini\config\mcp_config.json` (IDE·CLI 공용) |
 
-### 4-2. 템플릿 적용
+### 5-2. 템플릿 적용
 
 `Mcp_Tools/claude_desktop_config.example.json`을 위 위치에 복사한 뒤
 `${PROJECT_ROOT}` 부분을 실제 경로로 치환합니다.
@@ -190,14 +228,23 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
     "unreal-rag": {
       "command": "python",
       "args": ["E:\\Unreal Project\\TDProject\\Mcp_Tools\\ue_rag_mcp.py"]
+    },
+    "unreal-statetree": {
+      "command": "python",
+      "args": ["-m", "statetree_mcp"],
+      "env": {
+        "PYTHONPATH": "E:\\Unreal Project\\TDProject\\Plugins\\StateTreeMCP\\mcp-server",
+        "STATETREE_MCP_PORT": "8092"
+      }
     }
   }
 }
 ```
 
 > 백슬래시는 JSON에서 `\\` 로 두 번 써야 합니다.
+> 프로젝트 `.mcp.json`(Claude Code)은 상대 경로(`Plugins/StateTreeMCP/mcp-server`)로 이미 등록돼 있어 수정할 필요가 없습니다. 절대 경로는 프로젝트 폴더 밖에서 읽히는 데스크톱 설정 파일에만 필요합니다.
 
-### 4-3. 환경변수 사용 (선택)
+### 5-3. 환경변수 사용 (선택)
 
 경로를 직접 박지 않고 환경변수로 빼고 싶다면:
 
@@ -216,7 +263,7 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 }
 ```
 
-### 4-4. 안티그라비티(Antigravity) IDE
+### 5-4. 안티그라비티(Antigravity) IDE
 
 안티그라비티는 프로젝트 `.mcp.json` 이 아니라 **`~/.gemini/config/mcp_config.json`**
 (IDE·CLI 공용)을 읽습니다. ⚠️ 이 파일이 비어 있으면 IDE 의 MCP 목록에 "No MCP Servers"
@@ -249,7 +296,7 @@ $env:TDPROJECT_RAG_DB = "D:\path\to\TDProject\Mcp_Tools\chroma_db"
 > - 작성 후 IDE 의 `Refresh ↻` 로 인식시키고, 에디터를 켜두면 `unreal-engine` 이 connected 됩니다.
 > - `mcp_config.json` 은 홈 디렉토리(머신별 절대경로)라 **git 추적 대상이 아닙니다** — 새 머신에서는 위 형식으로 다시 작성.
 
-### 4-5. blender MCP (선택 — 라이브 Blender 제어 / 애니·메시 작업)
+### 5-5. blender MCP (선택 — 라이브 Blender 제어 / 애니·메시 작업)
 
 Claude 가 Blender 를 직접 제어(씬 조회·파이썬 실행·Hyper3D/Sketchfab 에셋 생성)하려면
 **`blender-mcp`** 서버를 추가합니다. `uvx`(uv 툴러너)로 실행하며, **Blender 쪽에 BlenderMCP 애드온**이
@@ -277,20 +324,22 @@ Claude 가 Blender 를 직접 제어(씬 조회·파이썬 실행·Hyper3D/Sketc
 
 ---
 
-## 5. 동작 확인
+## 6. 동작 확인
 
 Claude를 재시작한 뒤 다음을 시도해 보세요.
 
 - **unreal-engine**: 에디터를 켠 상태에서 "현재 레벨에 있는 액터 목록 보여줘" → 액터 리스트 응답
 - **unreal-rag**: "AOSCharacter::SetTeam이 어디서 호출되는지 검색해줘" → 코드 청크 응답
+- **unreal-statetree**: 에디터를 켠 상태에서 "ST_AOSCharacterAI 구조 보여줘" → 상태 계층 응답 (`statetree_describe`)
 
 응답이 없거나 오류가 나면:
 - Claude 로그(`%APPDATA%\Claude\logs\`)에서 MCP 서버 stderr 확인
 - `python "<PROJECT_ROOT>\Mcp_Tools\ue_rag_mcp.py"` 직접 실행하여 경로/의존성 출력 확인
+- `unreal-statetree` 가 "Could not reach the Unreal Editor on port 8092" 로 답하면 에디터가 꺼져 있거나 `StateTreeMCP` 플러그인이 빌드되지 않은 것 (§4 확인 방법)
 
 ---
 
-## 6. 파일 목록
+## 7. 파일 목록
 
 | 파일 | 설명 | Git 추적 |
 |------|------|---------|
