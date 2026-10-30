@@ -124,9 +124,11 @@ void AAOSCharacterPreviewStage::SetPreviewCharacter(TSubclassOf<AAOSCharacter> C
 void AAOSCharacterPreviewStage::SetCapturing(bool bEnable)
 {
 	if (!Capture) return;
-	Capture->bCaptureEveryFrame = bEnable;   // idle 애니 갱신 위해 매 프레임 (메시 보일 때만)
-	if (bEnable)
+	// 꺼져 있다 켜질 때만 즉시 1프레임 반영. 이미 매 프레임 캡처 중이면 다음 프레임이 반영하므로 생략,
+	// bCaptureEveryFrame=true 상태의 CaptureScene() 은 같은 프레임 이중 렌더(엔진 "major inefficiency" 경고) → 켜기 전에 호출
+	if (bEnable && !Capture->bCaptureEveryFrame)
 	{
-		Capture->CaptureScene();             // 즉시 1프레임 반영
+		Capture->CaptureScene();
 	}
+	Capture->bCaptureEveryFrame = bEnable;   // idle 애니 갱신 위해 매 프레임 (메시 보일 때만)
 }

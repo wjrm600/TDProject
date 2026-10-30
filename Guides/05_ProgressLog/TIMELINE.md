@@ -2184,7 +2184,7 @@
 - **교훈 2**: **에디터가 자동 복구해 주는 것은 저장해야 남는다.** WBP GUID 는 이번 세션 초반의 BlendSpace 그리드 리베이크와 **완전히 같은 패턴**이었다 — 메모리에서는 고쳐지지만 강제 저장이 없으면 디스크에 반영되지 않고, 에디터에서는 영원히 정상으로 보인다
 - **교훈 3**: **모놀리식 빌드는 모듈러가 숨기던 불일치를 드러낸다.** 에디터(DLL 분리)가 몇 달간 멀쩡했다고 Game 타깃이 빌드된다는 보장이 없다
 - **교훈 4**: 패키징은 단순 배포 작업이 아니라 **검증 수단**이다. 이번 여섯 개는 모두 에디터 테스트로는 원리적으로 못 잡는 종류였다
-- ⚠️ **미처리 1**: `AOSCharacterPreviewStage::SetCapturing()` 이 `bCaptureEveryFrame=true` 로 켠 뒤 `CaptureScene()` 을 또 호출해 **같은 프레임을 두 번 렌더**한다(로그에 `major inefficiency` 경고 14회 연속). 새로 켜는 순간에만 호출하도록 4줄 수정이면 되고 cpp 전용이라 핫 리로드 가능. PSO 수정 검증과 섞지 않으려고 미뤘다
+- ✅ ~~**미처리 1**~~ (2026-10-30 해결 — 아래 항목): `AOSCharacterPreviewStage::SetCapturing()` 이 `bCaptureEveryFrame=true` 로 켠 뒤 `CaptureScene()` 을 또 호출해 **같은 프레임을 두 번 렌더**한다(로그에 `major inefficiency` 경고 14회 연속). 새로 켜는 순간에만 호출하도록 4줄 수정이면 되고 cpp 전용이라 핫 리로드 가능. PSO 수정 검증과 섞지 않으려고 미뤘다
 - ⚠️ **미처리 2**: 메인메뉴에 Host/Join UI 가 없어 패키지 테스트는 커맨드라인 인자(`?listen` / IP)로만 가능. `AreAllPlayersReady()` 가 `GetNumPlayers() >= 2` 를 요구하므로 1인 테스트 불가
 
 ---
@@ -2340,3 +2340,22 @@
 **결과**
 - `TDProjectEditor` 풀 빌드 후 검증: ① `remove_node` ID 0 → 새 안내 메시지 ② `remove_empty_nodes` → `removedCount 1`(`state 'PushLane' tasks`, index 1) ③ 컴파일 메시지 0 + 저장 ④ `describe` 로 PushLane = `MoveToCurrentWaypoint` 1개, 다른 상태의 ID·순서 무변경 ⑤ 재실행 → `removedCount 0`(지울 것이 없으면 아무것도 바꾸지 않음) (`740139a` 플러그인 → 공개 저장소 `af172e6`, `b3eeefa` 에셋·문서)
 - 참고: 실행 중인 MCP 서버는 시작할 때의 도구 목록을 유지하므로, 새 도구는 Claude Code 를 재시작해야 목록에 보인다
+
+---
+
+## 2026-10-30 — 캐릭터 프리뷰 이중 렌더 수정 (`major inefficiency` 경고 제거)
+
+**작업 내용**
+- `AAOSCharacterPreviewStage::SetCapturing()` 수정 — 즉시 캡처(`CaptureScene()`)를 **꺼져 있다 켜지는 순간에만**, 그리고 `bCaptureEveryFrame=true` 로 바꾸기 **전에** 호출. 09-24 패키징 항목의 "미처리 1"
+
+**문제점**
+- 기존 코드는 `bCaptureEveryFrame=true` 로 먼저 켜고 `CaptureScene()` 을 불렀다. 엔진은 `bCaptureEveryFrame` 이 켜진 상태에서 `CaptureScene()` 이 오면 그 프레임 자동 캡처와 별개로 한 번 더 렌더하고 `CaptureScene: Scene capture with bCaptureEveryFrame enabled was told to update - major inefficiency.` 경고를 낸다(`SceneCaptureComponent.cpp` `USceneCaptureComponent2D::CaptureScene`)
+- 벤픽 위젯은 드래프트 갱신마다 `SetPreviewCharacter()` → `SetCapturing(true)` 를 부르므로(`AOSBanPickWidget.cpp` 프리뷰 갱신부), 이미 캡처 중인데도 갱신 횟수만큼 이중 렌더 + 경고가 반복됐다(로그 14회 연속)
+
+**해결 방법**
+- 경고 조건이 "호출 시점의 `bCaptureEveryFrame`" 이라서, "새로 켤 때만 호출" 만으로는 첫 켜기 때 1회 경고가 남는다 → **호출 순서를 바꿔** 플래그를 켜기 전에 캡처. 이미 캡처 중이면 다음 프레임 자동 캡처가 새 메시를 반영하므로 즉시 캡처 생략
+- cpp 전용 변경(헤더 무변경) → 핫 리로드/Live Coding 가능
+
+**결과**
+- Live Coding 후 사용자 확인: 벤픽에서 캐릭터를 바꿔도 `major inefficiency` 경고 0건 (이 커밋)
+- 참고: 이 경고는 일반 로그가 아니라 `FMessageLog("Blueprint")` 로 나가므로, Output Log 에서 안 보이면 Message Log 창의 Blueprint 카테고리나 `Saved/Logs/*.log` 를 검색할 것
