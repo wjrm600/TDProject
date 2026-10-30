@@ -751,7 +751,7 @@ void AAOSAIController::BeginStrafe(AActor* FocusActor)
 	SetFocus(FocusActor, EAIFocusPriority::Gameplay);
 }
 
-void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier)
+void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier, float KeepDistance)
 {
 	if (!ControlledCharacter || !Target) return;
 	BeginStrafe(Target);
@@ -760,14 +760,19 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float Sp
 	const FVector TargetLoc = Target->GetActorLocation();
 	const float Range = GetEffectiveAttackRange();
 
-	// 사거리 밖으로 벌어졌으면 옆걸음 대신 접근 (타겟을 바라본 채, 원래 속도)
-	if (FVector::Dist(MyLoc, TargetLoc) > Range)
+	// 유지 거리 모드: KeepDistance 원 위에서 옆걸음 (사거리보다 멀어도 됨 — 쿨다운이 끝나면 Engage 가 다시 붙음).
+	// 재접근 기준에 여유(+100)를 둬, 원 바깥쪽으로 조금 밀린 정도로는 옆걸음 ↔ 접근이 번갈아 바뀌지 않게 한다.
+	const bool bKeepDistance = KeepDistance > 0.0f;
+	const float LeashDistance = bKeepDistance ? KeepDistance + 100.0f : Range;
+
+	// 너무 멀어졌으면 옆걸음 대신 접근 (타겟을 바라본 채, 원래 속도)
+	if (FVector::Dist(MyLoc, TargetLoc) > LeashDistance)
 	{
 		ApplyStrafeSpeed(1.0f);
 		if (FVector::Dist(LastNavMoveTarget, TargetLoc) > 50.0f)
 		{
 			LastNavMoveActor = nullptr;
-			MoveToLocation(TargetLoc, Range * 0.8f,
+			MoveToLocation(TargetLoc, bKeepDistance ? KeepDistance : Range * 0.8f,
 				/*bStopOnOverlap=*/true,
 				/*bUsePathfinding=*/true,
 				/*bProjectDestinationToNavigation=*/true,
@@ -799,8 +804,12 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float Sp
 		Offset = -ControlledCharacter->GetActorForwardVector();
 		Offset.Z = 0.0f;
 	}
-	// 타겟 중심 원호 위로 이동 → 거리(=사거리 안)를 유지한 채 옆으로 비킨다
-	const float OrbitRadius = FMath::Clamp(static_cast<float>(Offset.Size()), 100.0f, FMath::Max(100.0f, Range * 0.9f));
+	// 타겟 중심 원호 위로 이동 → 거리를 유지한 채 옆으로 비킨다.
+	//  유지 거리 모드: 반지름 = KeepDistance 고정 → 지금 더 가까우면 목표가 원 바깥이라 뒤로 물러나며 비낀다
+	//  기본: 반지름 = 현재 거리 (사거리×0.9 이하로 잘라 사거리 안에 머묾)
+	const float OrbitRadius = bKeepDistance
+		? FMath::Max(KeepDistance, 100.0f)
+		: FMath::Clamp(static_cast<float>(Offset.Size()), 100.0f, FMath::Max(100.0f, Range * 0.9f));
 	const float AngleRad = (StepDistance / OrbitRadius) * StrafeSign;
 	const FVector NewOffset = Offset.GetSafeNormal().RotateAngleAxisRad(AngleRad, FVector::UpVector) * OrbitRadius;
 	FVector Goal = TargetLoc + NewOffset;

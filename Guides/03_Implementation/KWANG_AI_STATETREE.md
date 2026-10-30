@@ -106,7 +106,7 @@ Root [TrySelectChildrenInOrder]
 | Behavior Cooldown Ready (v2) | 조건 | BehaviorKey("Retreat"), CooldownSeconds(60) | 행동별 쿨다운 | ✅* |
 | In Post-Attack Window | 조건 | WindowSeconds(0.5) | 공격 종료 후 N초 창 — 쿨다운 틈이 0 인 캐릭터용 | ❌ (v1 에서 사용) |
 | Select Lowest Max-Health Enemy | 태스크 | Radius(500) | 최대 체력 최저 적 → CurrentTarget | ✅ |
-| Strafe Around Target | 태스크 | StepDistance(150), SpeedMultiplier(0.5), bTargetCurrentEnemy(true) | 옆걸음 좌우 반복 (ExitState 에서 회전 모드·속도 원복) | ✅ |
+| Strafe Around Target | 태스크 | StepDistance(150), SpeedMultiplier(0.3), KeepDistance(0=현재 거리), bTargetCurrentEnemy(true) | 옆걸음 좌우 반복, KeepDistance>0 이면 그 거리를 유지하며 물러나면서 옆걸음 (ExitState 에서 회전 모드·속도 원복) | ✅ |
 | Retreat To Friendly Tower (v2 재설계) | 태스크 | StopRadius(200), CooldownKey("Retreat") | 타워 반경 안까지 한 번에 후퇴 → 도착 시 쿨다운 기록 | ✅* |
 | Activate Ability (Reset Attack Count) | 태스크 | AbilityTag, bResetBasicAttackCount(true) | 공용 ActivateAbilityByTag + 성공 시 카운트 0 | ✅ |
 
@@ -114,8 +114,9 @@ Root [TrySelectChildrenInOrder]
 
 ### 3-5. 옆걸음 동작 원리
 - 시작 시 캐릭터 무브먼트를 `bOrientRotationToMovement=false`, `bUseControllerDesiredRotation=true` 로 바꾸고 AI 포커스를 타겟에 고정 → 몸은 타겟을 보고 다리는 옆으로 → `BS_Kwang_Locomotion` 의 `Jog_Left/Right` 가 재생된다.
-- 목표점 = 타겟 중심 원호 위에서 `StepDistance`(ST_KwangAI 는 **250**, 노드 기본값 150) 만큼 회전한 점 (반경은 현재 거리, 최대 사거리×0.9 = **180**) → **사거리를 벗어나지 않고** 옆으로 비킨다. 도착하면 반대 방향으로 같은 거리 → 두 점 사이를 오간다. 반경이 180 이하라 150 은 약 48°, 250 은 약 80°, 300 은 약 95° 를 돈다.
-- 옆걸음 동안 `MaxWalkSpeed = MoveSpeed 속성 × SpeedMultiplier`(0.5 → 600 이면 300). 매 tick 재적용해 버프/슬로우를 따라가고, 사거리 밖으로 벌어져 다시 접근할 때와 ExitState 에서는 원래 속도로 돌린다.
+- 목표점 = 타겟 중심 원호 위에서 `StepDistance`(ST_KwangAI 는 **400**, 노드 기본값 150) 만큼 회전한 점 (반경은 현재 거리, 최대 사거리×0.9 = **180**) → **사거리를 벗어나지 않고** 옆으로 비킨다. 도착하면 반대 방향으로 같은 거리 → 두 점 사이를 오간다. 회전각 = StepDistance ÷ 반경: 반경 180(유지 거리 0, 예: StrafeStructure)이면 150 ≈ 48° · 250 ≈ 80° · 400 ≈ 127°, 반경 500(유지 거리 500)이면 400 ≈ 46°.
+- **유지 거리(`KeepDistance` > 0)**: 원 반지름을 현재 거리 대신 `KeepDistance` 로 고정 → 지금 더 가까우면 목표점이 원 바깥이라 **뒤로 물러나며 옆으로** 비킨다(몸은 적을 보므로 뒷걸음+옆걸음 대각선). 원에 닿은 뒤엔 그 거리에서 좌우. `KeepDistance + 100` 보다 멀어지면 `KeepDistance` 까지 다시 다가간다. 사거리보다 커도 된다 — 쿨다운이 끝나면 Engage(`MoveToCurrentTarget`)가 사거리까지 붙어 공격한다(치고 빠지기).
+- 옆걸음 동안 `MaxWalkSpeed = MoveSpeed 속성 × SpeedMultiplier`(Kwang 0.3 → 600 이면 180). 매 tick 재적용해 버프/슬로우를 따라가고, 사거리 밖으로 벌어져 다시 접근할 때와 ExitState 에서는 원래 속도로 돌린다.
 - 틈이 끝나면(쿨다운 해제) Engage 로 넘어가며 ExitState 에서 회전 모드 복원 + 포커스 해제. `StopMovement` 는 부르지 않는다 (사망 시 StopLogic → ExitState 경유 — root motion 보호 규칙).
 - 서버에서만 바꾸는 값이라 클라는 복제된 회전을 그대로 받는다 (DS 정합).
 
@@ -183,8 +184,9 @@ Root [TrySelectChildrenInOrder]
 | 공격 간격(= 옆걸음 시간) | `BP_Char_Kwang` Class Defaults | AOS\|GAS · Basic Attack Cooldown Override (0=원래 규칙) | 5 |
 | 사거리 | `DT_CharacterAttributes` Kwang 행 | AttackRange | 200 |
 | R 쿨다운 | `BP_GA_Kwang_R` | Cooldown Duration | 45 |
-| 옆걸음 거리 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · StepDistance | 250 (노드 기본값 150) |
-| 옆걸음 속도 배율 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · SpeedMultiplier | 0.5 |
+| 옆걸음 거리 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · StepDistance | 400 (노드 기본값 150) |
+| 옆걸음 속도 배율 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · SpeedMultiplier | 0.3 (3노드, C++ 기본값도 0.3) |
+| 옆걸음 중 유지 거리 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · KeepDistance (0 = 현재 거리) | **500** (Focus·Nearest) / 0 (StrafeStructure) |
 | Q/E 필요 공격 수 | SkillQE | Basic Attack Count At Least · Count | 3 |
 | Q/E 대상 반경 | SkillQE / Q_SingleTarget / E_MultiTarget | Enemy Count In Radius · Radius | 200 |
 | W 트리거 반경 | UseW | Enemy Count In Radius · Radius | 400 |
@@ -194,6 +196,8 @@ Root [TrySelectChildrenInOrder]
 | 타워 도착 반경 | LowHP_Retreat **와** RetreatToTower (둘 다 맞출 것) | Friendly Tower Distance · Radius / Retreat … · StopRadius | 200 |
 | 긴급 스킬 | EmergencyQ / EmergencyE | Owner Has Tag · Tag + Activate … · AbilityTag | Q, E |
 | 집중 타겟 반경/인원 | FocusLowestMaxHP | Enemy Count In Radius · Radius/MinCount, Select … · Radius | 500 / 2 |
+
+⚠️ **유지 거리 ↔ 반경 조건 간섭**: 옆걸음 중 Kwang 은 타겟에서 `KeepDistance`(500) 떨어진다. 같은 거리 기준을 쓰는 조건 — `FocusLowestMaxHP`(500 안 2명+), `UseW`(400 안), Q/E(200 안) — 은 옆걸음 동안 거짓이 되기 쉽다. 특히 집중 타겟 반경이 유지 거리와 같아(500) 경계에서 Focus ↔ Nearest 로 갈아타며 옆걸음이 끊길 수 있으니, 다수 교전에서 옆걸음이 덜컥거리면 집중 타겟 반경을 600~700 으로 올릴 것.
 
 ⚠️ 형제 순서 = 우선순위. 조건만 바꾸고 순서를 안 보면 의도와 다르게 동작한다.
 
@@ -205,7 +209,7 @@ Root [TrySelectChildrenInOrder]
 |------|------|
 | v1 | 원문대로 구현. 옆걸음 = 공격 후 0.5초 창(1걸음), Q/W 게이트, E 버프(400), 후퇴 = 100씩 → 타워 400 안 대기 |
 | v2 | 사용자 확정 반영: 공격 쿨 5초 · 사거리 200 · W↔E 정정(Q/E 게이트, W 버프) · R 쿨 45초 · 후퇴 = 타워 200 안까지 한 번에 + 60초 쿨 + 라인 푸시 재개 · 옆걸음 = 쿨다운 틈 내내 좌우 반복 |
-| v2.1 (2026-10-30) | 옆걸음 속도 배율 `SpeedMultiplier`(기본 0.5) 추가 + 막힘 판정을 걸음 길이/속도 비례로 + 옆걸음 거리 150 → **250**(사용자 요청, 3노드). 공용 수정: `SendAttackEvent` 가 진입 시 사거리를 안 봐서 감지 범위(1500)에서 기본공격이 나가던 버그 수정(전 캐릭터) |
+| v2.1 (2026-10-30) | 옆걸음 속도 배율 `SpeedMultiplier`(기본 0.5 → 0.3) 추가 + 막힘 판정을 걸음 길이/속도 비례로 + 옆걸음 거리 150 → 250 → **400**(사용자 요청, 3노드) + 옆걸음 중 유지 거리 `KeepDistance` 추가, 적 대상 2노드 350 → **500**(치고 빠지기). 공용 수정: `SendAttackEvent` 가 진입 시 사거리를 안 봐서 감지 범위(1500)에서 기본공격이 나가던 버그 수정(전 캐릭터) |
 
 ## 8. 테스트 결과 기록
 

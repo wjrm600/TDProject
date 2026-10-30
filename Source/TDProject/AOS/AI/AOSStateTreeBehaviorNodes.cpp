@@ -155,7 +155,7 @@ EStateTreeRunStatus FStateTreeTask_StrafeAroundTarget::EnterState(
 	AActor* Target = AOSBehaviorNodes::ResolveStrafeTarget(AOSAI, InstanceData.bTargetCurrentEnemy);
 	if (!Target) return EStateTreeRunStatus::Failed;
 
-	AOSAI->UpdateStrafe(Target, InstanceData.StepDistance, InstanceData.SpeedMultiplier);
+	AOSAI->UpdateStrafe(Target, InstanceData.StepDistance, InstanceData.SpeedMultiplier, InstanceData.KeepDistance);
 	return EStateTreeRunStatus::Running;
 }
 
@@ -167,7 +167,7 @@ EStateTreeRunStatus FStateTreeTask_StrafeAroundTarget::Tick(
 	AActor* Target = AOSBehaviorNodes::ResolveStrafeTarget(AOSAI, InstanceData.bTargetCurrentEnemy);
 	if (!Target) return EStateTreeRunStatus::Failed;
 
-	AOSAI->UpdateStrafe(Target, InstanceData.StepDistance, InstanceData.SpeedMultiplier);
+	AOSAI->UpdateStrafe(Target, InstanceData.StepDistance, InstanceData.SpeedMultiplier, InstanceData.KeepDistance);
 	return EStateTreeRunStatus::Running;
 }
 

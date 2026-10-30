@@ -134,10 +134,12 @@ public:
 	 * 사거리 밖이면 옆걸음 대신 타겟 쪽으로 접근한다.
 	 * Begin 은 회전 모드를 "이동 방향" → "컨트롤러(포커스) 방향"으로 바꾸고, End 가 원복한다.
 	 * SpeedMultiplier: 옆걸음 동안 MaxWalkSpeed = MoveSpeed 속성 × 배율 (접근할 때는 1배). End 가 MoveSpeed 로 원복.
+	 * KeepDistance > 0: 그 반지름의 원 위에서 옆걸음 (가까우면 뒤로 물러나며 비킴), KeepDistance+100 밖이면 다시 접근.
+	 *                   0 이면 현재 거리(사거리×0.9 이하) 원 위, 사거리 밖이면 접근.
 	 * ⚠️ End 는 StopMovement 를 호출하지 않는다 (사망 시 StopLogic → ExitState 경유로 불림 — root motion 보호).
 	 */
 	void BeginStrafe(AActor* FocusActor);
-	void UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier = 1.0f);
+	void UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier = 1.0f, float KeepDistance = 0.0f);
 	void EndStrafe();
 
 	/** 지정 위치로 이동 요청 (후퇴용). 기존 이동 캐시를 무효화한다. 요청 실패 시 false */

@@ -260,7 +260,16 @@ struct FAOSTask_StrafeAroundTargetInstanceData
 
 	/** 옆걸음 이동 속도 배율 (MoveSpeed 기준). 사거리 밖으로 벌어져 다시 접근할 때는 원래 속도 */
 	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.05", ClampMax = "1.0"))
-	float SpeedMultiplier = 0.5f;
+	float SpeedMultiplier = 0.3f;
+
+	/**
+	 * 옆걸음 동안 타겟과 유지할 거리 (cm, 타겟 중심 기준). 이 반지름의 원 위에서 옆걸음 →
+	 * 더 가까우면 뒤로 물러나며 비키고, KeepDistance+100 보다 멀어지면 이 거리까지 다시 다가간다.
+	 * 사거리보다 커도 된다 (쿨다운이 끝나면 Engage 가 사거리까지 다가가 공격).
+	 * 0 = 기존 동작 (현재 거리 그대로, 사거리×0.9 이하 / 사거리 밖이면 다가감)
+	 */
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0"))
+	float KeepDistance = 0.0f;
 
 	/** true = CurrentTarget(적 캐릭터) 기준, false = 현재 웨이포인트 구조물 기준 */
 	UPROPERTY(EditAnywhere, Category = "Parameter")

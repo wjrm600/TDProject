@@ -2469,5 +2469,34 @@
 - (3) 위치 안내: `ST_KwangAI` 의 `Focus_Strafe` / `Nearest_Strafe` / `StrafeStructure` → Strafe Around Target → `StepDistance`(같은 곳에 새 `SpeedMultiplier`). 사용자 요청으로 세 노드 모두 **150 → 250**(약 48° → 80°) — `statetree_set_node_properties` ×3 → 컴파일 메시지 0 · 저장
 
 **결과**
-- **풀 리빌드**(InstanceData UPROPERTY·AIController 헤더 변경) 후 사용자가 `Lvl_AOSCombatTest` 에서 확인: 먼 거리 기본공격 사라짐 · 옆걸음 느려지고 걸음 길어짐 (이 커밋). 기존 `ST_KwangAI` 옆걸음 노드 3개는 새 속성이 저장돼 있지 않아 C++ 기본값 0.5 를 그대로 받는다
+- **풀 리빌드**(InstanceData UPROPERTY·AIController 헤더 변경) 후 사용자가 `Lvl_AOSCombatTest` 에서 확인: 먼 거리 기본공격 사라짐 · 옆걸음 느려지고 걸음 길어짐 (`887e8cf`). 기존 `ST_KwangAI` 옆걸음 노드 3개는 새 속성이 저장돼 있지 않아 C++ 기본값 0.5 를 그대로 받는다
 - 🔎 **교훈**: StateTree 태스크의 `EnterState` 는 "처음 한 번" 이 아니다. 부모가 `On Tick → Root` 로 재선택하면 매 tick 불린다 → `EnterState` 와 `Tick` 의 검사 조건을 똑같이 맞추거나, 상태를 바꾸는 태스크는 `bShouldStateChangeOnReselect=false`
+
+---
+
+## 2026-10-30 — 옆걸음 중 거리 유지 (`KeepDistance`) — 뒤로 물러나며 옆걸음
+
+**쉽게 보기**
+- **한 줄 요약**: 옆걸음은 좋은데 적에게 너무 붙어 있다는 제보 → 옆걸음 태스크에 "유지 거리" 를 추가했다. 그 거리보다 가까우면 **뒤로 물러나면서 옆으로** 비키고, 쿨다운이 끝나면 다시 붙어서 친다(치고 빠지기)
+
+**작업 내용**
+- Strafe Around Target InstanceData 에 `KeepDistance`(cm, 기본 0 = 기존 동작) 추가 → `AAOSAIController::UpdateStrafe(..., KeepDistance)`
+- 유지 거리 모드: 원호 반지름 = `KeepDistance` 고정(기존은 현재 거리를 사거리×0.9 이하로 자른 값), 재접근 기준 = `KeepDistance + 100`(기존은 사거리)
+- 문서: `KWANG_AI_STATETREE.md` 노드 표·동작 원리·튜닝 표
+
+**문제점**
+- 기존 옆걸음은 원호 반지름을 **현재 거리**로 잡았다. Kwang 은 사거리 200 까지 붙은 상태에서 옆걸음을 시작하므로 계속 그 거리(≤180)에서만 좌우로 움직였다 → 공격 사이 3.7초 동안에도 적에게 딱 붙어 있음
+- 반지름만 키우면 안 됐다: 재접근 기준이 사거리(200)라, 사거리 밖으로 물러나는 순간 "너무 멀다" 판정으로 다시 다가가 옆걸음 ↔ 접근이 번갈아 바뀐다
+
+**해결 방법**
+- 반지름을 `KeepDistance` 로 고정하면, 지금 더 가까울 때 목표점이 원 바깥에 생겨 한 걸음이 "뒤 + 옆" 대각선이 된다(몸은 적을 보므로 뒷걸음+옆걸음 블렌드). 원에 닿으면 그 거리에서 좌우
+- 재접근 기준을 `KeepDistance + 100` 으로 바꿔 사거리보다 먼 유지 거리도 허용. 공격은 쿨다운이 끝나 Engage 로 넘어가면 `MoveToCurrentTarget` 이 사거리까지 붙어서 처리
+- 기본값 0 = 기존 동작 그대로라 다른 트리·노드에는 영향 없음
+
+**결과**
+- 사용자 풀 리빌드 후 `ST_KwangAI` 의 `Focus_Strafe`·`Nearest_Strafe` 에 `KeepDistance=350`(MCP, 컴파일 메시지 0 · 저장). `StrafeStructure` 는 0(타워 둘레 옆걸음은 기존대로) (이 커밋)
+- **MCP 로 PIE 실측**(`Lvl_AOSCombatTest`, 0.25초 간격으로 Kwang ↔ 가장 가까운 적 거리 · MaxWalkSpeed 기록, 슬레이트 tick 콜백): 공격 시 거리 **194~200**(사거리 200, 먼 거리 공격 없음) → 옆걸음 시작(속도 600→300) 1초 안에 **310~345 로 물러나 유지** → 약 4초 뒤 속도 600 으로 다시 200 까지 붙어 공격 → 반복 3회 확인. Q 버프 중엔 기본 900 / 옆걸음 450 = 버프를 따라가는 것도 확인
+- 🔎 **교훈**: AI 움직임은 눈으로 보는 것보다 **거리·속도를 시계열로 찍는 것**이 판정이 빠르다. 에디터 Python `register_slate_post_tick_callback` 으로 PIE 를 멈추지 않고 기록 → 나중에 읽기
+- **사용자 추가 조정**: 유지 거리 350 → **500**(`Focus_Strafe`·`Nearest_Strafe`), 옆걸음 속도 배율 0.5 → **0.3**(3노드 MCP 직접 지정 + C++ InstanceData 기본값도 0.3 — 새로 놓는 노드용). 0.3 이면 MoveSpeed 600 → 옆걸음 180. 노드 값은 에셋에 저장돼 지금 에디터에서 바로 적용, C++ 기본값은 다음 빌드부터
+- **사용자 추가 조정 2**: 옆걸음 거리(`StepDistance`) 250 → **400**(3노드). 유지 거리 500 원 위에서는 한 걸음 ≈46°·약 390cm → 속도 180 이면 약 2.2초라 공격 사이 틈(≈3.7초)에 1~2걸음. `StrafeStructure`(유지 거리 0, 반경 ≤180)는 한 걸음 ≈127° 로 타워 둘레를 크게 돈다
+- ⚠️ 유지 거리 500 = `FocusLowestMaxHP` 진입 반경 500 이라 다수 교전에서 경계 흔들림(Focus ↔ Nearest 전환으로 옆걸음 끊김) 가능 → `KWANG_AI_STATETREE.md` 튜닝 표 아래 주의 문구. 현재 2:2 테스트 구성에선 500 안에 적 2명이 드물어 영향 적음
