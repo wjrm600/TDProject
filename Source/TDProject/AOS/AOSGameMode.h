@@ -77,6 +77,19 @@ enum class EAOSGameState : uint8
 	BanPick UMETA(DisplayName = "Ban Pick")
 };
 
+// 빠른 전투 테스트 유닛 1개 (캐릭터 BP + 라인). 라인당 최대 MaxCharactersPerLane(2)명 — 스폰포인트 수.
+USTRUCT(BlueprintType)
+struct FAOSQuickTestUnit
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest")
+	TSubclassOf<AAOSCharacter> CharacterClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest")
+	EAOSLane Lane = EAOSLane::Mid;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameStateChanged, EAOSGameState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRoundEnded, int32, RoundNumber);
 
@@ -261,6 +274,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "AOS|BanPick")
 	void ServerAutoCompleteDraft();
 
+	// 빠른 전투 테스트 시작 — bQuickCombatTest 면 게임 레벨 BeginPlay 가 QuickTestStartDelay 뒤 호출.
+	// Lobby·벤픽·준비 대기를 건너뛰고 QuickTestTeam1/2 배치로 곧바로 라운드를 시작한다 (서버 전용).
+	UFUNCTION(BlueprintCallable, Category = "AOS|QuickTest")
+	void StartQuickCombatTest();
+
 	// Draw 라운드 처리 — 5초 타이머 후 다음 라운드 준비로 전환
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	void HandleDrawRound();
@@ -335,6 +353,25 @@ protected:
 	// false 면 규칙 끔 — 매 라운드 양 팀 자유 배치 (플레이테스트 비교용). 직전 배치 프리필은 유지.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Deploy")
 	bool bEnableConditionalRedeploy = true;
+
+	// ── 빠른 전투 테스트 (AI 테스트용 — 테스트 레벨 전용 GameMode BP 에서만 켤 것) ──
+	// 켜면 게임 레벨에서 Lobby/벤픽/준비를 건너뛰고 아래 배치로 바로 전투를 시작한다. 1인 PIE 가능.
+	// 이후 라운드는 일반 흐름(준비 30초 → 직전 배치 복원으로 같은 구성 재시작).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest")
+	bool bQuickCombatTest = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest", meta = (EditCondition = "bQuickCombatTest"))
+	TArray<FAOSQuickTestUnit> QuickTestTeam1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest", meta = (EditCondition = "bQuickCombatTest"))
+	TArray<FAOSQuickTestUnit> QuickTestTeam2;
+
+	// 시작 지연(초) — MapManager 가 자기 BeginPlay 에서 구조물을 스폰하므로, 그 뒤에 시작해야
+	// CC 캐시·웨이포인트가 잡힌다 (GameMode BeginPlay 가 먼저 돌 수 있음)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|QuickTest", meta = (EditCondition = "bQuickCombatTest", ClampMin = "0.1"))
+	float QuickTestStartDelay = 1.0f;
+
+	FTimerHandle QuickTestStartHandle;
 
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	float RemainingGameTime;

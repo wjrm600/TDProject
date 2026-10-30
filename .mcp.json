@@ -3,7 +3,7 @@
     "unreal-engine": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "unreal-engine-mcp-server"],
+      "args": ["-y", "unreal-engine-mcp-server@0.5.30"],
       "env": {
         "UE_PROJECT_PATH": "E:/Unreal Project/TDProject/TDProject.uproject",
         "MCP_AUTOMATION_PORT": "8091"

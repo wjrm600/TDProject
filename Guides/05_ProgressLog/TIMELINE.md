@@ -2398,7 +2398,7 @@
 - (4) 클라가 **세 라인을 먼저 비운 뒤 채움**(`SubmitDeployFromWidget`). 서버 검사 로직은 그대로 두고 전송 순서만 바꿔 어떤 이동이든 누적 합이 최종 합(≤5)을 넘지 않게 함
 
 **결과**
-- **풀 리빌드**(GameState/GameMode/위젯/PC 헤더에 UPROPERTY·UFUNCTION 추가) 성공(아래 include 수정 후) + 사용자 PIE·자동화 테스트 **아래 6항목 전부 통과** (이 커밋)
+- **풀 리빌드**(GameState/GameMode/위젯/PC 헤더에 UPROPERTY·UFUNCTION 추가) 성공(아래 include 수정 후) + 사용자 PIE·자동화 테스트 **아래 6항목 전부 통과** (`88d526d`)
 - ✅ 검증 체크리스트(Listen Server 2-Client 또는 Play As Dedicated Server):
   1. 첫 준비 화면 슬롯이 내 팀 픽 5명으로 채워져 있는가 (Top2/Mid2/Bot1)
   2. 2라인 이상 진 팀: 결과 패널 "재배치 가능", 슬롯이 지난 배치로 시작하고 수정됨
@@ -2409,3 +2409,37 @@
 - ⚠️ 확인 필요: 결과 패널(`RoundResultText`)에 줄이 하나 늘었다. WBP 에서 이 텍스트 영역 높이가 고정이면 2번째 줄이 잘릴 수 있다
 - 🔧 **첫 빌드 실패 → 수정**: `SubclassOf.h(111)` `C2027 정의되지 않은 형식 'AAOSCharacter'` + `C2672 'StaticClass'`. 원인은 이번 코드가 아니라 **기존 `AOSShopWidget.cpp` 의 include 누락** — `TSubclassOf<AAOSCharacter>` → `UClass*` 변환(382행)은 `T::StaticClass()` 를 부르므로 완전한 타입이 필요한데 `AOSCharacter.h` 를 include 하지 않았다. 그동안은 **유니티 빌드**가 같은 묶음(`Module.TDProject.N.cpp`)의 앞 파일이 넣어 준 include 로 우연히 컴파일됐고, 새 cpp(테스트) 추가로 묶음 구성이 바뀌자 드러났다(UBT 로그: `Module.TDProject.6/7.cpp contents have changed`). `AOSShopWidget.cpp` + 같은 패턴의 `AOSBanPickWidget.cpp`(`CharacterClass != nullptr`)에 `#include "AOSCharacter.h"` 추가
 - 🔎 **교훈**: 빌드 오류 위치가 엔진 헤더(`SubclassOf.h`)면 오류 줄이 아니라 **"첫 번째 참조를 확인하세요" 노트의 프로젝트 파일**이 진짜 위치다. 위치는 `%LOCALAPPDATA%\UnrealBuildTool\Log.txt` 에서 찾는다. 새 cpp 를 추가했는데 **무관한 파일**에서 "정의되지 않은 형식" 이 나면 유니티 빌드에 가려 있던 include 누락을 의심할 것
+
+---
+
+## 2026-10-30 — 빠른 전투 테스트 레벨 (`Lvl_AOSCombatTest`) + unreal-engine MCP 서버 버전 고정
+
+**쉽게 보기**
+- **한 줄 요약**: AI 를 테스트하려고 매번 메인메뉴 → 로비 → 벤픽 → 배치를 거칠 필요가 없어졌다. 테스트 레벨을 열고 Play 를 누르면 1초 뒤 미리 정한 캐릭터끼리 바로 싸운다
+- **쓰는 법**: `/Game/AOSTest/Lvl_AOSCombatTest` 열기 → Play. 캐릭터를 바꾸려면 `BP_AOSGameMode_CombatTest` → Class Defaults → `AOS|QuickTest` → `QuickTestTeam1/2` 에서 캐릭터와 라인 선택
+- **덤으로 고친 것**: 에디터 자동화 MCP 가 "도구 비활성" 으로 전부 실패하던 문제. npm 최신판이 자동으로 깔려 플러그인과 버전이 어긋났던 것
+
+**작업 내용**
+- C++(`AOSGameMode`): `FAOSQuickTestUnit`(캐릭터 BP + 라인) USTRUCT + `AOS|QuickTest` 설정(`bQuickCombatTest`·`QuickTestTeam1/2`·`QuickTestStartDelay`) + `StartQuickCombatTest()`. `BeginPlay` 가 테스트 모드면 Lobby 대신 지연 타이머로 시작
+- 시작 순서: 테스트 유닛을 그 팀 픽으로 기록 → `TransitionToRoundPreparation`(첫 라운드 초기화 재사용) → `DeployPlan` 교체 + GameState 복제 → `StartRound`. 이후 라운드는 조건부 재배치의 "직전 배치 복원" 덕에 같은 구성으로 반복
+- 에셋(MCP): `/Game/AOSTest/BP_AOSGameMode_CombatTest`(`TDProj_GM` 자식, 테스트 모드 ON, 조건부 재배치 OFF, Kwang+Greystone vs Grux+Sparrow 전원 Mid) + `/Game/AOSTest/Lvl_AOSCombatTest`(전투맵 복제 + World Settings GameMode Override)
+- MCP 셋업: `.mcp.json`(로컬·템플릿) · `Mcp_Tools/README.md` · `claude_desktop_config.example.json` 의 서버를 `unreal-engine-mcp-server@0.5.30` 으로 고정 + README 경고
+- 문서: CLAUDE.md(테스트/검증 · MCP), PROJECT_REFERENCE "빠른 전투 테스트 레벨" · MCP 셋업
+
+**문제점**
+1. 실제 흐름은 2인 접속 + 양쪽 준비 + 벤픽 14스텝 + 배치를 거쳐야 전투가 시작돼, AI 행동 하나 보려 해도 수 분이 걸렸다
+2. 타워/CC 는 `MapManager` 가 자기 `BeginPlay` 에서 스폰한다. GameMode `BeginPlay` 에서 바로 라운드를 시작하면 실행 순서에 따라 CC 캐시가 빈다
+3. 테스트 레벨을 만들려 하자 unreal-engine MCP 의 모든 호출이 `TOOL_DISABLED: Tool 'unreal' is not enabled`. `.mcp.json` 이 `npx -y unreal-engine-mcp-server`(버전 미지정)라 **2026-10-27 배포된 0.6.0** 이 자동 설치됐는데, 0.6.0 은 구조가 바뀐 판(플러그인 `/mcp` 로 가는 프록시, 메타 도구 `unreal` 1개)이라 프로젝트의 플러그인 **0.5.30** 이 모르는 도구 이름을 거부했다(`McpNativeTransport.cpp` `IsToolEnabled`). 앱은 서버 프로세스가 떠 있으니 "연결됨" 으로 보여 재연결 버튼도 없었다
+4. 전투맵이 World Partition(외부 액터 68개)이라 `duplicate_asset` 결과가 **맵 파일만** 디스크에 저장되고 외부 액터 68개 + 외부 오브젝트 2개는 메모리에만 생성된 채 남았다(디스크 카운트 0)
+
+**해결 방법**
+- (1) 테스트 모드에서는 상태를 Lobby 로 보내지 않고(MainMenu 유지 → PC 는 게임 레벨이라 대기해 UI 깜빡임 없음) 준비 단계 진입과 라운드 시작을 같은 프레임에 연달아 호출. 픽을 기록해 두므로 다음 라운드 준비 화면 카드 필터·서버 픽 필터도 테스트 유닛을 허용
+- (2) `QuickTestStartDelay`(기본 1초) 뒤 시작
+- (3) 서버를 플러그인과 같은 `@0.5.30` 으로 고정 → Claude 앱 재시작으로 서버 프로세스 재기동 → 0.5.30 도구 23종(`manage_asset`·`system_control` 등) 복구. 판별법: 플러그인 `.uplugin` 의 `VersionName` 과 npx 캐시(`%LOCALAPPDATA%\npm-cache\_npx\*\node_modules\unreal-engine-mcp-server\package.json`) 버전 비교
+- (4) 복제 후 dirty 패키지 중 `AOSTest/Lvl_AOSCombatTest` 71개(맵 1 + 외부 액터 68 + 외부 오브젝트 2)를 `save_packages` 로 저장 → 디스크 외부 액터 68 = 원본 68 확인
+
+**결과**
+- 레벨 검증: MapManager(`TDMapManager`) 1 · SpawnPoint 12 · RecastNavMesh 1 · NavMeshBoundsVolume 1, GameMode Override = `BP_AOSGameMode_CombatTest`
+- **MCP 로 직접 PIE 실행해 확인**: 1초 뒤 `[QuickTest] Team1 라인 1 ← BP_Char_Kwang_C` … → `라운드 1 캐릭터 생성 완료 - Team1: 2, Team2: 2` → GameState `ROUND_RUNNING`, 픽 T1=[0,1] T2=[2,10], 구조물 20 → 약 17초 뒤 첫 전사 로그(전투 발생) (이 커밋)
+- 🔎 **교훈 1**: `npx -y <패키지>` 처럼 **버전을 고정하지 않은 MCP 서버는 언제든 조용히 바뀐다**. 짝이 되는 에디터 플러그인이 저장소에 고정돼 있으면 서버도 같은 버전으로 고정할 것
+- 🔎 **교훈 2**: World Partition/외부 액터 레벨을 스크립트로 복제하면 **맵만 저장되고 액터는 메모리에 남는다**. 저장 후 `__ExternalActors__` 디스크 카운트를 원본과 비교해 확인할 것

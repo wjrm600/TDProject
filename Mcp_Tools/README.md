@@ -106,6 +106,11 @@ auto-memory 갱신 → `.claude/settings.local.json` 패치까지 한 번에
 Claude에 MCP(stdio)를 중계합니다. Node 서버는 `npx` 로 자동 실행되어 사전 설치는 불필요합니다
 (Node.js 18+ 필요). 설정은 §5-2 참고.
 
+> ⚠️ **서버 버전을 플러그인과 같게 고정할 것: `unreal-engine-mcp-server@0.5.30`.**
+> `npx -y unreal-engine-mcp-server` 처럼 버전을 빼면 npm 최신판을 받는다. 2026-10-27 배포된 0.6.0 은
+> 구조가 바뀐 판(플러그인 `/mcp` 로 가는 프록시, 도구 1개 `unreal`)이라 0.5.30 플러그인과 맞지 않아
+> 모든 호출이 `TOOL_DISABLED: Tool 'unreal' is not enabled` 로 실패한다. 플러그인을 올릴 때 이 버전도 함께 올린다.
+
 확인 방법:
 1. 프로젝트를 빌드하고 에디터 실행 (플러그인 첫 로드 시 리빌드를 요구할 수 있음 → 빌드)
 2. `Edit → Plugins`에서 **MCP Automation Bridge** 가 Enabled 인지 확인
@@ -222,7 +227,7 @@ git subtree pull --prefix=Plugins/StateTreeMCP https://github.com/wjrm600/Unreal
   "mcpServers": {
     "unreal-engine": {
       "command": "npx",
-      "args": ["-y", "unreal-engine-mcp-server"],
+      "args": ["-y", "unreal-engine-mcp-server@0.5.30"],
       "env": { "UE_PROJECT_PATH": "E:\\Unreal Project\\TDProject\\TDProject.uproject" }
     },
     "unreal-rag": {
@@ -276,7 +281,7 @@ git subtree pull --prefix=Plugins/StateTreeMCP https://github.com/wjrm600/Unreal
   "mcpServers": {
     "unreal-engine": {
       "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["-y", "unreal-engine-mcp-server"],
+      "args": ["-y", "unreal-engine-mcp-server@0.5.30"],
       "env": {
         "UE_PROJECT_PATH": "E:\\Unreal Project\\TDProject\\TDProject.uproject",
         "MCP_AUTOMATION_PORT": "8091",

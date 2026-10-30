@@ -135,6 +135,15 @@ void AAOSGameMode::BeginPlay()
 		SetGameState(EAOSGameState::MainMenu);
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] MainMenu 레벨 감지 → 메뉴 상태"));
 	}
+	else if (bQuickCombatTest)
+	{
+		// 빠른 전투 테스트: Lobby 로 가지 않는다(상태 MainMenu 유지 → PC 는 게임 레벨이라 대기, UI 깜빡임 없음).
+		// 맵 액터 BeginPlay(MapManager 구조물 스폰)가 끝난 뒤 시작.
+		GetWorldTimerManager().SetTimer(QuickTestStartHandle, this, &AAOSGameMode::StartQuickCombatTest,
+			FMath::Max(QuickTestStartDelay, 0.1f), false);
+		UE_LOG(LogTemp, Warning, TEXT("[QuickTest] 빠른 전투 테스트 모드 — %.1f초 뒤 시작 (Map: %s)"),
+			FMath::Max(QuickTestStartDelay, 0.1f), *MapName);
+	}
 	else
 	{
 		// 게임 레벨: Lobby 상태로 대기 (2명 접속 완료 시 PostLogin → TransitionToRoundPreparation)
@@ -1280,6 +1289,76 @@ void AAOSGameMode::TransitionToRoundPreparation()
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] RoundPreparation 상태로 전이 (다음 라운드: %d). SpawnPoints: %d. 30초 자동 시작 타이머 시작"),
 		CurrentRound + 1, AllSpawnPoints.Num());
+}
+
+// ============================================================
+// 빠른 전투 테스트 (AI 테스트용 — Lobby/벤픽/준비 생략)
+// ============================================================
+
+void AAOSGameMode::StartQuickCombatTest()
+{
+	if (!HasAuthority()) return;
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS) return;
+
+	const TArray<FAOSQuickTestUnit>* TeamUnits[2] = { &QuickTestTeam1, &QuickTestTeam2 };
+	if (QuickTestTeam1.Num() == 0 && QuickTestTeam2.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[QuickTest] QuickTestTeam1/2 가 모두 비어 있음 — 양 팀 0명이라 무승부 처리된다. GameMode BP 의 AOS|QuickTest 에서 유닛을 지정할 것"));
+	}
+
+	// 클래스 → 로스터 인덱스(UnitId). 로스터에 없으면 -1 (아이템 미적용, 준비 화면 슬롯엔 안 보임)
+	auto FindUnitId = [this](TSubclassOf<AAOSCharacter> Cls) -> int32
+	{
+		for (int32 i = 0; i < CharacterRoster.Num(); ++i)
+		{
+			if (CharacterRoster[i].CharacterClass == Cls) return i;
+		}
+		return -1;
+	};
+
+	// 1) 테스트 유닛을 그 팀의 픽으로 기록 — 다음 라운드 준비 화면 카드 필터와 서버 픽 필터가 허용하도록.
+	//    같은 캐릭터를 양 팀에 넣는 미러전도 허용(팀별 배열이라 충돌 없음).
+	AOSGS->ServerResetDraft();
+	for (int32 T = 0; T < 2; ++T)
+	{
+		for (const FAOSQuickTestUnit& Unit : *TeamUnits[T])
+		{
+			const int32 Uid = Unit.CharacterClass ? FindUnitId(Unit.CharacterClass) : -1;
+			if (Uid >= 0) AOSGS->ServerRecordPick(T == 0 ? EAOSTeam::Team1 : EAOSTeam::Team2, Uid);
+		}
+	}
+
+	// 2) 준비 단계 진입 — 첫 라운드라 스폰포인트 등록 + 구조물 캐시 + 기본 배치 + 로스터 RPC
+	TransitionToRoundPreparation();
+
+	// 3) 배치를 테스트 구성으로 교체 (라인당 최대 MaxCharactersPerLane — 스폰포인트 수)
+	for (int32 T = 0; T < 2; ++T)
+	{
+		for (int32 L = 0; L < 3; ++L)
+		{
+			DeployPlan[T][L].Classes.Empty();
+			DeployPlan[T][L].UnitIds.Empty();
+		}
+		for (const FAOSQuickTestUnit& Unit : *TeamUnits[T])
+		{
+			if (!Unit.CharacterClass) continue;
+			const int32 L = static_cast<int32>(Unit.Lane);
+			if (DeployPlan[T][L].Classes.Num() >= MaxCharactersPerLane)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[QuickTest] Team%d 라인 %d 초과 — %s 제외 (라인당 최대 %d명)"),
+					T + 1, L, *Unit.CharacterClass->GetName(), MaxCharactersPerLane);
+				continue;
+			}
+			DeployPlan[T][L].Classes.Add(Unit.CharacterClass);
+			DeployPlan[T][L].UnitIds.Add(FindUnitId(Unit.CharacterClass));
+			UE_LOG(LogTemp, Warning, TEXT("[QuickTest] Team%d 라인 %d ← %s"), T + 1, L, *Unit.CharacterClass->GetName());
+		}
+	}
+	PushDeployStateToGameState();
+
+	// 4) 즉시 라운드 시작 (TransitionToRoundPreparation 의 30초 자동 시작 타이머는 StartRound 가 취소)
+	StartRound();
 }
 
 // ============================================================

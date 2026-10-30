@@ -73,7 +73,7 @@ Use the Unreal Editor's hot reload feature (Ctrl+Alt+F11) for quick C++ changes 
 ### MCP 서버 셋업 (Claude 연동)
 
 이 프로젝트는 두 개의 MCP 서버를 사용합니다:
-- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.5.30 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계)
+- `unreal-engine` — 에디터 자동화 (`Plugins/McpAutomationBridge` 0.5.30 → 에디터가 WebSocket `:8091` 서버를 열고 `unreal-engine-mcp-server`(npx) 가 중계). ⚠️ 서버는 **`unreal-engine-mcp-server@0.5.30` 으로 버전 고정** — 버전을 빼면 npm 최신판(0.6.0, 플러그인 비호환 → `TOOL_DISABLED`)을 받는다
 - `unreal-rag` — C++ 코드 RAG 검색 (`Mcp_Tools/ue_rag_mcp.py`)
 
 새 컴퓨터에서 똑같은 환경을 재현하려면 **`Mcp_Tools/README.md`** 를 따라 진행하세요.
@@ -1374,6 +1374,18 @@ After building, create `WBP_HealthBar` in editor:
 5. Same for any Structure Blueprints that use `HealthBarWidgetClass`
 
 ### Testing in PIE (Play In Editor)
+
+#### 빠른 전투 테스트 레벨 (AI 테스트용, 2026-10-30)
+
+메인메뉴 → 로비 → 벤픽 → 배치를 거치지 않고 **Play 즉시 지정 캐릭터로 전투**. 1인 PIE 가능.
+
+- **사용법**: `/Game/AOSTest/Lvl_AOSCombatTest` 열고 Play. 구성 변경 = `/Game/AOSTest/BP_AOSGameMode_CombatTest` Class Defaults → **`AOS|QuickTest`** 의 `QuickTestTeam1/2`(캐릭터 BP + 라인, 라인당 최대 2명). 한쪽 팀을 비우면 타워 상대 테스트, 같은 캐릭터를 양 팀에 넣으면 미러전.
+- **자산**: `Lvl_AOSCombatTest` = 전투맵 `Lvl_ThirdPerson` 복제(World Partition/외부 액터 68개 포함) + World Settings GameMode Override. `BP_AOSGameMode_CombatTest` = `TDProj_GM` 자식(로스터 상속) + `bQuickCombatTest=true` + `bEnableConditionalRedeploy=false`(반복 테스트 중 배치 잠김 방지). 기본 구성 Kwang+Greystone vs Grux+Sparrow, 전원 Mid. `/Game/AOS` 밖이라 패키징(`DirectoriesToAlwaysCook`)에 포함되지 않는다.
+- **동작**(`AAOSGameMode::StartQuickCombatTest`): `BeginPlay` 가 Lobby 대신 `QuickTestStartDelay`(1초) 타이머 → 테스트 유닛을 그 팀 픽으로 기록 → `TransitionToRoundPreparation`(첫 라운드 초기화: 스폰포인트·구조물 캐시) → `DeployPlan` 교체 → `StartRound`. 같은 프레임에 준비→전투로 넘어가 준비 화면은 보이지 않는다. 이후 라운드는 일반 흐름(준비 30초 → 직전 배치 복원으로 같은 구성 재시작).
+- ⚠️ **지연이 필요한 이유**: 타워/CC 는 `MapManager` 가 **자기 `BeginPlay`** 에서 스폰한다. GameMode `BeginPlay` 가 먼저 돌면 CC 캐시가 비므로 맵 액터 `BeginPlay` 이후에 시작해야 한다.
+- ⚠️ **전투맵을 고쳤다면**(지형·타워·스폰포인트·NavMesh) 테스트 레벨은 자동으로 따라가지 않는다 → 다시 복제하거나 같은 수정을 반영. 복제 시 `duplicate_asset` 은 외부 액터를 **메모리에만** 만들므로 `__ExternalActors__/AOSTest/...` 패키지까지 저장해야 한다(맵만 저장하면 빈 레벨).
+
+#### 수동 구성 (구 방식)
 
 Quickest test setup:
 1. Place `AOSMapManager` in level

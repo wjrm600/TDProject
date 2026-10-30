@@ -15,7 +15,7 @@
     "unreal-engine": {
       "_comment": "McpAutomationBridge(0.1.4) 플러그인이 에디터 안에서 WebSocket(:8091)을 띄우면, unreal-engine-mcp-server(npm)가 거기에 붙어 MCP stdio를 제공. 에디터를 켠 상태여야 동작함. UE_PROJECT_PATH는 본인의 .uproject 절대경로로 치환.",
       "command": "npx",
-      "args": [ "-y", "unreal-engine-mcp-server" ],
+      "args": [ "-y", "unreal-engine-mcp-server@0.5.30" ],
       "env": {
         "UE_PROJECT_PATH": "${PROJECT_ROOT}\\TDProject.uproject",
         "MCP_AUTOMATION_PORT": "8091"
