@@ -1,4 +1,5 @@
 #include "AOSBanPickWidget.h"
+#include "AOSCharacter.h"   // 로스터 TSubclassOf<AAOSCharacter> 비교/변환에 완전한 타입 필요 (유니티 빌드 의존 제거)
 #include "AOSGameState.h"
 #include "AOSPlayerState.h"
 #include "AOSPlayerController.h"

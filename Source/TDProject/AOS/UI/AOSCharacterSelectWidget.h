@@ -167,6 +167,9 @@ public:
 	void HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIndex, UAOSCharacterDragDropOperation* Op);
 	void HandleClearSlot(EAOSLane Lane, int32 SlotIndex);
 
+	// 조건부 재배치: 로컬 팀이 이번 준비 단계에서 배치 고정인가 (드래그/비우기 차단, PC 는 배치 전송 생략)
+	bool IsDeployLocked() const { return bDeployLocked; }
+
 protected:
 	// ── WBP 이름 계약 (BindWidgetOptional) — WBP_CharacterSelect 위젯 이름과 정확히 일치 시 자동
 	//    바인딩, 없으면 BuildFallbackFrame 이 C++ 로 생성. 동적 자식(카드/레인 슬롯)은 C++ 가 채움. ──
@@ -229,6 +232,10 @@ protected:
 	// 로컬 플레이어가 라운드 준비 버튼을 눌렀는지 여부 (재클릭 방지)
 	bool bLocalPressedReady = false;
 
+	// 조건부 재배치: 로컬 팀 배치 고정 여부 (GameState 권한 미러) / 이번 준비 단계에 사용자가 슬롯을 고쳤는가
+	bool bDeployLocked = false;
+	bool bLocalDeployEdited = false;
+
 	int32 MaxTotalCount = 5;
 	int32 MaxPerLane = 2;
 
@@ -244,6 +251,10 @@ protected:
 	UFUNCTION()
 	void OnShopButtonClicked();
 
+	// GameState 재배치 권한/시작 배치 갱신 (준비 화면이 먼저 뜨고 복제가 늦게 도착한 경우 반영)
+	UFUNCTION()
+	void OnDeployStateChanged();
+
 private:
 	void BuildFallbackFrame();          // WBP 미저작 시 C++ 폴백 트리 (멱등 가드)
 	void PopulateLanes();               // 레인 박스에 드래그 슬롯 2개씩 채움 (바인딩/폴백 공용)
@@ -255,4 +266,8 @@ private:
 
 	// Slice 1: GameState 의 직전 라운드 결과를 읽어 로컬 팀 관점 승/패 요약 표시
 	void UpdateRoundResult();
+
+	// 조건부 재배치: GameState 의 로컬 팀 시작 배치로 슬롯을 채우고 잠금 상태 반영
+	void ApplyDeployState();
+	EAOSTeam GetLocalTeam() const;
 };

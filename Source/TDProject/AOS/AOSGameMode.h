@@ -188,6 +188,17 @@ public:
 	// static 순수 함수 → 월드 없이 단위 테스트 가능(AOSGoldEconomyTest). 중복되던 inline ternary 통합.
 	static EAOSTeam GetOpposingTeam(EAOSTeam Team);
 
+	// 조건부 재배치 판정 — static 순수 함수 → 월드 없이 단위 테스트(AOSConditionalRedeployTest).
+	// LaneWinners: 라인별 승자(0=무승부, 1=Team1, 2=Team2). 무승부는 패배로 세지 않는다.
+	static int32 CountLanesLost(const TArray<int32>& LaneWinners, EAOSTeam Team);
+	// 다음 준비 단계에서 배치를 바꿀 수 있는가: 진 라인 수 >= 기준, 또는 직전 라운드에 아무도 배치하지
+	// 않았음(빈 배치로 잠기면 이후 라인을 질 수도 없어 영영 못 풀리는 교착 방지).
+	static bool ShouldAllowRedeploy(int32 LanesLost, int32 LossThreshold, bool bHadDeployment);
+
+	// 현재 준비 단계에서 팀이 배치를 바꿀 수 있는가 (규칙이 꺼져 있으면 항상 true)
+	UFUNCTION(BlueprintCallable, Category = "AOS|Deploy")
+	bool CanTeamRedeploy(EAOSTeam Team) const;
+
 	// Slice 0: 팀에 골드 지급/차감 (서버 권한). GameState 경유.
 	UFUNCTION(BlueprintCallable, Category = "AOS|Economy")
 	void AwardGold(EAOSTeam Team, int32 Amount);
@@ -316,6 +327,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Economy")
 	TObjectPtr<UDataTable> ItemTable = nullptr;
 
+	// 조건부 재배치 (GAME_VISION "튜닝 1순위") — 직전 라운드에 이 수 이상 라인을 진 팀만
+	// 다음 준비 단계에서 배치를 바꿀 수 있다. 나머지 팀은 직전 배치 고정(아이템 구매는 가능).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Deploy", meta = (ClampMin = "0", ClampMax = "3"))
+	int32 RedeployLaneLossThreshold = 2;
+
+	// false 면 규칙 끔 — 매 라운드 양 팀 자유 배치 (플레이테스트 비교용). 직전 배치 프리필은 유지.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AOS|Deploy")
+	bool bEnableConditionalRedeploy = true;
+
 	UPROPERTY(BlueprintReadOnly, Category = "AOS|Game")
 	float RemainingGameTime;
 
@@ -407,6 +427,17 @@ private:
 	// 배치 계획 저장 (TMap<EAOSTeam, TMap<>> 은 UHT 미지원이므로 배열로 관리)
 	// DeployPlan[TeamIndex][LaneIndex].Classes = 배치할 캐릭터 클래스 목록
 	FAOSLaneDeployPlan DeployPlan[2][3];
+
+	// --- 조건부 재배치 ---
+	// EndRound: 이번 라운드 라인 승패 → 팀별 다음 준비 단계 재배치 권한
+	void UpdateRedeployRights();
+	// DeployPlan + 권한을 GameState 로 복제 (준비 화면 프리필/잠금). 준비 단계 진입 시에만 호출.
+	void PushDeployStateToGameState();
+
+	// 직전 라운드에 스폰한 배치 (StartRound 스냅샷) — 다음 준비 단계의 시작 배치
+	FAOSLaneDeployPlan LastDeployPlan[2][3];
+	// 팀별 재배치 권한 [0=Team1, 1=Team2] — 첫 준비 단계는 양 팀 true
+	bool bTeamCanRedeploy[2] = { true, true };
 
 	// 유닛별 구매 아이템 인벤토리 (서버 전용, 라운드 간 누적)
 	// UnitItemInventory[TeamIndex][UnitId] = DT_Items RowName 목록 (중복 구매 = 스택)

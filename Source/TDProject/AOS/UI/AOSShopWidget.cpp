@@ -1,4 +1,5 @@
 #include "AOSShopWidget.h"
+#include "AOSCharacter.h"   // TSubclassOf<AAOSCharacter> → UClass* 변환에 완전한 타입 필요 (유니티 빌드 묶음이 바뀌면 드러남)
 #include "AOSGameState.h"
 #include "AOSPlayerState.h"
 #include "AOSPlayerController.h"

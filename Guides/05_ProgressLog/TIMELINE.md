@@ -2357,5 +2357,55 @@
 - cpp 전용 변경(헤더 무변경) → 핫 리로드/Live Coding 가능
 
 **결과**
-- Live Coding 후 사용자 확인: 벤픽에서 캐릭터를 바꿔도 `major inefficiency` 경고 0건 (이 커밋)
+- Live Coding 후 사용자 확인: 벤픽에서 캐릭터를 바꿔도 `major inefficiency` 경고 0건 (`f75f07a`)
 - 참고: 이 경고는 일반 로그가 아니라 `FMessageLog("Blueprint")` 로 나가므로, Output Log 에서 안 보이면 Message Log 창의 Blueprint 카테고리나 `Saved/Logs/*.log` 를 검색할 것
+
+---
+
+## 2026-10-30 — 조건부 재배치 구현 (Slice 4) + 첫 라운드 기본 배치가 픽을 무시하던 구멍 수정
+
+**쉽게 보기**
+- **한 줄 요약**: 지난 라운드에 **2라인 이상 진 팀만** 이번 라운드 배치를 바꿀 수 있다. 이긴(또는 덜 진) 팀은 지난 배치 그대로 나가고, 아이템은 살 수 있다
+- **전 / 후**
+  ```
+  전: 매 라운드 두 팀 다 자유 배치 + 준비 화면이 매번 텅 빔(처음부터 다시 끌어다 놓기)
+  후: 준비 화면이 지난 배치로 시작
+      2라인↑ 패배 팀 → 자유롭게 수정 / 나머지 팀 → "배치 고정" (드래그·X 버튼 막힘)
+  ```
+
+**작업 내용**
+- 서버(`AOSGameMode`): `StartRound` 에서 이번 배치를 `LastDeployPlan` 으로 저장 → `EndRound` 에서 라인 승패로 팀별 권한 계산(`UpdateRedeployRights`) → 다음 `TransitionToRoundPreparation` 이 배치 복원 + GameState 복제. 배치 RPC 2종이 잠긴 팀을 거부
+- 판정 = static 순수 함수 `CountLanesLost`(무승부는 패배 아님) / `ShouldAllowRedeploy`(기준 이상 패배, 또는 직전 배치가 비어 있으면 자유) → `Tests/AOSConditionalRedeployTest.cpp`
+- 튜닝 값(EditAnywhere): `RedeployLaneLossThreshold = 2`, `bEnableConditionalRedeploy = true`
+- 복제(`AOSGameState`): `bTeam1/2CanRedeploy` + `Team1/2DeployUnitIds`(6칸) + `OnDeployStateChanged`
+- 준비 화면(`AOSCharacterSelectWidget`): 슬롯을 GameState 배치로 채움(`ApplyDeployState`), 잠기면 드래그·드롭·X 차단 + 결과 패널 2번째 줄에 "배치 고정 / 재배치 가능"
+- PlayerController: 준비 버튼·자동 전송을 `SubmitDeployFromWidget()` 하나로 합침
+- 첫 라운드 기본 배치: 팀 픽 5명을 픽 순서대로 Top2/Mid2/Bottom1
+- 문서: CLAUDE.md 경제 섹션, PROJECT_REFERENCE "조건부 재배치", GAME_VISION Slice 4
+
+**문제점**
+1. 규칙 자체가 없었다: 서버 배치 RPC 는 "준비 단계인가"만 검사(`AOSGameMode.cpp` `ServerSetLaneDeployClassesForPlayer`). `LaneWinners` 는 계산·복제되지만 결과 패널 표시용뿐이었다
+2. 매 준비 단계마다 서버는 배치를 기본값으로, 클라 준비 화면은 슬롯을 전부 비웠다 → "지난 배치 고정" 을 담을 곳이 없었다
+3. **기본값이 픽을 무시**: `InitializeDefaultDeployPlan` 이 항상 로스터 0번(Kwang) ×5. 아무도 배치하지 않고 30초가 지나면 상대가 픽한 유닛까지 우리 팀에 스폰(전체 고유 규칙 위반), 같은 UnitId 5개라 그 유닛 아이템이 5명에게 적용. 기본값이 픽 필터(`ServerSetLaneDeployClassesForPlayer`)를 거치지 않기 때문
+4. 직전 배치에서 시작하자 **라인별 RPC 의 합계 검사**가 문제가 됨: 서버는 라인 RPC 마다 "다른 라인(현재 값) + 이 라인 ≤ 5" 를 본다. 1/2/2 → 2/1/2 로 옮기면 Top 을 먼저 보낼 때 2+2+2=6 으로 거부돼 이동이 사라진다. 매 라운드 2/2/1 에서 시작하던 예전엔 수학적으로 안 생기던 경우
+
+**해결 방법**
+- (1)(2) 위 작업 내용대로 스냅샷 → 권한 → 복원 → 복제 → 서버 거부 + UI 잠금
+- 복제 타이밍: GameState 갱신을 `SetGameState(RoundPreparation)` **앞에** 둔다. 리슨 호스트는 그 브로드캐스트 안에서 곧바로 준비 화면을 띄우고, 원격 클라는 같은 프레임 변경이라 `CurrentState` 와 같은 업데이트로 받는다. 늦게 와도 `OnDeployStateChanged` 가 반영(잠긴 팀은 항상, 자유 팀은 사용자가 고치기 전에만)
+- GameState 배치는 **준비 시작 시점에만** 갱신 — 배치 RPC 마다 갱신하면 리슨 호스트에서 RPC 가 즉시 실행되는 도중 위젯이 덮여, 전송 루프가 반쯤 지워진 슬롯을 읽게 된다
+- 교착 방지: 빈 배치로 잠기면(아무도 안 내보냄 → 상대가 1라인만 이겨도 고정) 이후 라인을 질 수도 없어 영영 못 풀린다 → 직전 배치가 비었으면 자유
+- (3) 기본값을 픽 기반으로 교체. 픽이 없을 때만(벤픽 미수행 테스트) 구 폴백 유지
+- (4) 클라가 **세 라인을 먼저 비운 뒤 채움**(`SubmitDeployFromWidget`). 서버 검사 로직은 그대로 두고 전송 순서만 바꿔 어떤 이동이든 누적 합이 최종 합(≤5)을 넘지 않게 함
+
+**결과**
+- **풀 리빌드**(GameState/GameMode/위젯/PC 헤더에 UPROPERTY·UFUNCTION 추가) 성공(아래 include 수정 후) + 사용자 PIE·자동화 테스트 **아래 6항목 전부 통과** (이 커밋)
+- ✅ 검증 체크리스트(Listen Server 2-Client 또는 Play As Dedicated Server):
+  1. 첫 준비 화면 슬롯이 내 팀 픽 5명으로 채워져 있는가 (Top2/Mid2/Bot1)
+  2. 2라인 이상 진 팀: 결과 패널 "재배치 가능", 슬롯이 지난 배치로 시작하고 수정됨
+  3. 나머지 팀: "배치 고정", 카드·슬롯 드래그와 X 버튼이 안 먹고, 다음 라운드 스폰이 지난 배치와 같음
+  4. 1/2/2 같은 배치에서 2/1/2 로 옮겨 준비 → 다음 라운드에 옮긴 대로 스폰되는가 (문제점 4 회귀)
+  5. 고정 팀도 상점 구매가 되는가
+  6. 자동화 테스트 `TDProject.AOS.ConditionalRedeploy` 통과
+- ⚠️ 확인 필요: 결과 패널(`RoundResultText`)에 줄이 하나 늘었다. WBP 에서 이 텍스트 영역 높이가 고정이면 2번째 줄이 잘릴 수 있다
+- 🔧 **첫 빌드 실패 → 수정**: `SubclassOf.h(111)` `C2027 정의되지 않은 형식 'AAOSCharacter'` + `C2672 'StaticClass'`. 원인은 이번 코드가 아니라 **기존 `AOSShopWidget.cpp` 의 include 누락** — `TSubclassOf<AAOSCharacter>` → `UClass*` 변환(382행)은 `T::StaticClass()` 를 부르므로 완전한 타입이 필요한데 `AOSCharacter.h` 를 include 하지 않았다. 그동안은 **유니티 빌드**가 같은 묶음(`Module.TDProject.N.cpp`)의 앞 파일이 넣어 준 include 로 우연히 컴파일됐고, 새 cpp(테스트) 추가로 묶음 구성이 바뀌자 드러났다(UBT 로그: `Module.TDProject.6/7.cpp contents have changed`). `AOSShopWidget.cpp` + 같은 패턴의 `AOSBanPickWidget.cpp`(`CharacterClass != nullptr`)에 `#include "AOSCharacter.h"` 추가
+- 🔎 **교훈**: 빌드 오류 위치가 엔진 헤더(`SubclassOf.h`)면 오류 줄이 아니라 **"첫 번째 참조를 확인하세요" 노트의 프로젝트 파일**이 진짜 위치다. 위치는 `%LOCALAPPDATA%\UnrealBuildTool\Log.txt` 에서 찾는다. 새 cpp 를 추가했는데 **무관한 파일**에서 "정의되지 않은 형식" 이 나면 유니티 빌드에 가려 있던 include 누락을 의심할 것

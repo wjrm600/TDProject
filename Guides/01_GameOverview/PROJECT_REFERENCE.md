@@ -1252,6 +1252,25 @@ LoL/이터널리턴 식 "선택하면 캐릭터 3D 모델이 렌더되는 공간
 
 **픽 필터**: `InitializeWithRoster` 에서 `AOSGS->GetPickedUnits(LocalTeam)` 로 `AllowedUnits` 구성 → 비어있지 않으면 `bFilterByPick=true`, 카드 루프에서 픽 안 된 UnitId 는 `continue`(숨김). **하위호환**: 픽 목록이 비면(드래프트 미진행) 전체 표시.
 
+### 조건부 재배치 (Slice 4, 2026-10-30)
+
+GAME_VISION "조건부 재배치" 구현 — **직전 라운드에 2라인 이상 패배한 팀만** 다음 준비 단계에서 배치를 바꿀 수 있다. 나머지 팀은 직전 배치 그대로 출전(아이템 구매는 항상 가능).
+
+| 규칙 | 값 |
+|------|-----|
+| 패배 판정 | `LaneWinners` 에서 상대 팀이 이긴 라인 수. **무승부(0)는 패배 아님** (2무1패 = 고정) |
+| 기준/스위치 | GameMode `RedeployLaneLossThreshold`(기본 2) · `bEnableConditionalRedeploy`(기본 true, false = 매 라운드 자유) — EditAnywhere, 빌드 없이 튜닝 |
+| 첫 준비 단계 | 양 팀 자유 + **픽 5명을 픽 순서대로 Top2/Mid2/Bottom1** 기본 배치(`InitializeDefaultDeployPlan`). 픽이 없으면(벤픽 미수행) 구 폴백(Roster 첫 캐릭터 ×5) |
+| 이후 준비 단계 | `StartRound` 스냅샷 `LastDeployPlan` 을 `DeployPlan` 으로 복원 → 준비 화면도 직전 배치로 시작 |
+| 교착 방지 | 직전 라운드에 아무도 배치하지 않은 팀은 패배 수와 무관하게 자유(`ShouldAllowRedeploy` 의 `bHadDeployment`) |
+| Draw 라운드 | `EndRound` 를 거치지 않으므로 권한 유지 |
+
+- **서버**: `EndRound` → `PushRoundResultToGameState`(미확정 라인 무승부 마감) → `UpdateRedeployRights()`(static `CountLanesLost`/`ShouldAllowRedeploy`). `TransitionToRoundPreparation` 이 배치 복원 후 **`SetGameState` 보다 먼저** `PushDeployStateToGameState()` (리슨 호스트는 그 브로드캐스트 안에서 바로 준비 화면을 띄우고, 원격 클라는 `CurrentState` 와 같은 업데이트로 수신). `ServerSetLaneDeployClassesForPlayer`/`ServerSetLaneDeployCountForPlayer` 는 `CanTeamRedeploy` 거짓이면 **거부**.
+- **GameState**: `bTeam1/2CanRedeploy`(bool, 기본 true = CDO 와 같아 첫 준비 땐 미전송이어도 정확) + `Team1/2DeployUnitIds`(6칸 = 라인*2+슬롯, 빈칸 -1) — 모두 `ReplicatedUsing=OnRep_DeployState` → `OnDeployStateChanged`. setter `ServerSetDeployState`. ⚠️ **준비 단계 시작 시점에만** 갱신 — 배치 RPC 마다 갱신하면 리슨 호스트에서 RPC 처리 중 위젯이 덮인다.
+- **준비 화면**: `InitializeWithRoster` → `ApplyDeployState()` 가 슬롯을 GameState 배치로 채우고 `bDeployLocked` 반영. 잠기면 카드/슬롯 드래그(`NativeOnDragDetected`)·드롭·X 버튼 차단 + 결과 패널 2번째 줄 "배치 고정 — 지난 배치 그대로 출전 (상점 이용 가능)" / "재배치 가능". `OnDeployStateChanged` 는 복제가 늦게 온 경우 반영(잠긴 팀은 항상, 자유 팀은 사용자가 고치기 전·준비 전에만).
+- **PlayerController** `SubmitDeployFromWidget()`(준비 버튼·타이머 자동 전송 공용): 잠긴 팀이면 생략. ⚠️ **세 라인을 먼저 비운 뒤 채운다** — 서버가 라인 RPC 마다 "다른 라인(현재 값) + 이 라인 ≤ 5" 를 검사하므로, 직전 배치 1/2/2 → 2/1/2 처럼 옮기면 앞 라인이 일시적으로 6명이 되어 거부됨(매 라운드 2/2/1 에서 시작하던 예전엔 안 생기던 경우).
+- 테스트: `Tests/AOSConditionalRedeployTest.cpp` (`TDProject.AOS.ConditionalRedeploy`).
+
 ### DS 규칙 준수
 
 모든 드래프트 상태 변경은 `HasAuthority()` 서버, 위젯/입력은 `IsLocalPlayerController()` 가드, 클라는 GameState 리플리케이션(`OnRep_Draft`)으로만 드래프트 상태 수신. 클라는 `DT_Items` 처럼 로스터를 직접 안 읽고 **`Client_ReceiveCharacterRoster` RPC** 로 받음.

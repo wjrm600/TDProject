@@ -227,20 +227,13 @@ void AAOSPlayerController::Tick(float DeltaTime)
 				CharacterSelectWidget->UpdatePreparationTimer(TimeLeft);
 
 				// 3초 전 자동 배치 전송: 위젯에 캐릭터가 배치된 경우만 전송
-				// (미배치 시 서버 기본값 2,2,1 유지)
+				// (미배치 시 서버의 준비 시작 배치 유지 — 첫 라운드 픽 기반 기본 배치 / 이후 직전 라운드 배치)
 				if (!bAutoSubmittedConfig && TimeLeft < 3.0f)
 				{
 					bAutoSubmittedConfig = true;
 					if (CharacterSelectWidget->GetTotalCount() > 0)
 					{
-						const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
-						for (EAOSLane Lane : Lanes)
-						{
-							TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
-							TArray<int32> UnitIds = CharacterSelectWidget->GetLaneUnitIds(Lane);
-							Server_SetLaneDeployClasses(Lane, Classes, UnitIds);
-							Server_SetLaneDeployCount(Lane, Classes.Num());
-						}
+						SubmitDeployFromWidget();
 						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 준비 타이머 만료 임박 — 배치 자동 전송 (Total:%d)"),
 							CharacterSelectWidget->GetTotalCount());
 					}
@@ -951,14 +944,7 @@ void AAOSPlayerController::OnStartRoundClicked()
 {
 	if (CharacterSelectWidget)
 	{
-		const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
-		for (EAOSLane Lane : Lanes)
-		{
-			TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
-			TArray<int32> UnitIds = CharacterSelectWidget->GetLaneUnitIds(Lane);
-			Server_SetLaneDeployClasses(Lane, Classes, UnitIds);
-			Server_SetLaneDeployCount(Lane, Classes.Num()); // 하위 호환
-		}
+		SubmitDeployFromWidget();
 
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 라운드 시작 요청 (Top:%d, Mid:%d, Bottom:%d)"),
 			CharacterSelectWidget->GetLaneCount(EAOSLane::Top),
@@ -967,6 +953,31 @@ void AAOSPlayerController::OnStartRoundClicked()
 	}
 
 	Server_SetReady(true);
+}
+
+// 준비 화면의 배치를 서버로 전송 (준비 버튼 / 타이머 만료 직전 자동 전송 공용).
+// 세 라인을 먼저 비운 뒤 채운다 — 서버는 라인 RPC 마다 "다른 라인(현재 값) + 이 라인 ≤ 5" 를 검사하므로,
+// 직전 배치(예: 1/2/2)에서 다른 분포(2/1/2)로 옮기면 앞 라인이 일시적으로 6명이 되어 거부된다.
+// (예전엔 매 라운드 기본값 2/2/1 에서 시작해 이 경우가 생기지 않았다 — 조건부 재배치로 직전 배치 복원 후 발생)
+void AAOSPlayerController::SubmitDeployFromWidget()
+{
+	// 조건부 재배치: 잠긴 팀은 서버가 어차피 거부 → 보내지 않음
+	if (!CharacterSelectWidget || CharacterSelectWidget->IsDeployLocked()) return;
+
+	const EAOSLane Lanes[] = { EAOSLane::Top, EAOSLane::Mid, EAOSLane::Bottom };
+	const TArray<TSubclassOf<AAOSCharacter>> NoClasses;
+	const TArray<int32> NoUnitIds;
+	for (EAOSLane Lane : Lanes)
+	{
+		Server_SetLaneDeployClasses(Lane, NoClasses, NoUnitIds);
+	}
+	for (EAOSLane Lane : Lanes)
+	{
+		TArray<TSubclassOf<AAOSCharacter>> Classes = CharacterSelectWidget->GetLaneClasses(Lane);
+		TArray<int32> UnitIds = CharacterSelectWidget->GetLaneUnitIds(Lane);
+		Server_SetLaneDeployClasses(Lane, Classes, UnitIds);
+		Server_SetLaneDeployCount(Lane, Classes.Num()); // 하위 호환
+	}
 }
 
 // Server RPC 구현 - 라인별 배치 수 설정 (하위 호환)

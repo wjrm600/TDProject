@@ -234,6 +234,15 @@ void AAOSGameMode::StartRound()
 	// 게임 시간 초기화
 	RemainingGameTime = GameDuration;
 
+	// 조건부 재배치: 이번 라운드 배치를 저장 → 다음 준비 단계의 시작 배치 (잠긴 팀은 그대로 고정)
+	for (int32 T = 0; T < 2; ++T)
+	{
+		for (int32 L = 0; L < 3; ++L)
+		{
+			LastDeployPlan[T][L] = DeployPlan[T][L];
+		}
+	}
+
 	// 배치 계획에 따라 캐릭터 생성 (먼저 스폰 후 0명 여부 확인)
 	SpawnCharactersForRound();
 
@@ -290,6 +299,9 @@ void AAOSGameMode::EndRound()
 
 	// Slice 1: 이번 라운드의 라인 승패 결과를 GameState 에 push (다음 준비 화면 패널이 표시)
 	PushRoundResultToGameState();
+
+	// 조건부 재배치: 라인 승패 → 다음 준비 단계 재배치 권한 (미확정 라인은 위에서 무승부로 마감됨)
+	UpdateRedeployRights();
 
 	// 커맨드 센터 파괴 여부 확인
 	bool bTeam1CCDestroyed = false;
@@ -447,7 +459,10 @@ int32 AAOSGameMode::GetDeployCount(EAOSTeam Team, EAOSLane Lane) const
 	return (L >= 0 && L < 3) ? DeployPlan[T][L].Classes.Num() : 0;
 }
 
-// 기본 배치 계획 초기화 (Roster 첫 번째 유효 캐릭터 → CharacterClass 폴백, Top2/Mid2/Bottom1)
+// 기본 배치 계획 초기화 (첫 준비 단계 = 드래프트 직후). 팀이 픽한 유닛을 픽 순서대로 Top2/Mid2/Bottom1 배치.
+// 픽이 없으면(벤픽 미수행 — 테스트/하위 호환) Roster 첫 번째 유효 캐릭터 → CharacterClass 폴백으로 같은 분포.
+// ⚠ 예전 버그: 픽과 무관하게 항상 Roster 첫 캐릭터 ×5 → 미배치로 30초가 지나면 상대가 픽한 유닛까지
+//   스폰되고(전체 고유 규칙 위반) 같은 UnitId 5개라 그 유닛 아이템이 5명에게 적용됐다.
 void AAOSGameMode::InitializeDefaultDeployPlan()
 {
 	// Roster의 첫 번째 유효 클래스를 기본 클래스로 사용
@@ -481,6 +496,9 @@ void AAOSGameMode::InitializeDefaultDeployPlan()
 		}
 	}
 
+	const AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	const int32 PickLaneOrder[] = { 0, 0, 1, 1, 2 };   // n번째 픽의 라인: Top2/Mid2/Bottom1 (총 5명)
+
 	for (int32 T = 0; T < 2; ++T)
 	{
 		for (int32 L = 0; L < 3; ++L)
@@ -489,9 +507,25 @@ void AAOSGameMode::InitializeDefaultDeployPlan()
 			DeployPlan[T][L].UnitIds.Empty();
 		}
 
-		if (DefaultClass)
+		const EAOSTeam Team = (T == 0) ? EAOSTeam::Team1 : EAOSTeam::Team2;
+		const TArray<int32> Picks = AOSGS ? AOSGS->GetPickedUnits(Team) : TArray<int32>();
+		if (Picks.Num() > 0)
 		{
-			// 기본: Top 2, Mid 2, Bottom 1
+			int32 Placed = 0;
+			for (int32 Uid : Picks)
+			{
+				if (Placed >= static_cast<int32>(UE_ARRAY_COUNT(PickLaneOrder))) break;
+				if (!CharacterRoster.IsValidIndex(Uid) || !CharacterRoster[Uid].CharacterClass) continue;
+				const int32 L = PickLaneOrder[Placed++];
+				DeployPlan[T][L].Classes.Add(CharacterRoster[Uid].CharacterClass);
+				DeployPlan[T][L].UnitIds.Add(Uid);
+			}
+			UE_LOG(LogTemp, Log, TEXT("[GameMode] %s 기본 배치: 픽 %d명 → Top2/Mid2/Bottom1 순서로 %d명 배치"),
+				T == 0 ? TEXT("Team1") : TEXT("Team2"), Picks.Num(), Placed);
+		}
+		else if (DefaultClass)
+		{
+			// 벤픽 미수행 폴백: 같은 기본 클래스로 Top 2, Mid 2, Bottom 1
 			DeployPlan[T][0].Classes = { DefaultClass, DefaultClass };
 			DeployPlan[T][0].UnitIds = { DefaultUnitId, DefaultUnitId };
 			DeployPlan[T][1].Classes = { DefaultClass, DefaultClass };
@@ -542,6 +576,14 @@ void AAOSGameMode::ServerSetLaneDeployClassesForPlayer(AAOSPlayerState* PlayerSt
 
 	const EAOSTeam DeployTeam = PlayerState->GetTeam();
 	int32 T = (DeployTeam == EAOSTeam::Team1) ? 0 : 1;
+
+	// 조건부 재배치: 잠긴 팀은 배치 변경 불가 (UI 가 막지만 서버에서 강제)
+	if (!CanTeamRedeploy(DeployTeam))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] 배치 변경 거부 — %s 재배치 잠김 (직전 라운드 패배 라인 < %d)"),
+			DeployTeam == EAOSTeam::Team1 ? TEXT("Team1") : TEXT("Team2"), RedeployLaneLossThreshold);
+		return;
+	}
 
 	// 벤픽 픽 필터: 해당 팀이 픽한 유닛만 배치 허용 (UI 가 막지만 서버에서 강제)
 	const AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
@@ -855,6 +897,84 @@ EAOSTeam AAOSGameMode::GetOpposingTeam(EAOSTeam Team)
 	return (Team == EAOSTeam::Team1) ? EAOSTeam::Team2 : EAOSTeam::Team1;
 }
 
+// ============================================================
+// 조건부 재배치 (직전 라운드 RedeployLaneLossThreshold 이상 라인을 진 팀만 배치 변경)
+// ============================================================
+
+int32 AAOSGameMode::CountLanesLost(const TArray<int32>& LaneWinners, EAOSTeam Team)
+{
+	// 진 라인 = 승자가 상대 팀인 라인. 무승부(0)는 패배가 아니다.
+	const int32 OpponentNum = (GetOpposingTeam(Team) == EAOSTeam::Team1) ? 1 : 2;
+	int32 Lost = 0;
+	for (int32 Winner : LaneWinners)
+	{
+		if (Winner == OpponentNum) ++Lost;
+	}
+	return Lost;
+}
+
+bool AAOSGameMode::ShouldAllowRedeploy(int32 LanesLost, int32 LossThreshold, bool bHadDeployment)
+{
+	return !bHadDeployment || LanesLost >= LossThreshold;
+}
+
+bool AAOSGameMode::CanTeamRedeploy(EAOSTeam Team) const
+{
+	return !bEnableConditionalRedeploy || bTeamCanRedeploy[(Team == EAOSTeam::Team1) ? 0 : 1];
+}
+
+void AAOSGameMode::UpdateRedeployRights()
+{
+	TArray<int32> Winners;
+	for (int32 L = 0; L < 3; ++L)
+	{
+		Winners.Add(LaneWinner[L]);
+	}
+
+	for (int32 T = 0; T < 2; ++T)
+	{
+		const EAOSTeam Team = (T == 0) ? EAOSTeam::Team1 : EAOSTeam::Team2;
+		bool bHadDeployment = false;
+		for (int32 L = 0; L < 3; ++L)
+		{
+			bHadDeployment |= LastDeployPlan[T][L].Classes.Num() > 0;
+		}
+
+		const int32 Lost = CountLanesLost(Winners, Team);
+		bTeamCanRedeploy[T] = ShouldAllowRedeploy(Lost, RedeployLaneLossThreshold, bHadDeployment);
+
+		UE_LOG(LogTemp, Warning, TEXT("[Round] %s 패배 라인 %d/3 → 다음 준비 단계 %s%s"),
+			T == 0 ? TEXT("Team1") : TEXT("Team2"), Lost,
+			bTeamCanRedeploy[T] ? TEXT("재배치 가능") : TEXT("배치 고정"),
+			bEnableConditionalRedeploy ? TEXT("") : TEXT(" (규칙 꺼짐 — 실제로는 자유)"));
+	}
+}
+
+void AAOSGameMode::PushDeployStateToGameState()
+{
+	AAOSGameState* AOSGS = GetGameState<AAOSGameState>();
+	if (!AOSGS) return;
+
+	for (int32 T = 0; T < 2; ++T)
+	{
+		const EAOSTeam Team = (T == 0) ? EAOSTeam::Team1 : EAOSTeam::Team2;
+
+		// 6칸 = 라인*MaxCharactersPerLane + 슬롯 (준비 화면 LaneSlotWidgets 인덱스와 동일), 빈칸 -1
+		TArray<int32> SlotUnitIds;
+		SlotUnitIds.Init(-1, 3 * MaxCharactersPerLane);
+		for (int32 L = 0; L < 3; ++L)
+		{
+			const TArray<int32>& Ids = DeployPlan[T][L].UnitIds;
+			for (int32 S = 0; S < FMath::Min(Ids.Num(), MaxCharactersPerLane); ++S)
+			{
+				SlotUnitIds[L * MaxCharactersPerLane + S] = Ids[S];
+			}
+		}
+
+		AOSGS->ServerSetDeployState(Team, CanTeamRedeploy(Team), SlotUnitIds);
+	}
+}
+
 void AAOSGameMode::AwardGold(EAOSTeam Team, int32 Amount)
 {
 	if (!HasAuthority() || Amount == 0)
@@ -1091,8 +1211,27 @@ void AAOSGameMode::TransitionToRoundPreparation()
 		}
 	}
 
-	// 기본 배치 계획 초기화 (라인당 MaxCharactersPerLane명)
-	InitializeDefaultDeployPlan();
+	// 배치 계획: 첫 준비(드래프트 직후) = 픽 기반 기본 배치 + 양 팀 자유,
+	// 이후 = 직전 라운드 배치 복원 (재배치 권한은 EndRound 의 UpdateRedeployRights 가 정함.
+	// Draw 라운드는 EndRound 를 거치지 않으므로 권한이 그대로 유지된다)
+	if (CurrentRound == 0)
+	{
+		InitializeDefaultDeployPlan();
+		bTeamCanRedeploy[0] = bTeamCanRedeploy[1] = true;
+	}
+	else
+	{
+		for (int32 T = 0; T < 2; ++T)
+		{
+			for (int32 L = 0; L < 3; ++L)
+			{
+				DeployPlan[T][L] = LastDeployPlan[T][L];
+			}
+		}
+	}
+	// SetGameState(RoundPreparation) 보다 먼저 — 리슨 호스트는 그 브로드캐스트 안에서 곧바로 준비 화면을
+	// 띄우고, 원격 클라는 같은 프레임 변경이라 CurrentState 와 같은 업데이트로 받는다
+	PushDeployStateToGameState();
 
 	// 준비 상태 초기화 (로비/이전 라운드의 ready 상태가 남아있으면 첫 번째 플레이어가 시작 버튼을 눌렀을 때 바로 StartRound가 실행됨)
 	if (AAOSGameState* AOSGS = GetGameState<AAOSGameState>())
@@ -1484,6 +1623,12 @@ void AAOSGameMode::ServerSetLaneDeployCountForPlayer(AAOSPlayerState* PlayerStat
 	if (AOSGameState != EAOSGameState::RoundPreparation)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] ServerSetLaneDeployCountForPlayer: RoundPreparation 아님. 무시."));
+		return;
+	}
+
+	// 조건부 재배치: 잠긴 팀은 배치 변경 불가 (Classes 경로와 동일 규칙)
+	if (!CanTeamRedeploy(PlayerState->GetTeam()))
+	{
 		return;
 	}
 

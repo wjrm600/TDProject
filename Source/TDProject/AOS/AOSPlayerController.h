@@ -318,6 +318,9 @@ private:
 	// 준비 단계 자동 배치 전송 완료 여부 (타이머 만료 전 자동 제출 중복 방지)
 	bool bAutoSubmittedConfig = false;
 
+	// 준비 화면 배치를 서버로 전송 (세 라인 비운 뒤 채움 — 정의부 주석 참고). 잠긴 팀이면 생략.
+	void SubmitDeployFromWidget();
+
 	// 디버그 치트키
 	void DebugToggleStructureBoxes();
 	void DebugToggleAttackRange();

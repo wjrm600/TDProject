@@ -176,6 +176,7 @@ void UAOSLaneSlotWidget::NativeOnDragDetected(const FGeometry& InGeometry,
 	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
 	if (!AssignedClass) return;
+	if (OwnerSelectWidget && OwnerSelectWidget->IsDeployLocked()) return;   // 조건부 재배치: 배치 고정
 
 	UAOSCharacterDragDropOperation* Op = NewObject<UAOSCharacterDragDropOperation>();
 	Op->CharacterClass = AssignedClass;
@@ -282,6 +283,8 @@ FReply UAOSCharacterCardWidget::NativeOnMouseButtonDown(const FGeometry& InGeome
 void UAOSCharacterCardWidget::NativeOnDragDetected(const FGeometry& InGeometry,
 	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
 {
+	if (OwnerSelectWidget && OwnerSelectWidget->IsDeployLocked()) return;   // 조건부 재배치: 배치 고정
+
 	UAOSCharacterDragDropOperation* Op = NewObject<UAOSCharacterDragDropOperation>();
 	Op->CharacterClass = CharacterClass;
 	Op->RosterIndex = RosterIndex;
@@ -762,6 +765,13 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 	{
 		StartRoundButton->OnClicked.AddDynamic(this, &UAOSCharacterSelectWidget::OnStartRoundButtonClicked);
 	}
+	if (AAOSGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr)
+	{
+		if (!GS->OnDeployStateChanged.IsAlreadyBound(this, &UAOSCharacterSelectWidget::OnDeployStateChanged))
+		{
+			GS->OnDeployStateChanged.AddDynamic(this, &UAOSCharacterSelectWidget::OnDeployStateChanged);
+		}
+	}
 
 	// 기존 카드 제거
 	for (UAOSCharacterCardWidget* Card : CharacterCardWidgets)
@@ -770,13 +780,10 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 	}
 	CharacterCardWidgets.Empty();
 
-	// 슬롯 초기화
-	for (UAOSLaneSlotWidget* LaneSlot : LaneSlotWidgets)
-	{
-		if (LaneSlot) LaneSlot->ClearAssignment();
-	}
-	TopLaneCount = MidLaneCount = BottomLaneCount = 0;
-	RefreshTotalCountDisplay();
+	// 슬롯 = GameState 의 준비 단계 시작 배치(직전 라운드 배치 / 첫 라운드는 픽 기반 기본 배치) + 잠금 반영.
+	// (예전: 매 라운드 전부 비움 → 직전 배치를 처음부터 다시 끌어다 놓아야 했다)
+	bLocalDeployEdited = false;
+	ApplyDeployState();
 
 	if (!CardGrid) return;
 
@@ -785,14 +792,7 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 	TSet<int32> AllowedUnits;
 	bool bFilterByPick = false;
 	{
-		EAOSTeam LocalTeam = EAOSTeam::Team1;
-		if (APlayerController* PC = GetOwningPlayer())
-		{
-			if (AAOSPlayerState* PS = PC->GetPlayerState<AAOSPlayerState>())
-			{
-				LocalTeam = PS->GetTeam();
-			}
-		}
+		const EAOSTeam LocalTeam = GetLocalTeam();
 		if (AAOSGameState* AOSGS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr)
 		{
 			const TArray<int32>& Picked = AOSGS->GetPickedUnits(LocalTeam);
@@ -835,7 +835,7 @@ void UAOSCharacterSelectWidget::InitializeWithRoster(const TArray<FCharacterRost
 void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIndex,
 	UAOSCharacterDragDropOperation* Op)
 {
-	if (!Op) return;
+	if (!Op || bDeployLocked) return;
 
 	int32 L = static_cast<int32>(Lane);
 	int32 FlatIdx = L * 2 + SlotIndex;
@@ -888,6 +888,7 @@ void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIn
 		CharName = CachedRoster[Op->RosterIndex].DisplayName;
 
 	TargetSlot->SetAssigned(Op->CharacterClass, Op->RosterIndex, CharName);
+	bLocalDeployEdited = true;
 
 	UpdateCountsFromSlots();
 	RefreshTotalCountDisplay();
@@ -895,6 +896,9 @@ void UAOSCharacterSelectWidget::HandleDropOnLaneSlot(EAOSLane Lane, int32 SlotIn
 
 void UAOSCharacterSelectWidget::HandleClearSlot(EAOSLane Lane, int32 SlotIndex)
 {
+	if (bDeployLocked) return;
+	bLocalDeployEdited = true;
+
 	int32 FlatIdx = static_cast<int32>(Lane) * 2 + SlotIndex;
 	if (FlatIdx >= 0 && FlatIdx < LaneSlotWidgets.Num())
 	{
@@ -1154,14 +1158,7 @@ void UAOSCharacterSelectWidget::UpdateRoundResult()
 	}
 
 	// 로컬 플레이어 팀 (1=Team1, 2=Team2)
-	int32 MyTeamNum = 1;
-	if (APlayerController* PC = GetOwningPlayer())
-	{
-		if (AAOSPlayerState* PS = PC->GetPlayerState<AAOSPlayerState>())
-		{
-			MyTeamNum = (PS->GetTeam() == EAOSTeam::Team1) ? 1 : 2;
-		}
-	}
+	const int32 MyTeamNum = (GetLocalTeam() == EAOSTeam::Team1) ? 1 : 2;
 
 	const TCHAR* LaneNames[3] = { TEXT("Top"), TEXT("Mid"), TEXT("Bottom") };
 	int32 WinCount = 0;
@@ -1188,8 +1185,13 @@ void UAOSCharacterSelectWidget::UpdateRoundResult()
 		Parts += FString::Printf(TEXT("%s %s"), LaneNames[L], *Outcome);
 	}
 
+	// 조건부 재배치 안내 — 왜 이번에 배치를 바꿀 수 있는지/없는지 결과와 함께 보여준다
+	const TCHAR* DeployNote = bDeployLocked
+		? TEXT("배치 고정 — 지난 배치 그대로 출전 (상점 이용 가능)")
+		: TEXT("재배치 가능");
+
 	RoundResultText->SetText(FText::FromString(FString::Printf(
-		TEXT("지난 라운드 %d 결과:    %s    (%d/3 라인 승)"), R.RoundNumber, *Parts, WinCount)));
+		TEXT("지난 라운드 %d 결과:    %s    (%d/3 라인 승)\n%s"), R.RoundNumber, *Parts, WinCount, DeployNote)));
 
 	// 다수 라인 승=녹색, 1라인=호박색, 0라인=빨강 (다크 배경 가독 색)
 	const FLinearColor Color = (WinCount >= 2) ? AOSUIStyle::Success
@@ -1197,4 +1199,68 @@ void UAOSCharacterSelectWidget::UpdateRoundResult()
 		: CSBanRed;
 	RoundResultText->SetColorAndOpacity(FSlateColor(Color));
 	RoundResultText->SetVisibility(ESlateVisibility::Visible);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 조건부 재배치 — 직전 라운드 RedeployLaneLossThreshold 이상 라인을 진 팀만 배치 변경
+// ─────────────────────────────────────────────────────────────
+
+EAOSTeam UAOSCharacterSelectWidget::GetLocalTeam() const
+{
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (AAOSPlayerState* PS = PC->GetPlayerState<AAOSPlayerState>())
+		{
+			return PS->GetTeam();
+		}
+	}
+	return EAOSTeam::Team1;
+}
+
+void UAOSCharacterSelectWidget::ApplyDeployState()
+{
+	AAOSGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr;
+	const EAOSTeam LocalTeam = GetLocalTeam();
+	bDeployLocked = GS && !GS->CanTeamRedeploy(LocalTeam);
+
+	// 6칸 = 라인*2 + 슬롯 (LaneSlotWidgets 인덱스와 동일). 복제 전(빈 배열)이면 전부 비움.
+	static const TArray<int32> NoIds;
+	const TArray<int32>& Ids = GS ? GS->GetTeamDeployUnitIds(LocalTeam) : NoIds;
+	for (int32 i = 0; i < LaneSlotWidgets.Num(); ++i)
+	{
+		UAOSLaneSlotWidget* LaneSlot = LaneSlotWidgets[i];
+		if (!LaneSlot) continue;
+
+		const int32 Uid = Ids.IsValidIndex(i) ? Ids[i] : -1;
+		if (CachedRoster.IsValidIndex(Uid) && CachedRoster[Uid].CharacterClass)
+		{
+			LaneSlot->SetAssigned(CachedRoster[Uid].CharacterClass, Uid, CachedRoster[Uid].DisplayName);
+			// 잠긴 팀은 비우기(X) 버튼 숨김 — SetAssigned 가 켠 것을 되돌림
+			if (bDeployLocked && LaneSlot->ClearButton)
+			{
+				LaneSlot->ClearButton->SetVisibility(ESlateVisibility::Collapsed);
+			}
+		}
+		else
+		{
+			LaneSlot->ClearAssignment();
+		}
+	}
+
+	UpdateCountsFromSlots();
+	RefreshTotalCountDisplay();
+	UpdateRoundResult();   // 결과 패널의 "배치 고정 / 재배치 가능" 안내 갱신
+}
+
+void UAOSCharacterSelectWidget::OnDeployStateChanged()
+{
+	if (CachedRoster.Num() == 0) return;   // 로스터 수신 전 — InitializeWithRoster 가 적용
+
+	// 잠긴 팀은 고칠 수 없으니 항상 반영. 자유 팀은 사용자가 이미 고쳤거나 준비 완료했으면 덮지 않음.
+	AAOSGameState* GS = GetWorld() ? GetWorld()->GetGameState<AAOSGameState>() : nullptr;
+	const bool bNowLocked = GS && !GS->CanTeamRedeploy(GetLocalTeam());
+	if (bNowLocked || (!bLocalDeployEdited && !bLocalPressedReady))
+	{
+		ApplyDeployState();
+	}
 }

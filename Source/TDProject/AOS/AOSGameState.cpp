@@ -22,6 +22,12 @@ void AAOSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AAOSGameState, Team2Gold);
 	DOREPLIFETIME(AAOSGameState, LastRoundResult);
 
+	// 조건부 재배치
+	DOREPLIFETIME(AAOSGameState, bTeam1CanRedeploy);
+	DOREPLIFETIME(AAOSGameState, bTeam2CanRedeploy);
+	DOREPLIFETIME(AAOSGameState, Team1DeployUnitIds);
+	DOREPLIFETIME(AAOSGameState, Team2DeployUnitIds);
+
 	// 벤픽 드래프트
 	DOREPLIFETIME(AAOSGameState, Team1PickedUnitIds);
 	DOREPLIFETIME(AAOSGameState, Team2PickedUnitIds);
@@ -220,6 +226,45 @@ void AAOSGameState::ServerSetRoundResult(const FAOSRoundResult& Result)
 void AAOSGameState::OnRep_RoundResult()
 {
 	OnRoundResultChanged.Broadcast();
+}
+
+// ============================================================
+// 조건부 재배치 (팀별 권한 + 준비 단계 시작 배치)
+// ============================================================
+
+void AAOSGameState::ServerSetDeployState(EAOSTeam Team, bool bCanRedeploy, const TArray<int32>& SlotUnitIds)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	bool& bCan = (Team == EAOSTeam::Team1) ? bTeam1CanRedeploy : bTeam2CanRedeploy;
+	TArray<int32>& Ids = (Team == EAOSTeam::Team1) ? Team1DeployUnitIds : Team2DeployUnitIds;
+	if (bCan == bCanRedeploy && Ids == SlotUnitIds)
+	{
+		return;
+	}
+
+	bCan = bCanRedeploy;
+	Ids = SlotUnitIds;
+	// 서버(리스너 호스트)에서도 즉시 브로드캐스트 — 클라는 OnRep_DeployState 가 처리
+	OnDeployStateChanged.Broadcast();
+}
+
+bool AAOSGameState::CanTeamRedeploy(EAOSTeam Team) const
+{
+	return (Team == EAOSTeam::Team1) ? bTeam1CanRedeploy : bTeam2CanRedeploy;
+}
+
+const TArray<int32>& AAOSGameState::GetTeamDeployUnitIds(EAOSTeam Team) const
+{
+	return (Team == EAOSTeam::Team1) ? Team1DeployUnitIds : Team2DeployUnitIds;
+}
+
+void AAOSGameState::OnRep_DeployState()
+{
+	OnDeployStateChanged.Broadcast();
 }
 
 void AAOSGameState::OnRep_Gold()

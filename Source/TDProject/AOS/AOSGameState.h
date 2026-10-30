@@ -24,6 +24,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTeamGoldChanged, EAOSTeam, Team,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoundResultChanged);
 // 벤픽: 드래프트 상태(밴/픽/스텝) 갱신 알림 — 벤픽 위젯이 구독.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDraftChanged);
+// 조건부 재배치: 팀별 재배치 권한/시작 배치 갱신 알림 — 준비 화면이 구독.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeployStateChanged);
 
 // 벤픽 드래프트 시퀀스의 한 스텝 (어느 팀이 밴/픽 하는가). 정적 시퀀스용 — 비리플리케이션.
 struct FAOSDraftStep
@@ -105,6 +107,25 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_RoundResult, BlueprintReadOnly, Category = "AOS|Game")
 	FAOSRoundResult LastRoundResult;
 
+	// ── 조건부 재배치 (GameMode 가 준비 단계 진입 시 설정) ──
+	// 이번 준비 단계에서 팀이 배치를 바꿀 수 있는가. 첫 라운드는 양 팀 true,
+	// 이후엔 직전 라운드에 RedeployLaneLossThreshold(기본 2) 이상 라인을 진 팀만 true.
+	// 기본값 true 는 CDO 와 같아 첫 준비 때 전송되지 않아도 클라 값이 맞다.
+	UPROPERTY(ReplicatedUsing = OnRep_DeployState, BlueprintReadOnly, Category = "AOS|Deploy")
+	bool bTeam1CanRedeploy = true;
+
+	UPROPERTY(ReplicatedUsing = OnRep_DeployState, BlueprintReadOnly, Category = "AOS|Deploy")
+	bool bTeam2CanRedeploy = true;
+
+	// 팀별 준비 단계 시작 배치 (서버 DeployPlan 스냅샷). 6칸, 인덱스 = 라인*2 + 슬롯, 빈칸 = -1,
+	// 값 = UnitId(로스터 인덱스). 준비 화면이 이 배치로 슬롯을 채운다(클래스는 클라 로스터에서 조회).
+	// 준비 도중 배치 RPC 로는 갱신하지 않는다 — 호스트에서 RPC 처리 중 위젯이 덮이는 것 방지.
+	UPROPERTY(ReplicatedUsing = OnRep_DeployState, BlueprintReadOnly, Category = "AOS|Deploy")
+	TArray<int32> Team1DeployUnitIds;
+
+	UPROPERTY(ReplicatedUsing = OnRep_DeployState, BlueprintReadOnly, Category = "AOS|Deploy")
+	TArray<int32> Team2DeployUnitIds;
+
 	// ── 벤픽 드래프트 (밴2+픽5, 스네이크, 전체 고유) ──
 	// 픽/밴된 유닛(=로스터 인덱스). 전체 고유라 중복 없음. 모두 OnRep_Draft 로 위젯 갱신.
 	UPROPERTY(ReplicatedUsing = OnRep_Draft, BlueprintReadOnly, Category = "AOS|BanPick")
@@ -147,6 +168,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "AOS|Game")
 	FAOSRoundResult GetLastRoundResult() const { return LastRoundResult; }
+
+	// 조건부 재배치 — 서버 전용 설정 + 조회
+	void ServerSetDeployState(EAOSTeam Team, bool bCanRedeploy, const TArray<int32>& SlotUnitIds);
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Deploy")
+	bool CanTeamRedeploy(EAOSTeam Team) const;
+
+	UFUNCTION(BlueprintCallable, Category = "AOS|Deploy")
+	const TArray<int32>& GetTeamDeployUnitIds(EAOSTeam Team) const;
 
 	// ── 벤픽 드래프트 — 서버 전용 변경 (GameMode 가 호출) ──
 	void ServerResetDraft();
@@ -211,6 +241,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AOS|BanPick")
 	FOnDraftChanged OnDraftChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "AOS|Deploy")
+	FOnDeployStateChanged OnDeployStateChanged;
+
 protected:
 	UFUNCTION()
 	void OnRep_CurrentState();
@@ -223,6 +256,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_Draft();
+
+	UFUNCTION()
+	void OnRep_DeployState();
 
 	UFUNCTION()
 	void OnRep_CurrentRound();
