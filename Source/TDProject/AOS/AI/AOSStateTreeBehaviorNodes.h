@@ -254,9 +254,13 @@ struct FAOSTask_StrafeAroundTargetInstanceData
 	UPROPERTY(EditAnywhere, Category = "Context")
 	TObjectPtr<AAIController> AIController = nullptr;
 
-	/** 한 걸음의 옆 이동 거리 (원호 길이, cm) */
+	/** 한 걸음의 옆 이동 거리 (원호 길이, cm). 원호 반지름은 타겟 거리를 사거리×0.9 이하로 자른 값 */
 	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0"))
 	float StepDistance = 150.0f;
+
+	/** 옆걸음 이동 속도 배율 (MoveSpeed 기준). 사거리 밖으로 벌어져 다시 접근할 때는 원래 속도 */
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float SpeedMultiplier = 0.5f;
 
 	/** true = CurrentTarget(적 캐릭터) 기준, false = 현재 웨이포인트 구조물 기준 */
 	UPROPERTY(EditAnywhere, Category = "Parameter")

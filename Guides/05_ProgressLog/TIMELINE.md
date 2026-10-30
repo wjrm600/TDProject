@@ -2440,6 +2440,34 @@
 
 **결과**
 - 레벨 검증: MapManager(`TDMapManager`) 1 · SpawnPoint 12 · RecastNavMesh 1 · NavMeshBoundsVolume 1, GameMode Override = `BP_AOSGameMode_CombatTest`
-- **MCP 로 직접 PIE 실행해 확인**: 1초 뒤 `[QuickTest] Team1 라인 1 ← BP_Char_Kwang_C` … → `라운드 1 캐릭터 생성 완료 - Team1: 2, Team2: 2` → GameState `ROUND_RUNNING`, 픽 T1=[0,1] T2=[2,10], 구조물 20 → 약 17초 뒤 첫 전사 로그(전투 발생) (이 커밋)
+- **MCP 로 직접 PIE 실행해 확인**: 1초 뒤 `[QuickTest] Team1 라인 1 ← BP_Char_Kwang_C` … → `라운드 1 캐릭터 생성 완료 - Team1: 2, Team2: 2` → GameState `ROUND_RUNNING`, 픽 T1=[0,1] T2=[2,10], 구조물 20 → 약 17초 뒤 첫 전사 로그(전투 발생) (`72c28b8`)
 - 🔎 **교훈 1**: `npx -y <패키지>` 처럼 **버전을 고정하지 않은 MCP 서버는 언제든 조용히 바뀐다**. 짝이 되는 에디터 플러그인이 저장소에 고정돼 있으면 서버도 같은 버전으로 고정할 것
 - 🔎 **교훈 2**: World Partition/외부 액터 레벨을 스크립트로 복제하면 **맵만 저장되고 액터는 메모리에 남는다**. 저장 후 `__ExternalActors__` 디스크 카운트를 원본과 비교해 확인할 것
+
+---
+
+## 2026-10-30 — 원거리 기본공격 버그 수정(전 캐릭터) + Kwang 옆걸음 속도 배율
+
+**쉽게 보기**
+- **한 줄 요약**: 적을 처음 발견하면 멀리서부터 기본공격을 휘두르며 다가가던 문제를 고쳤다(모든 캐릭터). Kwang 옆걸음은 속도를 절반으로 늦출 수 있게 했다
+- **사용자 제보 3건**: ① 처음 만날 때 너무 먼 거리에서 일반 공격 ② Kwang 옆걸음이 너무 빨라 왔다갔다 ③ 옆걸음 거리가 짧음
+
+**작업 내용**
+- `FStateTreeTask_SendAttackEvent::EnterState` 에 사거리 검사 추가 (`Tick` 과 같은 규칙)
+- 옆걸음 태스크 InstanceData 에 `SpeedMultiplier`(기본 0.5) 추가 → `AAOSAIController::UpdateStrafe(Target, StepDistance, SpeedMultiplier)` → `ApplyStrafeSpeed` 가 `MaxWalkSpeed = MoveSpeed 속성 × 배율`. 사거리 밖 재접근·`EndStrafe` 는 1배로 원복
+- 한 걸음 막힘 판정을 고정 1.5초 → **예상 소요 시간 ×2(최소 1.5초)** 로 (걸음을 늘리거나 느리게 해도 도착 전에 방향이 뒤집히지 않게)
+- 문서: CLAUDE.md StateTree 함정 7번, `KWANG_AI_STATETREE.md`(노드 표·동작 원리·튜닝 표·변경 이력 v2.1)
+
+**문제점**
+1. 사거리 데이터는 정상이었다(`DT_CharacterAttributes`: 근접 300 · Kwang 200 · 원거리 800, 14개 BP 모두 자기 행 사용). 원인은 코드: `SendAttackEvent` 는 `Tick` 에서만 사거리를 보고 `EnterState` 는 쿨다운만 보고 바로 공격 이벤트를 보냈다. 그런데 `AttackEnemy` 의 `On Tick → Root` 재선택 때문에 **같은 state 가 다시 선택될 때마다 `EnterState` 가 재호출**된다(`bShouldStateChangeOnReselect` 기본 true) → 사실상 매 tick 사거리 검사 없이 발사. `AttackEnemy` 진입 조건이 감지 범위(1500)라 접근하는 내내 쿨다운마다 기본공격이 나갔고, `GA_Attack` 은 거리 검사 없이 타겟에 직접 데미지를 넣으므로 **먼 거리 공격이 실제로 맞았다**
+2. 옆걸음 한 걸음 150cm 를 MoveSpeed 600 으로 0.25초 만에 끝내고 즉시 반대로 → 쿨다운 틈 3.7초 동안 10번 넘게 좌우 왕복
+3. 거리 설정은 이미 있었다(`StepDistance`). 단 원호 반경이 사거리×0.9(Kwang 180) 이하로 잘리므로 "거리" 는 원호 길이(150 ≈ 48°)
+
+**해결 방법**
+- (1) `EnterState` 에도 `bTargetCurrentEnemy && !IsCurrentTargetInAttackRange()` 이면 발사하지 않고 RUNNING. 구조물 공격은 `AttackStructure` 의 `TargetInAttackRange` 진입 조건이 이미 막고 있어 그대로
+- (2) 속도 기준을 현재 `MaxWalkSpeed` 가 아니라 **MoveSpeed 속성**으로 둠 — 현재 값에 곱하면 매 tick 누적돼 0 으로 수렴하고, 원복 시 옆걸음 중 바뀐 버프/슬로우를 잃는다
+- (3) 위치 안내: `ST_KwangAI` 의 `Focus_Strafe` / `Nearest_Strafe` / `StrafeStructure` → Strafe Around Target → `StepDistance`(같은 곳에 새 `SpeedMultiplier`). 사용자 요청으로 세 노드 모두 **150 → 250**(약 48° → 80°) — `statetree_set_node_properties` ×3 → 컴파일 메시지 0 · 저장
+
+**결과**
+- **풀 리빌드**(InstanceData UPROPERTY·AIController 헤더 변경) 후 사용자가 `Lvl_AOSCombatTest` 에서 확인: 먼 거리 기본공격 사라짐 · 옆걸음 느려지고 걸음 길어짐 (이 커밋). 기존 `ST_KwangAI` 옆걸음 노드 3개는 새 속성이 저장돼 있지 않아 C++ 기본값 0.5 를 그대로 받는다
+- 🔎 **교훈**: StateTree 태스크의 `EnterState` 는 "처음 한 번" 이 아니다. 부모가 `On Tick → Root` 로 재선택하면 매 tick 불린다 → `EnterState` 와 `Tick` 의 검사 조건을 똑같이 맞추거나, 상태를 바꾸는 태스크는 `bShouldStateChangeOnReselect=false`

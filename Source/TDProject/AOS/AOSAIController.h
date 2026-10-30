@@ -133,10 +133,11 @@ public:
 	 * 한 걸음 도착(또는 막힘)할 때마다 방향을 뒤집어 다음 걸음 → 호출되는 동안 좌우로 계속 오간다.
 	 * 사거리 밖이면 옆걸음 대신 타겟 쪽으로 접근한다.
 	 * Begin 은 회전 모드를 "이동 방향" → "컨트롤러(포커스) 방향"으로 바꾸고, End 가 원복한다.
+	 * SpeedMultiplier: 옆걸음 동안 MaxWalkSpeed = MoveSpeed 속성 × 배율 (접근할 때는 1배). End 가 MoveSpeed 로 원복.
 	 * ⚠️ End 는 StopMovement 를 호출하지 않는다 (사망 시 StopLogic → ExitState 경유로 불림 — root motion 보호).
 	 */
 	void BeginStrafe(AActor* FocusActor);
-	void UpdateStrafe(AActor* Target, float StepDistance);
+	void UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier = 1.0f);
 	void EndStrafe();
 
 	/** 지정 위치로 이동 요청 (후퇴용). 기존 이동 캐시를 무효화한다. 요청 실패 시 false */
@@ -221,6 +222,11 @@ private:
 	bool bHasStrafeGoal = false;
 	FVector StrafeGoal = FVector::ZeroVector;
 	double StrafeStepStartTime = 0.0;
+	// 진행 중인 걸음의 막힘 판정 시간 (걸음 길이 / 옆걸음 속도 기준)
+	double StrafeStepTimeout = 1.5;
+
+	// 옆걸음 속도: MaxWalkSpeed = MoveSpeed 속성 × Multiplier (1 = 원래 속도로 원복)
+	void ApplyStrafeSpeed(float Multiplier);
 
 	// 행동별 마지막 사용 시각 (MarkBehaviorUsed / IsBehaviorReady)
 	TMap<FName, double> BehaviorLastUsedTime;

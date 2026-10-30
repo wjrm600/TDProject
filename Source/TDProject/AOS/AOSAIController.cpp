@@ -751,7 +751,7 @@ void AAOSAIController::BeginStrafe(AActor* FocusActor)
 	SetFocus(FocusActor, EAIFocusPriority::Gameplay);
 }
 
-void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance)
+void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier)
 {
 	if (!ControlledCharacter || !Target) return;
 	BeginStrafe(Target);
@@ -760,9 +760,10 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance)
 	const FVector TargetLoc = Target->GetActorLocation();
 	const float Range = GetEffectiveAttackRange();
 
-	// 사거리 밖으로 벌어졌으면 옆걸음 대신 접근 (타겟을 바라본 채)
+	// 사거리 밖으로 벌어졌으면 옆걸음 대신 접근 (타겟을 바라본 채, 원래 속도)
 	if (FVector::Dist(MyLoc, TargetLoc) > Range)
 	{
+		ApplyStrafeSpeed(1.0f);
 		if (FVector::Dist(LastNavMoveTarget, TargetLoc) > 50.0f)
 		{
 			LastNavMoveActor = nullptr;
@@ -777,13 +778,16 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance)
 		return;
 	}
 
-	// 진행 중인 걸음이 있으면 도착(30 이내)하거나 막힐(1.5초) 때까지 그대로 둔다.
+	// 옆걸음은 느리게 — 매 tick 재적용해 옆걸음 중 버프/슬로우로 MoveSpeed 가 바뀌어도 따라간다
+	ApplyStrafeSpeed(SpeedMultiplier);
+
+	// 진행 중인 걸음이 있으면 도착(30 이내)하거나 막힐 때까지 그대로 둔다.
 	// 끝나면 방향을 뒤집어(좌↔우) 다음 걸음 → 호출되는 동안 좌우로 계속 오간다.
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	if (bHasStrafeGoal)
 	{
 		const bool bReached = FVector::Dist2D(MyLoc, StrafeGoal) <= 30.0f;
-		const bool bStuck = (Now - StrafeStepStartTime) > 1.5;
+		const bool bStuck = (Now - StrafeStepStartTime) > StrafeStepTimeout;
 		if (!bReached && !bStuck) return;
 	}
 	StrafeSign = -StrafeSign;
@@ -805,6 +809,12 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance)
 	StrafeGoal = Goal;
 	StrafeStepStartTime = Now;
 	bHasStrafeGoal = true;
+	// 막힘 판정 = 예상 소요 시간의 2배 (최소 1.5초) — 걸음을 길게/속도를 느리게 해도 도착 전에 뒤집히지 않게
+	{
+		const UCharacterMovementComponent* CMC = ControlledCharacter->GetCharacterMovement();
+		const float StepSpeed = CMC ? FMath::Max(CMC->MaxWalkSpeed, 1.0f) : 600.0f;
+		StrafeStepTimeout = FMath::Max(1.5, 2.0 * FVector::Dist2D(MyLoc, Goal) / StepSpeed);
+	}
 
 	LastNavMoveActor = nullptr;
 	LastNavMoveTarget = FVector::ZeroVector;
@@ -821,6 +831,7 @@ void AAOSAIController::EndStrafe()
 	if (!bStrafing) return;
 	bStrafing = false;
 
+	ApplyStrafeSpeed(1.0f);
 	if (ACharacter* Char = Cast<ACharacter>(GetPawn()))
 	{
 		if (UCharacterMovementComponent* CMC = Char->GetCharacterMovement())
@@ -830,6 +841,17 @@ void AAOSAIController::EndStrafe()
 		}
 	}
 	ClearFocus(EAIFocusPriority::Gameplay);
+}
+
+void AAOSAIController::ApplyStrafeSpeed(float Multiplier)
+{
+	if (!ControlledCharacter) return;
+	UCharacterMovementComponent* CMC = ControlledCharacter->GetCharacterMovement();
+	const UAOSAttributeSet* AttrSet = ControlledCharacter->GetAttributeSet();
+	// 기준 = MoveSpeed 속성 (MaxWalkSpeed 단일 진실 — AOSCharacter 가 속성 변경 시 동기화). 없으면 건드리지 않음
+	// (현재 MaxWalkSpeed 를 기준으로 곱하면 매 tick 누적돼 0 으로 수렴)
+	if (!CMC || !AttrSet || AttrSet->GetMoveSpeed() <= 0.0f) return;
+	CMC->MaxWalkSpeed = AttrSet->GetMoveSpeed() * FMath::Clamp(Multiplier, 0.05f, 1.0f);
 }
 
 bool AAOSAIController::RequestMoveStep(const FVector& Goal, float AcceptanceRadius)

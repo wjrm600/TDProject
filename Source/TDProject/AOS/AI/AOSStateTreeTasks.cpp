@@ -214,6 +214,15 @@ EStateTreeRunStatus FStateTreeTask_SendAttackEvent::EnterState(
 	}
 	if (!TargetActor) return EStateTreeRunStatus::Failed;
 
+	// 적 대상이면 사거리 안에서만 발사 (Tick 과 같은 규칙).
+	// ⚠ 부모 state 의 OnTick→Root 재선택마다 EnterState 가 다시 불린다(bShouldStateChangeOnReselect 기본 true).
+	//   여기서 사거리를 안 보면 감지 범위(1500)에서 접근하는 내내 쿨다운마다 기본공격이 나갔다
+	//   (GA_Attack 은 거리 검사 없이 타겟에 직접 데미지 — 먼 거리 공격이 실제로 맞음).
+	if (bTargetCurrentEnemy && !AOSAI->IsCurrentTargetInAttackRange())
+	{
+		return EStateTreeRunStatus::Running;
+	}
+
 	FGameplayEventData EventData;
 	EventData.Target = TargetActor;
 	EventData.Instigator = SourceChar;

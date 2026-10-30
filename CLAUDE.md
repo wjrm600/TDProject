@@ -83,6 +83,7 @@ AI 행동 결정은 **State Tree** (`Source/TDProject/AOS/AI/`). 이전 `UpdateA
 4. InstanceData 의 `AIController` 는 **base `TObjectPtr<AAIController>`** 로 선언(derived 로 하면 schema binding 실패), cpp 에서 `Cast<AAOSAIController>`.
 5. `HasCooldownTag` 는 `bInvert=true` ("쿨다운 **없을 때** 사용 가능").
 6. StartLogic 을 OnPossess 에서 호출 → SetTeam 전 평가 → Team2 가 아군 오사. StartDeployment 로 이동.
+7. **`On Tick → Root` 재선택마다 태스크 `EnterState` 가 다시 불린다**(`bShouldStateChangeOnReselect` 기본 true) → `EnterState` 의 판정은 사실상 **매 tick** 실행. 여기서 검사를 빼먹으면 `Tick` 의 검사가 무력화된다(실례: `SendAttackEvent` 진입부에 사거리 검사가 없어 감지 범위 1500 에서 기본공격 발사). 상태를 바꾸는 태스크(회전 모드 등)는 생성자에서 `bShouldStateChangeOnReselect=false`(예: `StrafeAroundTarget`).
 
 > Task/Condition 전체 표 + ST 자산 작성 단계 + 디버깅 명령(`showdebug ai`, `gd.AIDebug.StateTree 1`, Rewind Debugger) → **PROJECT_REFERENCE** "AI: State Tree" 섹션.
 
