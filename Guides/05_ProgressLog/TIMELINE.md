@@ -2500,3 +2500,97 @@
 - **사용자 추가 조정**: 유지 거리 350 → **500**(`Focus_Strafe`·`Nearest_Strafe`), 옆걸음 속도 배율 0.5 → **0.3**(3노드 MCP 직접 지정 + C++ InstanceData 기본값도 0.3 — 새로 놓는 노드용). 0.3 이면 MoveSpeed 600 → 옆걸음 180. 노드 값은 에셋에 저장돼 지금 에디터에서 바로 적용, C++ 기본값은 다음 빌드부터
 - **사용자 추가 조정 2**: 옆걸음 거리(`StepDistance`) 250 → **400**(3노드). 유지 거리 500 원 위에서는 한 걸음 ≈46°·약 390cm → 속도 180 이면 약 2.2초라 공격 사이 틈(≈3.7초)에 1~2걸음. `StrafeStructure`(유지 거리 0, 반경 ≤180)는 한 걸음 ≈127° 로 타워 둘레를 크게 돈다
 - ⚠️ 유지 거리 500 = `FocusLowestMaxHP` 진입 반경 500 이라 다수 교전에서 경계 흔들림(Focus ↔ Nearest 전환으로 옆걸음 끊김) 가능 → `KWANG_AI_STATETREE.md` 튜닝 표 아래 주의 문구. 현재 2:2 테스트 구성에선 500 안에 적 2명이 드물어 영향 적음
+
+---
+
+## 2026-10-30 — Kwang W 시전 이펙트 (`P_Kwang_Ult_Chargeup`) + 전용 서버에선 이펙트 미생성 확인
+
+**쉽게 보기**
+- **한 줄 요약**: Kwang 이 W(보호막)를 쓸 때 몸을 감싸는 보라색 전기 이펙트가 터지도록 했다. 이펙트는 화면을 그리는 쪽(리슨 서버 호스트·클라이언트)에서만 생기고, 화면이 없는 전용 서버에서는 엔진이 알아서 만들지 않는다
+
+**작업 내용**
+- `AM_Kwang_W` 에 노티파이 트랙 `FX` + **Timed Particle Effect**(0.05~0.92초, 몽타주 길이 0.97초) — 템플릿 `P_Kwang_Ult_Chargeup`, 소켓 `pelvis`, `bDestroyAtEnd=false`(끝나면 생성만 멈추고 남은 입자는 자연스럽게 사라짐). MCP Python(`AnimationLibrary.add_animation_notify_state_event`)
+- 후보 비교: PIE 에서 Kwang 골반에 Kwang 팩 이펙트 5종을 차례로 붙여 자동 촬영(`HighResShot`) → 비교 시트
+
+![W 이펙트 후보 비교](images/2026-10-30_KwangW_FX/W_candidates_sheet.jpg)
+
+| # | 이펙트 | 판단 |
+|---|--------|------|
+| 1 | `P_Kwang_LightStrike_Burst` | 화면을 덮는 거대한 번개 폭발 — 15초마다 쓰는 스킬엔 과함 |
+| 2 | `P_Kwang_LightStrike_Burst_Holding` | 1과 비슷, 유지형 |
+| 3 | `P_Kwang_Recall_Charge` | 작은 파란 불꽃 — 약함 |
+| 4 | `P_Kwang_Recall_Burst` | 불꽃 + 몸에 약한 번개 |
+| 5 | **`P_Kwang_Ult_Chargeup`** | **몸을 감싸는 보라 전기 — 채택** (버프·보호막 느낌, 몸 중심이라 시야 방해 적음) |
+
+**문제점**
+1. 처음 고른 `P_KwangBuff`(이름상 버프용)는 붙여 보니 손 근처 작은 불꽃 몇 개뿐이라 "쓰는 느낌" 이 안 났다. 파티클은 생성·활성 상태였음(PIE 서버/클라 양쪽 `P_KwangBuff, active, pelvis` 확인) — 이펙트 자체가 약한 것
+2. 몽타주 에디터는 별도 창이라 `full_editor_window` 캡처에 잡히지 않아 미리보기로 확인 불가
+3. 사용자 요구: 리슨 서버(호스트+클라)에선 보여야 하고 **순수 전용 서버에서는 생성되지 않아야** 함. 노티파이 이벤트의 `Trigger On Dedicated Server` 는 Python 으로 못 바꾼다(`AnimSequenceBase.Notifies` 가 protected — `get/set_editor_property` 거부, `AnimationLibrary` 에도 설정 함수 없음). PIE 중에는 `save_asset` 도 거부됨(`The Editor is currently in a play mode`)
+
+**해결 방법**
+- (1)(2) PIE 에서 슬레이트 tick 콜백으로 "W 몽타주 재생 중" 을 감지하면 플레이어 카메라를 Kwang 앞으로 옮겨 `HighResShot` → 결과 PNG 를 읽어 판정. 후보는 `spawn_emitter_attached(ps, mesh, 'pelvis')` 로 같은 조건에서 차례로 촬영해 시트로 비교
+- (3) 엔진 소스 확인 결과 **이미 전용 서버에선 생성되지 않는다**: `UAnimNotifyState_TimedParticleEffect::NotifyBegin` → `UGameplayStatics::SpawnEmitterAttached` 가 `World->IsNetMode(NM_DedicatedServer)` 면 컴포넌트를 만들지 않음(`GameplayStatics.cpp`). 노티파이 자체를 서버에서 건너뛰려면 이벤트의 `bTriggerOnDedicatedServer=false`(`AnimNotifyQueue.cpp` 가 DS 에서 걸러냄) — 에디터 Details 에서만 설정 가능
+- 리슨 서버 확인: PIE 월드 0 = `server=True dedicated=False`, 월드 1 = 클라이언트 → 양쪽 모두 이펙트가 보이는 게 정상
+
+**결과**
+- `AM_Kwang_W` 저장(PIE 종료 후): 템플릿 `P_Kwang_Ult_Chargeup` · pelvis · 0.05초 시작 · 0.87초 지속 (이 커밋)
+- ⏳ 선택: 몽타주 에디터에서 FX 노티파이 → Details → `Trigger On Dedicated Server` 해제 시 DS 에서 노티파이 처리 자체를 생략(동작은 지금과 같음, 미세한 서버 CPU 절약)
+- 🔎 **교훈**: Cascade/사운드 스폰 함수(`SpawnEmitterAttached`·`SpawnSoundAttached` 등)는 엔진이 DS 를 이미 걸러낸다 → 애님 노티파이 FX 는 DS 가드를 따로 짤 필요 없음. 단 노티파이 안에서 게임 로직(데미지·상태 변경)을 하는 커스텀 노티파이는 반대로 **DS 에서도 돌아야** 하므로 이 플래그를 끄면 안 된다
+
+---
+
+## 2026-10-30 — Kwang Q 점프 다시 켜기 (캡슐을 띄워 공중 공격 애니에 맞춤)
+
+**쉽게 보기**
+- **한 줄 요약**: Q 애니메이션(`PrimaryAttack_Air`)은 공중에서 쓰는 공격 모션인데 땅에 붙은 채로 재생되고 있었다. 애니만으로는 높이가 안 생기므로, 이미 있던 "스킬 시 캐릭터 띄우기" 기능을 Kwang Q 에 다시 켰다 → 약 1m 뛰어올라 공격하고 착지
+
+**작업 내용**
+- `BP_GA_Kwang_Q`: `bLaunchOnActivate` false → **true**, `LaunchZSpeed` 450(유지), `LaunchForwardSpeed` 600 → **150**. MCP 로 CDO 설정 → 컴파일 → 강제 저장
+- 문서: `KWANG_AI_STATETREE.md` 스킬 표, `PARAGON_CHARACTER_PIPELINE.md` 점프 항목
+
+**문제점**
+1. 애니 측정(`AnimationLibrary.get_bone_pose_for_time`): 루트 1.03초 내내 (0,0,0)·루트모션 없음, 골반 107~127(지상 공격 96~111), 발(`ik_foot`) 15~63(지상 13~24) → **제자리 공중 자세**. 땅에서 재생하면 다리를 접고 제자리에서 휘두르는 모습
+2. 점프 애니(`Jump_Start/Apex/Land`)도 같은 제자리 방식이라 따로 써도 높이는 안 생긴다. 루트모션 방식은 2026-07-04 에 이미 불가 확인(원본에 수직 이동 데이터 없음)
+3. 띄우기 기능(`GA_SkillBase` `bLaunchOnActivate`/`LaunchZSpeed`/`LaunchForwardSpeed`, 점프 스킬은 시전 고정 생략)은 2026-07-18 "검증 방해(캐릭터 튐)" 로 꺼져 있었다. 전진 속도 600 은 Q 에 타겟 정보가 없어 정면으로 약 5.5m 날아가 적(200 안)을 지나친다
+
+**해결 방법**
+- 높이는 그대로(450 → 체공 약 0.92초·최고 약 1m, 애니 1.03초와 맞음), 전진만 150 으로
+
+**결과**
+- **MCP 로 PIE 실측**(Kwang 미러전, 서버 월드, 0.1초 간격): Q 시작 즉시 `falling=True` → +0.4~0.5초 최고 **+103cm** → +0.9초 착지(`falling=False`), 수평 이동 약 70cm. 두 Kwang 모두 2회씩 같은 궤적. 최고점 촬영으로 두 캐릭터가 바닥에서 떠 있는 것 확인 (이 커밋)
+
+![Kwang Q 점프 최고점](images/2026-10-30_KwangW_FX/KwangQ_jump_apex.jpg)
+
+- 참고: 몽타주 재생이 +0.8초쯤 끝나 착지(+0.9초)보다 약 0.1초 먼저 풀린다(몽타주 블렌드아웃이 덮는 구간이라 눈에 띄지는 않음). 거슬리면 착지 연출(`Jump_Land`)을 몽타주 끝에 붙이는 게 다음 단계
+
+---
+
+## 2026-10-31 — Kwang 기본공격 소드 트레일 (`P_Kwang_Primary_Trail`)
+
+**쉽게 보기**
+- **한 줄 요약**: Kwang 이 기본공격으로 검을 휘두를 때 칼날이 지나간 자리에 반투명한 빛의 궤적(소드 트레일)이 남도록 했다. 3가지 공격 모션(A·B·크리) 모두 검을 실제로 휘두르는 순간에만 나온다
+
+**작업 내용**
+- `AM_Kwang_Attack` 에 노티파이 트랙 `FX` + **Anim Notify State: Trail** 3개 — 템플릿 `P_Kwang_Primary_Trail`, 소켓 `FX_weapon_base` → `FX_weapon_tip`(둘 다 `weapon_r` 본, 메시 내장 소켓)
+
+| 섹션 | 섹션 시작 | 트레일 구간(몽타주 시각) | 근거: 검 끝 최고 속도 |
+|------|----------|----------------------|-------------------|
+| AttackA | 0.00 | 0.08 ~ 0.38 | 클립 0.23초, 8051cm/s |
+| AttackB | 1.20 | 1.28 ~ 1.65 | 클립 0.23초, 7411cm/s (0.43초 후속 동작 포함) |
+| Crit | 2.47 | 2.59 ~ 2.97 | 클립 0.23초, 6343~8578cm/s |
+
+**문제점**
+1. 휘두르는 구간을 정해야 하는데 몽타주에 기존 노티파이가 없고, 섹션 시작 시각(`CompositeSections`)·검 끝 위치는 파이썬으로 바로 읽을 수 없다
+2. 처음 PIE 촬영(최고 속도 순간)에서는 트레일 컴포넌트가 활성인데도 화면에 궤적이 보이지 않았다
+
+**해결 방법**
+- (1) 검 끝 위치를 직접 계산: `root → pelvis → spine_01~03 → clavicle_r → upperarm_r → lowerarm_r → hand_r → weapon_r` 로컬 포즈(`get_bone_pose_for_time`)를 `compose_transforms` 로 누적 + `FX_weapon_tip` 소켓 상대 변환 → 1/30초 간격 속도 → 최고 속도의 35% 이상 구간 ± 여유. 섹션 시작은 클립 길이 누적(1.20 / 1.27 / 1.47)으로 계산하고, PIE 에서 `montage_get_current_section` 전환 시점 위치로 **0.00 / 1.20 / 2.47 일치** 확인
+- (2) 원인은 촬영 타이밍: 최고 속도 순간엔 궤적이 아직 짧다. 휘두르기 끝 무렵(AttackB 1.47)에 측면에서 다시 찍자 칼날 호를 따라 반투명 흰·금빛 리본 + 보라 불꽃이 선명. 같은 머티리얼(`M_Kwang_Sword_Trail`)을 쓰는 `_L` 변형도 비교했으나 기본형이 가장 뚜렷해 채택
+- DS: `UAnimNotifyState_Trail::NotifyBegin/Tick/End` 가 `NM_DedicatedServer` 면 즉시 반환(`AnimNotifyState_Trail.cpp`) → 전용 서버에선 트레일을 만들지 않음
+
+**결과**
+- PIE 촬영으로 확인 (이 커밋)
+
+![Kwang 기본공격 소드 트레일](images/2026-10-30_KwangW_FX/KwangAttack_trail.jpg)
+
+- 🔎 **교훈**: 트레일은 "휘두른 뒤" 에 보인다 — 확인 촬영은 최고 속도 순간이 아니라 휘두르기 끝 무렵에 할 것. 애니 속 무기 위치는 본 체인 로컬 포즈를 누적하면 에디터만으로 계산할 수 있다(타이밍 저작에 유용)

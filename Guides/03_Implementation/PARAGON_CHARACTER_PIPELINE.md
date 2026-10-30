@@ -92,7 +92,7 @@ log = bpc.run(<config>)   # 로그는 파일로 저장해 Read (execute_python �
 ## 4. 공통 함정 (전부 실측)
 
 - **로코모션 strafe 미사용 통일**: 순수 `Jog_Strafe_*` 없는 히어로(Greystone/Grux) 있어 **`Jog_Left/Right`(또는 `Lft/Rgt`)로 통일**. 옆걸음/선회 차이 미미.
-- **velocity(점프) off**: `GA_SkillBase.bLaunchOnActivate` 는 검증 방해(캐릭터 튐)로 현재 false. 점프 필요 시 BP CDO 에서 켜기(코드 보존).
+- **velocity(점프)**: Paragon 공중 공격 애니(예: `PrimaryAttack_Air`)는 **제자리(in-place)** — 루트 고정, 골반·발만 들림 → 높이는 애니가 아니라 `GA_SkillBase.bLaunchOnActivate`(LaunchCharacter)로 캡슐을 띄워서 만든다(루트모션 데이터 없음, 점프 애니 `Jump_*` 도 제자리라 높이를 못 만듦). 2026-07-18 검증 방해로 전부 껐다가 **2026-10-30 Kwang Q 만 다시 켬**(높이 450·전진 150). 다른 캐릭터는 여전히 false — 점프 스킬이면 BP CDO 에서 켜고 전진 속도는 작게(0~150: 타겟 정보가 없으면 정면으로 뛰어 600 이면 약 5.5m 지나침).
 - **스킬 슈퍼아머**: 긴 스킬 시전 중 피격 시 HitReact 가 스킬 몽타주 덮어써 끊김 → `Multicast_PlayHitReact` 가 `State.Casting` 중 HitReact 스킵(C++, 모든 캐릭터 공통).
 - **스킬 태그 Alex.\* 재사용**: GA 에 몽타주 참조 없음(Character `SkillMontages` TMap 경유). 태그는 슬롯 식별용이라 재사용 무해.
 - **키 편차**: Paragon 히어로는 195~260cm 로 큼. Z=-88 시작 후 PIE 미세조정.

@@ -142,8 +142,9 @@ Root [TrySelectChildrenInOrder]
 ### 현재 Kwang 스킬 (Alex 백본 태그 공유: `Ability.Skill.Alex.*`)
 | 슬롯 | 실제 효과 | 시전 중 이동 | 쿨다운 | AI 사용처 |
 |------|-----------|:---:|:---:|------|
-| Q | 이동속도 증가 + 다음 공격 강화 | ❌ root | 5s | 규칙 2 (1명) · 긴급 |
-| W | 받는 데미지 감소(보호막) | ✅ | 15s | 규칙 3 (400 안 적) |
+| Q | 이동속도 증가 + 다음 공격 강화 — **점프 연출**(`bLaunchOnActivate`, 높이 450·전진 150 → 최고 약 1m, 체공 약 0.9초, 앞으로 약 0.7m) | 점프 중엔 root 생략 | 5s | 규칙 2 (1명) · 긴급 |
+| 기본공격 | 3섹션(A·B·크리) — 휘두르는 구간마다 소드 트레일 `P_Kwang_Primary_Trail`(`AM_Kwang_Attack` FX 트랙 Anim Notify State: Trail, `FX_weapon_base`→`FX_weapon_tip`) | — | 5s(고정) | AttackEnemy/Engage |
+| W | 받는 데미지 감소(보호막, 2초) — 시전 이펙트 `P_Kwang_Ult_Chargeup`(몸을 감싸는 보라 전기, `AM_Kwang_W` FX 트랙 Timed Particle Effect · pelvis · 0.05~0.92초) | ✅ | 15s | 규칙 3 (400 안 적) |
 | E | 반경 250 회전 AoE (6틱, 틱당 50) | ❌ root | 10s | 규칙 2 (2명+) · 긴급 |
 | R | 단일 처형 (20 + 잃은 HP×0.3) | ❌ root | **45s** | 규칙 4 |
 
