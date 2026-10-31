@@ -67,6 +67,13 @@ bool FStateTreeCond_InPostAttackWindow::TestCondition(FStateTreeExecutionContext
 	return AOSAI && AOSAI->IsInPostAttackWindow(InstanceData.WindowSeconds);
 }
 
+bool FStateTreeCond_StrafedForAtLeast::TestCondition(FStateTreeExecutionContext& Context) const
+{
+	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	const AAOSAIController* AOSAI = AOSBehaviorNodes::ResolveAI(InstanceData.AIController);
+	return AOSAI && AOSAI->GetStrafeElapsedTime() >= InstanceData.Seconds;
+}
+
 bool FStateTreeCond_FriendlyTowerDistance::TestCondition(FStateTreeExecutionContext& Context) const
 {
 	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);

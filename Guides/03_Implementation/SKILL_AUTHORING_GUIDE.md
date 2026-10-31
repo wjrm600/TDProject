@@ -193,7 +193,7 @@ caster 위치 반경에 주기적 데미지 N회.
 |----------|-----|
 | `ThrownWeaponClass` | `BP_KwangThrownSword` (`AAOSThrownWeapon` 자식) — 지정하면 TargetType 즉시 데미지를 건너뛴다 |
 | `ThrowReleaseDelay` | 0.5 — 몽타주에서 무기 본이 사라지는 프레임 (`Ability_Q_Throw` = 0.50초) |
-| `ThrowRange` | 900 — 타겟이 더 멀면 그 방향 900 지점에 떨어짐 |
+| `ThrowRange` | 700 — 타겟이 더 멀면 그 방향 700 지점에 떨어짐 (AI 의 Q 사용 반경과 맞출 것) |
 | `TargetType` | `SingleEnemy` (타겟 결정용) |
 | `DamageGameplayEffectClass` / `BaseDamage` | `GE_Damage` / 60 (착지 반경 내 적 각각) |
 | `ExplicitRootDuration` | 1.0 (던지는 동안만 정지) |

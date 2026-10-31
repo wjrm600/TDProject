@@ -746,6 +746,7 @@ void AAOSAIController::BeginStrafe(AActor* FocusActor)
 			CMC->bUseControllerDesiredRotation = true;
 		}
 		bStrafing = true;
+		StrafeStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	}
 	// 타겟이 바뀌었을 수 있으므로 매번 포커스 갱신 (Gameplay 우선순위 > 경로추종의 Move 포커스)
 	SetFocus(FocusActor, EAIFocusPriority::Gameplay);
@@ -768,6 +769,13 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float Sp
 	// 너무 멀어졌으면 옆걸음 대신 접근 (타겟을 바라본 채, 원래 속도)
 	if (FVector::Dist(MyLoc, TargetLoc) > LeashDistance)
 	{
+		// 접근한 시간은 옆걸음 시간에서 뺀다 (시작 시각을 이번 프레임만큼 미룸).
+		// 0 으로 되돌리면 안 된다 — 서로 옆걸음하는 두 캐릭터는 거리가 유지 거리+100 을 주기적으로 잠깐 넘어
+		// 매번 초기화되면 "옆걸음 N초" 가 영영 차지 않는다 (Kwang 미러전 실측: 약 2초 주기).
+		if (const UWorld* World = GetWorld())
+		{
+			StrafeStartTime += World->GetDeltaSeconds();
+		}
 		ApplyStrafeSpeed(1.0f);
 		if (FVector::Dist(LastNavMoveTarget, TargetLoc) > 50.0f)
 		{
@@ -832,6 +840,13 @@ void AAOSAIController::UpdateStrafe(AActor* Target, float StepDistance, float Sp
 		/*bUsePathfinding=*/true,
 		/*bProjectDestinationToNavigation=*/true,
 		/*bCanStrafe=*/true);
+}
+
+float AAOSAIController::GetStrafeElapsedTime() const
+{
+	const UWorld* World = GetWorld();
+	if (!bStrafing || !World) return 0.0f;
+	return static_cast<float>(World->GetTimeSeconds() - StrafeStartTime);
 }
 
 void AAOSAIController::EndStrafe()

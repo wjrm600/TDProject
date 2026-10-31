@@ -32,40 +32,39 @@
 ## 2. 트리 구조 (형제 순서 = 우선순위)
 
 ```
-Root [TrySelectChildrenInOrder]
+Root [TrySelectChildrenInOrder]                                          (v3, 2026-11-01)
 ├─ UseR               규칙4  HasNearbyEnemy + TargetHealthBelowPct(0.3) + R 쿨X → Activate R
-├─ LowHP_Retreat ▣    선호2  HP<40% + BehaviorCooldownReady("Retreat",60)* + 아군 타워 200 밖
+├─ LowHP_Retreat ▣    선호2  HP<40% + BehaviorCooldownReady("Retreat",60) + 아군 타워 200 밖
 │   ├─ EmergencyQ           HasNearbyEnemy + Q 쿨X → Q (+카운트 리셋)
 │   ├─ EmergencyE           HasNearbyEnemy + E 쿨X → E (+카운트 리셋)
-│   └─ RetreatToTower       Retreat To Friendly Tower(StopRadius 200, Key "Retreat")*
-├─ SkillQE ▣          규칙2  BasicAttackCount ≥3 + 200 안 적 ≥1
-│   ├─ Q_SingleTarget       200 안 적 = 1명 + Q 쿨X → Q (+리셋)
+│   └─ RetreatToTower       Retreat To Friendly Tower(StopRadius 200, Key "Retreat")
+├─ UseQ (v3)                 700 안 적 ≥1 + Q 쿨X + **옆걸음 2초 이상** → Q (카운트 리셋 안 함)
+├─ SkillE ▣ (구 SkillQE) 규칙2  BasicAttackCount ≥3 + 200 안 적 ≥1
 │   ├─ E_MultiTarget        200 안 적 ≥2명 + E 쿨X → E (+리셋)
-│   ├─ Q_EOnCooldown        E 쿨 중 + Q 쿨X → Q (+리셋)
 │   └─ E_QOnCooldown        Q 쿨 중 + E 쿨X → E (+리셋)
-├─ UseW               규칙3  400 안 적 ≥1 + W 쿨X → W (버프, 리셋 없음)
+├─ UseW               규칙3  W 쿨X + **전투 중**(HasNearbyEnemy = 감지 1500) → W (버프, 리셋 없음)
 ├─ FocusLowestMaxHP   선호3  500 안 적 ≥2 → Select Lowest Max-Health Enemy(500)   [OnTick→Root]
-│   ├─ Focus_Strafe   선호1  공격 쿨다운 중 + 공격 모션 끝남 → Strafe Around Target(150)
+│   ├─ Focus_Strafe   선호1  **Q 쿨X** + 공격 모션 끝남 → Strafe Around Target(400, 0.3, 유지 500)
 │   └─ Focus_Engage          MoveToCurrentTarget + SendAttackEvent
 ├─ AttackEnemy               HasNearbyEnemy → FindNearestEnemy                     [OnTick→Root]
-│   ├─ Nearest_Strafe 선호1  공격 쿨다운 중 + 공격 모션 끝남 → Strafe Around Target(150)
+│   ├─ Nearest_Strafe 선호1  **Q 쿨X** + 공격 모션 끝남 → Strafe Around Target(400, 0.3, 유지 500)
 │   └─ Nearest_Engage        MoveToCurrentTarget + SendAttackEvent
-├─ StrafeStructure    선호1  HasCurrentWaypointStructure + 공격 쿨다운 중 + 공격 모션 끝남
-│                            → Strafe Around Target(150, 구조물)                   [OnTick→Root]
+├─ StrafeStructure    (v3 비활성 — 구조물엔 Q 를 안 쓰므로 "Q 전 옆걸음"이 끝나지 않는다)
 ├─ AttackStructure           (공용 트리 그대로)
 └─ PushLane                  (공용 트리 그대로)
 ```
 ▣ = Group (태스크 없음, 자식이 하나도 선택 안 되면 그룹 자체가 스킵되고 다음 형제로)
-\* = v2 리빌드 후 배치/설정 (✅ 완료)
 
-"공격 쿨다운 중" = `Owner Has Tag(Cooldown.Attack.Basic)`, "공격 모션 끝남" = `Owner Has Tag(Ability.Attack.Basic, 반전)` → **"일반 공격 후 ~ 다음 일반 공격 전"** 을 그대로 옮긴 조건.
+**v3 전투 흐름** = 적 감지 → (W 준비면 W) → Q 가 준비돼 있으면 500 거리에서 옆걸음 → **2초 뒤 Q 투척** → Q 쿨(5초) 동안은 옆걸음 없이 붙어서 일반공격·E·W → Q 준비되면 다시 옆걸음으로 물러나 2초 → Q …
+
+"Q 쿨X" = `Owner Has Tag(Cooldown.Skill.Alex.Q, 반전)`, "공격 모션 끝남" = `Owner Has Tag(Ability.Attack.Basic, 반전)`. "옆걸음 2초" = `Strafed For At Least(2)` — 옆걸음이 이어진 시간(다가가는 시간 제외). v2 까지의 옆걸음 조건은 "공격 쿨다운 중(`Cooldown.Attack.Basic`)" 이었다.
 
 **우선순위 결정 근거**
 - **R 이 후퇴보다 위** — 빈사여도 처형 각이면 킬을 먼저 (R 은 시전 중 root).
 - **후퇴가 Q/E·W 보다 위** — 저체력이면 일반 스킬 규칙보다 생존이 먼저. 후퇴 그룹 안에서 Q → E 를 먼저 쓴다(원문 "Q, W 사용 후" → W↔E 정정 적용).
 - **후퇴는 끝까지 커밋** — 후퇴 태스크는 도중에 재평가하지 않는다. 그래야 후퇴 중에 Q 쿨(5초)이 돌아와도 다시 멈춰서 Q 를 쓰지 않는다. 대가: 후퇴 중엔 R 도 끼어들지 못한다.
-- **Q/E 가 W 보다 위** — Q/E 는 3회 조건이 까다로워 기회가 드물고, W 는 조건이 느슨해 한 틱 양보해도 곧 다시 온다.
-- **옆걸음(Strafe)이 Engage 보다 위** — 같은 부모 안에서 쿨다운 틈이면 공격 대기 대신 옆걸음.
+- **UseQ → SkillE → UseW 순** — Q 는 옆걸음 2초를 채운 순간에만 열려서 놓치면 다시 2초를 기다려야 하고, E 는 3회 조건이 까다로워 기회가 드물다. W 는 전투 중이면 늘 열려 있어 한 틱 양보해도 곧 다시 온다.
+- **옆걸음(Strafe)이 Engage 보다 위** — 같은 부모 안에서 Q 가 준비돼 있으면 공격 대신 옆걸음(→ 2초 뒤 UseQ). Q 쿨 동안은 옆걸음 조건이 거짓이라 Engage(붙어서 공격).
 
 **Design B 와의 관계**: 루트 재선택 패턴 그대로. RUNNING 유지 state(FocusLowestMaxHP / AttackEnemy / StrafeStructure / AttackStructure / PushLane)만 `OnTick → Root`. 스킬·후퇴는 완료형이라 전이 없음 — 완료 시 엔진이 루트로 복귀한다 (`StateTreeExecutionContext.cpp` "Could not trigger completion transition, jump back to root state." 확인).
 
@@ -105,6 +104,7 @@ Root [TrySelectChildrenInOrder]
 | Friendly Tower Distance | 조건 | Radius(400), bWithin(false) | 가장 가까운 아군 타워(없으면 CC)까지 거리 | ✅ |
 | Behavior Cooldown Ready (v2) | 조건 | BehaviorKey("Retreat"), CooldownSeconds(60) | 행동별 쿨다운 | ✅* |
 | In Post-Attack Window | 조건 | WindowSeconds(0.5) | 공격 종료 후 N초 창 — 쿨다운 틈이 0 인 캐릭터용 | ❌ (v1 에서 사용) |
+| Strafed For At Least (v3) | 조건 | Seconds(2) | 옆걸음이 N초 이상 이어졌으면 통과. 다가가는(유지 거리+100 밖) 시간은 빼되 **0 으로 되돌리지 않는다** | ✅ UseQ |
 | Select Lowest Max-Health Enemy | 태스크 | Radius(500) | 최대 체력 최저 적 → CurrentTarget | ✅ |
 | Strafe Around Target | 태스크 | StepDistance(150), SpeedMultiplier(0.3), KeepDistance(0=현재 거리), bTargetCurrentEnemy(true) | 옆걸음 좌우 반복, KeepDistance>0 이면 그 거리를 유지하며 물러나면서 옆걸음 (ExitState 에서 회전 모드·속도 원복) | ✅ |
 | Retreat To Friendly Tower (v2 재설계) | 태스크 | StopRadius(200), CooldownKey("Retreat") | 타워 반경 안까지 한 번에 후퇴 → 도착 시 쿨다운 기록 | ✅* |
@@ -142,9 +142,9 @@ Root [TrySelectChildrenInOrder]
 ### 현재 Kwang 스킬 (Alex 백본 태그 공유: `Ability.Skill.Alex.*`)
 | 슬롯 | 실제 효과 | 시전 중 이동 | 쿨다운 | AI 사용처 |
 |------|-----------|:---:|:---:|------|
-| Q | **검 던지기 (원작식 꽂힌 검, 2026-11-01)** — 애니 `Ability_Q_Throw`(0.27~0.50초 트레일, 1.1초부터 블렌드아웃) → 0.50초에 `BP_KwangThrownSword` 를 타겟 발밑으로 포물선 투척(사거리 900) → **꽂히는 순간 반경 250 · 60 피해** → 1.5초 꽂힘 → 귀환 → `AM_Kwang_Q_Catch`. 검이 손에 없는 약 3초 동안 기본공격·모든 스킬 차단(`State.WeaponThrown`). 상세 = `SKILL_AUTHORING_GUIDE.md` 패턴 E | ❌ root 1.0초 | 5s | 규칙 2 (1명) · 긴급 |
+| Q | **검 던지기 (원작식 꽂힌 검, 2026-11-01)** — 애니 `Ability_Q_Throw`(0.27~0.50초 트레일, 1.1초부터 블렌드아웃) → 0.50초에 `BP_KwangThrownSword` 를 타겟 발밑으로 포물선 투척(사거리 700) → **꽂히는 순간 반경 250 · 60 피해** → 1.5초 꽂힘 → 귀환 → `AM_Kwang_Q_Catch`. 검이 손에 없는 약 3초 동안 기본공격·모든 스킬 차단(`State.WeaponThrown`). 상세 = `SKILL_AUTHORING_GUIDE.md` 패턴 E | ❌ root 1.0초 | 5s | UseQ (700 안 + 옆걸음 2초) · 긴급 |
 | 기본공격 | 3섹션(A·B·크리) — 휘두르는 구간마다 소드 트레일 `P_Kwang_Primary_Trail`(`AM_Kwang_Attack` FX 트랙 Anim Notify State: Trail, `FX_weapon_base`→`FX_weapon_tip`) | — | 5s(고정) | AttackEnemy/Engage |
-| W | 받는 데미지 감소(보호막, 2초) — 애니 `Ability_RMB`(2.0초, 검을 앞에 세워 들고 충전) + 시전 이펙트 `P_Kwang_Ult_Chargeup`(몸을 감싸는 보라 전기, `AM_Kwang_W` FX 트랙 Timed Particle Effect · pelvis · 0.05~1.85초) | ✅ | 15s | 규칙 3 (400 안 적) |
+| W | 받는 데미지 감소(보호막, 2초) — 애니 `Ability_RMB`(2.0초, 검을 앞에 세워 들고 충전) + 시전 이펙트 `P_Kwang_Ult_Chargeup`(몸을 감싸는 보라 전기, `AM_Kwang_W` FX 트랙 Timed Particle Effect · pelvis · 0.05~1.85초) | ✅ | 15s | UseW (전투 중이면 거리 무관) |
 | E | 반경 250 AoE (6틱, 틱당 50) — 애니 `PrimaryAttack_D_Slow`(1.47초, 크게 쳐올리는 베기) + 소드 트레일(0.14~0.40초) + 0.27초에 빛기둥 `P_Kwang_Ult_Rising_Sword`(`AM_Kwang_E` FX 트랙, `root` 소켓 + 오프셋 (-217, 18, 0) = 그 순간 검 끝 아래 땅, 몸 오른쪽 약 2.2m, 3~5초 후 자동 소멸) | ❌ root | 10s | 규칙 2 (2명+) · 긴급 |
 | R | 단일 처형 (20 + 잃은 HP×0.3) — 내려찍기 소드 트레일(0.10~0.34초) + 검 끝이 땅에 닿는 0.25초에 번개 `P_Kwang_Ult_Lightning`(`AM_Kwang_R` FX 트랙, `FX_weapon_tip` 위치에 남김) | ❌ root | **45s** | 규칙 4 |
 
@@ -188,9 +188,11 @@ Root [TrySelectChildrenInOrder]
 | 옆걸음 거리 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · StepDistance | 400 (노드 기본값 150) |
 | 옆걸음 속도 배율 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · SpeedMultiplier | 0.3 (3노드, C++ 기본값도 0.3) |
 | 옆걸음 중 유지 거리 | Focus_Strafe / Nearest_Strafe / StrafeStructure | Strafe Around Target · KeepDistance (0 = 현재 거리) | **500** (Focus·Nearest) / 0 (StrafeStructure) |
-| Q/E 필요 공격 수 | SkillQE | Basic Attack Count At Least · Count | 3 |
-| Q/E 대상 반경 | SkillQE / Q_SingleTarget / E_MultiTarget | Enemy Count In Radius · Radius | 200 |
-| W 트리거 반경 | UseW | Enemy Count In Radius · Radius | 400 |
+| Q 사용 사거리 | UseQ **와** `BP_GA_Kwang_Q` (둘 다 맞출 것) | Enemy Count In Radius · Radius / Throw Range | 700 |
+| Q 전 옆걸음 시간 | UseQ | Strafed For At Least · Seconds | 2 |
+| E 필요 공격 수 | SkillE | Basic Attack Count At Least · Count | 3 |
+| E 대상 반경 | SkillE / E_MultiTarget | Enemy Count In Radius · Radius | 200 |
+| W 트리거 | UseW | Has Nearby Enemy (감지 범위 = AIController EnemyDetectionRange) | 1500 |
 | R 처형 기준 | UseR | Target Health Below % · Threshold | 0.3 |
 | 후퇴 체력 기준 | LowHP_Retreat | Health Below % · Threshold | 0.4 |
 | 후퇴 쿨다운 | LowHP_Retreat | Behavior Cooldown Ready · CooldownSeconds | 60 |
@@ -198,7 +200,7 @@ Root [TrySelectChildrenInOrder]
 | 긴급 스킬 | EmergencyQ / EmergencyE | Owner Has Tag · Tag + Activate … · AbilityTag | Q, E |
 | 집중 타겟 반경/인원 | FocusLowestMaxHP | Enemy Count In Radius · Radius/MinCount, Select … · Radius | 500 / 2 |
 
-⚠️ **유지 거리 ↔ 반경 조건 간섭**: 옆걸음 중 Kwang 은 타겟에서 `KeepDistance`(500) 떨어진다. 같은 거리 기준을 쓰는 조건 — `FocusLowestMaxHP`(500 안 2명+), `UseW`(400 안), Q/E(200 안) — 은 옆걸음 동안 거짓이 되기 쉽다. 특히 집중 타겟 반경이 유지 거리와 같아(500) 경계에서 Focus ↔ Nearest 로 갈아타며 옆걸음이 끊길 수 있으니, 다수 교전에서 옆걸음이 덜컥거리면 집중 타겟 반경을 600~700 으로 올릴 것.
+⚠️ **유지 거리 ↔ 반경 조건 간섭**: 옆걸음 중 Kwang 은 타겟에서 `KeepDistance`(500) 떨어진다. 같은 거리 기준을 쓰는 조건 — `FocusLowestMaxHP`(500 안 2명+), E(200 안) — 은 옆걸음 동안 거짓이 되기 쉽다. **UseQ(700)는 유지 거리보다 커야 한다** — 작으면 옆걸음 2초가 차도 Q 가 안 나간다. 특히 집중 타겟 반경이 유지 거리와 같아(500) 경계에서 Focus ↔ Nearest 로 갈아타며 옆걸음이 끊길 수 있으니, 다수 교전에서 옆걸음이 덜컥거리면 집중 타겟 반경을 600~700 으로 올릴 것.
 
 ⚠️ 형제 순서 = 우선순위. 조건만 바꾸고 순서를 안 보면 의도와 다르게 동작한다.
 
@@ -210,6 +212,7 @@ Root [TrySelectChildrenInOrder]
 |------|------|
 | v1 | 원문대로 구현. 옆걸음 = 공격 후 0.5초 창(1걸음), Q/W 게이트, E 버프(400), 후퇴 = 100씩 → 타워 400 안 대기 |
 | v2 | 사용자 확정 반영: 공격 쿨 5초 · 사거리 200 · W↔E 정정(Q/E 게이트, W 버프) · R 쿨 45초 · 후퇴 = 타워 200 안까지 한 번에 + 60초 쿨 + 라인 푸시 재개 · 옆걸음 = 쿨다운 틈 내내 좌우 반복 |
+| v3 (2026-11-01) | Q = 검 던지기에 맞춰 재구성: **UseQ** 신설(700 안 + Q 준비 + 옆걸음 2초, 기본공격 3회 게이트 제거) · Q 분기 2개 삭제 · SkillQE → **SkillE** · **W = 전투 중이면 거리 무관**(400 안 → HasNearbyEnemy) · **옆걸음 = Q 준비 중에만**(공격 쿨다운 중 → Q 쿨X) · StrafeStructure 비활성 · 신규 조건 `Strafed For At Least` · `BP_GA_Kwang_Q.ThrowRange` 900 → 700 |
 | v2.1 (2026-10-30) | 옆걸음 속도 배율 `SpeedMultiplier`(기본 0.5 → 0.3) 추가 + 막힘 판정을 걸음 길이/속도 비례로 + 옆걸음 거리 150 → 250 → **400**(사용자 요청, 3노드) + 옆걸음 중 유지 거리 `KeepDistance` 추가, 적 대상 2노드 350 → **500**(치고 빠지기). 공용 수정: `SendAttackEvent` 가 진입 시 사거리를 안 봐서 감지 범위(1500)에서 기본공격이 나가던 버그 수정(전 캐릭터) |
 
 ## 8. 테스트 결과 기록
@@ -219,3 +222,5 @@ Root [TrySelectChildrenInOrder]
 | 2026-09-27 | v2 풀 빌드 | ❌ 후퇴 완료 직후 `후퇴 시작` 재발 → 타워 200 경계에서 왔다갔다 (60초 쿨이 막지 못함) | 코드·MCP 값·조건 연산자·엔진 경로 점검 모두 정상 → 진단 로그 3곳 추가 |
 | 2026-09-27 | + Live Coding (진단) | ✅ 진입 1회 → 거리 5463 에서 타워로 → 쿨 기록 t=67.13 (키·컨트롤러 일치) → 199 도착 → 라인 푸시, 재진입 없음 | 조건 쪽 진단 로그 제거(조건은 단락 평가 없이 매번 전부 평가 → 쿨 종료 후 로그 폭주 위험) + 방어 수정: 완료 시 `RetreatTarget` 유지 |
 | 2026-09-27 | + Live Coding (방어 수정) | ✅ 정상 | 진단 로그 전부 제거. 1차 반복의 원인은 **미확정** — 재발하면 `후퇴 시작`/`후퇴 완료` 로그가 연달아 찍히는지 볼 것 |
+| 2026-11-01 | v3 풀 빌드 | ⚠️ 가까이 두고 시작하면 정상(옆걸음 → 2초 뒤 Q), **먼 거리에서 걸어와 만나면 500 에서 옆걸음만 반복, Q 없음** | `log LogStateTree Verbose`: 옆걸음 태스크는 Sustained(Enter/Exit 없음), UseQ 진입 0회 → 옆걸음 시간이 계속 0. 서로 옆걸음하는 두 Kwang 의 거리가 약 2초 주기로 유지 거리+100(600)을 잠깐 넘어 "접근 중엔 안 센다" 코드가 **0 으로 초기화** |
+| 2026-11-01 | + Live Coding (초기화 → 접근한 프레임만큼만 빼기) | ✅ 먼 거리 접근: 13.6초 W → 15.0초 옆걸음 → 16.7초 Q → 붙어서 공격 → 21.8초 옆걸음 → 24.0초 Q → 28.7초 W → 31.2초 Q → 상대 사망, 남은 쪽 R | — |

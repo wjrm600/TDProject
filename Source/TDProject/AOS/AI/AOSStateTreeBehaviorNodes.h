@@ -120,8 +120,8 @@ struct TDPROJECT_API FStateTreeCond_BasicAttackCountAtLeast : public FStateTreeC
 // FStateTreeCond_InPostAttackWindow
 // 직전 기본공격이 끝난 지 WindowSeconds 가 안 지났으면 SUCCESS (공격 중이면 FAIL).
 // 공격 몽타주가 쿨다운보다 길어 "쿨다운 중 틈"이 0 인 캐릭터에게 AI 가 일부러 틈을 만들 때 쓴다 (길수록 DPS 손해).
-// ※ ST_KwangAI 는 현재 미사용 — Kwang 은 BasicAttackCooldownOverride(5초)로 틈을 만들고,
-//   옆걸음 조건은 "OwnerHasTag(Cooldown.Attack.Basic) + OwnerHasTag(Ability.Attack.Basic, 반전)".
+// ※ ST_KwangAI 는 현재 미사용 — Kwang 옆걸음은 "Q 준비 중에만"(2026-11-01):
+//   "OwnerHasTag(Cooldown.Skill.Alex.Q, 반전) + OwnerHasTag(Ability.Attack.Basic, 반전)" → 2초 뒤 UseQ.
 // -----------------------------------------------------------------------------
 USTRUCT()
 struct FAOSCond_InPostAttackWindowInstanceData
@@ -141,6 +141,33 @@ struct TDPROJECT_API FStateTreeCond_InPostAttackWindow : public FStateTreeCondit
 	GENERATED_BODY()
 
 	using FInstanceDataType = FAOSCond_InPostAttackWindowInstanceData;
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
+};
+
+// -----------------------------------------------------------------------------
+// FStateTreeCond_StrafedForAtLeast
+// 옆걸음(Strafe Around Target)이 Seconds 이상 이어졌으면 SUCCESS. 옆걸음 중이 아니면 FAIL.
+// 멀어서 다가가는 시간은 세지 않는다. ST_KwangAI: UseQ 에 붙여 "Q 준비 → 옆걸음 2초 → Q".
+// -----------------------------------------------------------------------------
+USTRUCT()
+struct FAOSCond_StrafedForAtLeastInstanceData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Context")
+	TObjectPtr<AAIController> AIController = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = "0.0"))
+	float Seconds = 2.0f;
+};
+
+USTRUCT(DisplayName = "Strafed For At Least", Category = "AOS|AI|Behavior")
+struct TDPROJECT_API FStateTreeCond_StrafedForAtLeast : public FStateTreeConditionCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FAOSCond_StrafedForAtLeastInstanceData;
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 	virtual bool TestCondition(FStateTreeExecutionContext& Context) const override;
 };

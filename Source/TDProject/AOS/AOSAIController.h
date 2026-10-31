@@ -142,6 +142,9 @@ public:
 	void UpdateStrafe(AActor* Target, float StepDistance, float SpeedMultiplier = 1.0f, float KeepDistance = 0.0f);
 	void EndStrafe();
 
+	/** 옆걸음이 이어진 시간(초). 옆걸음 중이 아니면 0. 멀어서 다가가는 동안은 세지 않는다 — "옆걸음 N초 후 Q" 게이트 */
+	float GetStrafeElapsedTime() const;
+
 	/** 지정 위치로 이동 요청 (후퇴용). 기존 이동 캐시를 무효화한다. 요청 실패 시 false */
 	bool RequestMoveStep(const FVector& Goal, float AcceptanceRadius);
 
@@ -226,6 +229,8 @@ private:
 	double StrafeStepStartTime = 0.0;
 	// 진행 중인 걸음의 막힘 판정 시간 (걸음 길이 / 옆걸음 속도 기준)
 	double StrafeStepTimeout = 1.5;
+	// 옆걸음(접근 제외) 시작 월드 시각 — GetStrafeElapsedTime 의 기준
+	double StrafeStartTime = 0.0;
 
 	// 옆걸음 속도: MaxWalkSpeed = MoveSpeed 속성 × Multiplier (1 = 원래 속도로 원복)
 	void ApplyStrafeSpeed(float Multiplier);
