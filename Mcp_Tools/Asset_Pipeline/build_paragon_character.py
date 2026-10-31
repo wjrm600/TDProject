@@ -283,8 +283,8 @@ CONFIGS = {
         'mesh': '/Game/ParagonKwang/Characters/Heroes/Kwang/Meshes/KwangRosewood',
         'roster_index': 0, 'z_offset': -88,
         'loco': {'idle': 'Idle', 'fwd': 'Jog_Fwd', 'bwd': 'Jog_Bwd', 'left': 'Jog_Left', 'right': 'Jog_Right'},
-        'montages': {'Attack': 'PrimaryAttack_A_Slow', 'Q': 'PrimaryAttack_Air', 'W': 'Cast',
-                     'E': 'Ability_R', 'R': 'PrimaryAttack_C_Slow', 'Death': 'Death_Bwd', 'HitReact': 'Hitreact_Fwd'},
+        'montages': {'Attack': 'PrimaryAttack_A_Slow', 'Q': 'PrimaryAttack_Air', 'W': 'Ability_RMB',
+                     'E': 'PrimaryAttack_D_Slow', 'R': 'PrimaryAttack_C_Slow', 'Death': 'Death_Bwd', 'HitReact': 'Hitreact_Fwd'},
     },
     'Greystone': {
         'name': 'Greystone', 'display_name': 'Greystone',

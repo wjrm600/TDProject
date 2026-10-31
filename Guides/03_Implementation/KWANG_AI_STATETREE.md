@@ -142,11 +142,11 @@ Root [TrySelectChildrenInOrder]
 ### 현재 Kwang 스킬 (Alex 백본 태그 공유: `Ability.Skill.Alex.*`)
 | 슬롯 | 실제 효과 | 시전 중 이동 | 쿨다운 | AI 사용처 |
 |------|-----------|:---:|:---:|------|
-| Q | 이동속도 증가 + 다음 공격 강화 — **점프 연출**(`bLaunchOnActivate`, 높이 450·전진 150 → 최고 약 1m, 체공 약 0.9초, 앞으로 약 0.7m) | 점프 중엔 root 생략 | 5s | 규칙 2 (1명) · 긴급 |
+| Q | **검 던지기 (원작식 꽂힌 검, 2026-11-01)** — 애니 `Ability_Q_Throw`(0.27~0.50초 트레일, 1.1초부터 블렌드아웃) → 0.50초에 `BP_KwangThrownSword` 를 타겟 발밑으로 포물선 투척(사거리 900) → **꽂히는 순간 반경 250 · 60 피해** → 1.5초 꽂힘 → 귀환 → `AM_Kwang_Q_Catch`. 검이 손에 없는 약 3초 동안 기본공격·모든 스킬 차단(`State.WeaponThrown`). 상세 = `SKILL_AUTHORING_GUIDE.md` 패턴 E | ❌ root 1.0초 | 5s | 규칙 2 (1명) · 긴급 |
 | 기본공격 | 3섹션(A·B·크리) — 휘두르는 구간마다 소드 트레일 `P_Kwang_Primary_Trail`(`AM_Kwang_Attack` FX 트랙 Anim Notify State: Trail, `FX_weapon_base`→`FX_weapon_tip`) | — | 5s(고정) | AttackEnemy/Engage |
-| W | 받는 데미지 감소(보호막, 2초) — 시전 이펙트 `P_Kwang_Ult_Chargeup`(몸을 감싸는 보라 전기, `AM_Kwang_W` FX 트랙 Timed Particle Effect · pelvis · 0.05~0.92초) | ✅ | 15s | 규칙 3 (400 안 적) |
-| E | 반경 250 회전 AoE (6틱, 틱당 50) | ❌ root | 10s | 규칙 2 (2명+) · 긴급 |
-| R | 단일 처형 (20 + 잃은 HP×0.3) | ❌ root | **45s** | 규칙 4 |
+| W | 받는 데미지 감소(보호막, 2초) — 애니 `Ability_RMB`(2.0초, 검을 앞에 세워 들고 충전) + 시전 이펙트 `P_Kwang_Ult_Chargeup`(몸을 감싸는 보라 전기, `AM_Kwang_W` FX 트랙 Timed Particle Effect · pelvis · 0.05~1.85초) | ✅ | 15s | 규칙 3 (400 안 적) |
+| E | 반경 250 AoE (6틱, 틱당 50) — 애니 `PrimaryAttack_D_Slow`(1.47초, 크게 쳐올리는 베기) + 소드 트레일(0.14~0.40초) + 0.27초에 빛기둥 `P_Kwang_Ult_Rising_Sword`(`AM_Kwang_E` FX 트랙, `root` 소켓 + 오프셋 (-217, 18, 0) = 그 순간 검 끝 아래 땅, 몸 오른쪽 약 2.2m, 3~5초 후 자동 소멸) | ❌ root | 10s | 규칙 2 (2명+) · 긴급 |
+| R | 단일 처형 (20 + 잃은 HP×0.3) — 내려찍기 소드 트레일(0.10~0.34초) + 검 끝이 땅에 닿는 0.25초에 번개 `P_Kwang_Ult_Lightning`(`AM_Kwang_R` FX 트랙, `FX_weapon_tip` 위치에 남김) | ❌ root | **45s** | 규칙 4 |
 
 ---
 

@@ -2594,3 +2594,152 @@
 ![Kwang 기본공격 소드 트레일](images/2026-10-30_KwangW_FX/KwangAttack_trail.jpg)
 
 - 🔎 **교훈**: 트레일은 "휘두른 뒤" 에 보인다 — 확인 촬영은 최고 속도 순간이 아니라 휘두르기 끝 무렵에 할 것. 애니 속 무기 위치는 본 체인 로컬 포즈를 누적하면 에디터만으로 계산할 수 있다(타이밍 저작에 유용)
+
+---
+
+## 2026-10-31 — Kwang R(처형) 이펙트: 내려찍기 트레일 + 타격 지점 번개
+
+**쉽게 보기**
+- **한 줄 요약**: Kwang 이 R 로 검을 내려찍을 때 칼날 궤적이 남고, 검이 땅에 닿는 순간 그 자리에 하늘에서 번개가 내리꽂히는 이펙트가 터진다. 45초에 한 번 쓰는 처형기라 화려하게 했다
+
+**작업 내용**
+- `AM_Kwang_R`(원본 `PrimaryAttack_C_Slow`, 1.27초) FX 트랙에 노티파이 2개
+  - **Anim Notify State: Trail** 0.10~0.34초 — `P_Kwang_Primary_Trail`, `FX_weapon_base`→`FX_weapon_tip` (기본공격과 같은 트레일)
+  - **Play Particle Effect** 0.25초 — `P_Kwang_Ult_Lightning`, 소켓 `FX_weapon_tip`, `Attached=false`(검을 따라가지 않고 땅에 닿은 지점에 남음)
+
+**문제점**
+- 처형기의 "결정타" 순간을 정해야 함. R 은 체력 30% 미만 적에게 45초에 1번이라 일반 PIE 에서 기다려 확인하기 어렵다
+
+**해결 방법**
+- 검 끝 궤적 계산(본 체인 누적): 높이 281cm(머리 위) → 0.23초 최고 속도 8745cm/s → **0.27초 최저점 19cm(땅)** = 내려찍기. 트레일은 휘두르는 구간, 번개는 땅에 닿기 직전 0.25초
+- 타격 이펙트 후보 5종을 PIE 에서 Kwang 앞 땅에 터뜨려 비교 촬영 → `P_Kwang_Ult_Lightning`(사방 번개 + 하늘에서 내리꽂는 빛기둥 + 파편) 채택. 나머지(`LightStrikeImpact`·`Primary_Impact`·`Sword_Impact`)는 작은 불꽃 수준, `LightStrike_Burst` 는 지면 위치 생성 시 거의 안 보임
+
+![R 타격 이펙트 후보](images/2026-10-30_KwangW_FX/R_candidates_sheet.jpg)
+
+- 확인은 PIE 에서 `AnimInstance.montage_play(AM_Kwang_R)` 로 몽타주를 직접 재생해 0.23초(트레일)·0.45초(번개)에 촬영 — 스킬 발동 조건을 기다리지 않아도 노티파이 연출은 그대로 확인 가능
+- DS: `AnimNotify_PlayParticleEffect` 의 위치 생성 경로(`SpawnEmitterAtLocation`)도 `NM_DedicatedServer` 면 생성하지 않음(`GameplayStatics.cpp`) → 전용 서버 영향 없음
+
+**결과**
+- 0.23초: 칼날 궤적 / 0.45초: 타격 지점에 번개 기둥 + 섬광 + 파편 확인 (이 커밋)
+
+![Kwang R 트레일과 번개](images/2026-10-30_KwangW_FX/KwangR_trail_lightning.jpg)
+
+- 참고: 데미지는 스킬 발동 시점에 바로 들어가고 연출(0.25초 번개)과는 동기화돼 있지 않다. 타격 순간에 맞추려면 몽타주 노티파이 → 게임플레이 이벤트로 데미지를 보내는 구조가 필요(C++ 변경)
+
+---
+
+## 2026-11-01 — Kwang Q·E 이펙트: 소드 트레일 + Q 검 전기 + E 빛기둥
+
+**쉽게 보기**
+- **한 줄 요약**: Q 는 점프해 내려벨 때 칼날 궤적이 남고 검에 보라 전기가 감겨 "다음 공격 강화"가 눈에 보인다. E 는 회전 베기 궤적이 남고, 마지막에 검이 땅에 닿는 자리에서 빛기둥이 솟아 약 3초(장판 지속시간) 동안 남는다
+
+**작업 내용**
+- `AM_Kwang_Q`(원본 `PrimaryAttack_Air`, 1.03초) FX 트랙
+  - **Trail** 0.13~0.36초 — `P_Kwang_Primary_Trail`, `FX_weapon_base`→`FX_weapon_tip`
+  - **Timed Particle Effect** 0.02~0.95초 — `P_Kwang_Sword_Attach`, 소켓 `weapon_r` (검·팔에 감기는 전기)
+- `AM_Kwang_E`(원본 `Ability_R`, 1.87초) FX 트랙
+  - **Trail** 0.04~0.52초 — 회전 베기 전체 구간
+  - **Play Particle Effect** 0.50초 — `P_Kwang_Ult_Rising_Sword`, 소켓 `root` + `LocationOffset (172, 85, 0)`, `Attached=false`
+
+**문제점**
+- E 타격 지점에 세로 빛기둥을 세우려는데, `Play Particle Effect`(Attached=false)는 위치뿐 아니라 **소켓 회전까지** 따라간다. 0.50초의 `FX_weapon_tip` 회전은 roll -96° → 검 끝 소켓에 붙이면 기둥이 옆으로 눕는다
+- 노티파이로 한 번 생성하는 이펙트가 반복형이면 월드에 영원히 남는다
+
+**해결 방법**
+- 검 끝 궤적 계산: Q = 0.23~0.30초 최고 속도 7767cm/s 후 0.30초에 최저점(내려베기), E = 0.07~0.50초 여러 번 회전 후 **0.50초에 검 끝이 땅(2cm)** — 메시 좌표 (172, 85) = 몸 왼쪽 약 1.9m
+- E 빛기둥은 회전이 똑바른 `root` 소켓에 그 메시 좌표를 `LocationOffset` 으로 줘서 검이 닿는 자리에 수직으로 생성
+- 후보 수명을 PIE 에서 측정: `Ult_Rising_Sword` 3~5초 후 자동 소멸(→ 1회 생성 OK, E 장판 6틱×0.5초와도 맞음), `Sword_Bolts`·`Sword_Attach` 계열은 반복형 → 노티파이 끝에서 꺼지는 **Timed Particle Effect** 로만 사용
+- 후보 비교: 두 Kwang 의 StateTree 를 멈추고 이동을 끈 뒤(카메라가 움직이는 캐릭터를 놓치는 문제 해결) 땅 타격 4종·검 부착 4종 촬영 → 땅은 `Ult_Rising_Sword`(빛기둥+파편)만 확실히 보임. 검 부착 3종은 Q 몽타주에 직접 넣어 재비교 → `Sword_Attach` 가 동작 내내 가장 뚜렷(`Sword_Bolts`·`Sword_Tip_Drag` 는 약함)
+
+![Q·E 이펙트 후보](images/2026-10-30_KwangW_FX/QE_candidates_sheet.jpg)
+
+**결과**
+- PIE 에서 몽타주 직접 재생으로 확인: Q 0.25초 칼날 궤적 · 0.45초 검 전기, E 0.30초 회전 궤적 · 0.75초 타격 지점 빛기둥(1.6초에도 남음) (이 커밋)
+
+![Kwang Q·E 트레일과 이펙트](images/2026-10-30_KwangW_FX/KwangQE_trail_fx.jpg)
+
+- 참고: R 의 번개(`FX_weapon_tip` 소켓)도 같은 이유로 광선 일부가 검 방향으로 기울어 있다. 거슬리면 E 처럼 `root` + 오프셋으로 바꿀 수 있다
+- DS: Timed Particle Effect·Play Particle Effect 모두 `SpawnEmitterAttached/AtLocation` 경유 → 전용 서버에서는 생성 안 됨
+
+---
+
+## 2026-11-01 — Kwang E·W 애니 교체 (E=PrimaryAttack_D_Slow, W=Ability_RMB) + Q 검 던지기 자산 조사
+
+**쉽게 보기**
+- **한 줄 요약**: E 는 크게 쳐올리는 베기, W 는 검을 세워 들고 번개를 모으는 자세로 바꿨다. 붙어 있던 이펙트는 새 동작 타이밍에 맞춰 다시 붙였다. Q 를 원작처럼 "검 던지기"로 바꾸기 위해 Paragon 팩이 그걸 어떻게 만들었는지 자산을 뜯어봤다
+
+**작업 내용**
+- `AM_Kwang_E` ← `PrimaryAttack_D_Slow`(1.47초): Trail 0.14~0.40초 + `P_Kwang_Ult_Rising_Sword` 0.27초(`root` + 오프셋 (-217, 18, 0))
+- `AM_Kwang_W` ← `Ability_RMB`(2.0초): `P_Kwang_Ult_Chargeup` Timed 0.05~1.85초 · pelvis
+- `BP_Char_Kwang.SkillMontages` 재연결, `build_paragon_character.py` Kwang config 의 W/E 클립도 갱신
+
+**문제점**
+- 몽타주 안의 클립은 Python 에서 바꿀 수 없다(`SlotAnimTracks` 비노출)
+- `HighResShot` 1회에 파일이 2장씩 생기는 경우가 있었다 — 열려 있는 **몽타주 편집기 미리보기 뷰포트까지 같이 캡처**. 직전 Q 검 전기 비교 시트가 이 때문에 한 칸씩 밀려 있었음(포즈로 재대조해도 `Sword_Attach` 결론은 동일, 위 항목 문구·이미지 라벨 정정)
+
+**해결 방법**
+- 빌드 파이프라인과 같은 방식: 맵 키를 먼저 기록 → 몽타주 삭제 → `AnimMontageFactory(source_animation)` 로 같은 이름 재생성 → 노티파이 재부착 → `SkillMontages[키]` 재연결·컴파일·저장 (기존 몽타주는 블렌드 0.25초 기본값뿐이라 잃는 설정 없음)
+- 노티파이 시점은 검 끝 궤적으로 다시 잡음: D_Slow = 0.20~0.30초 최고 속도(8578cm/s), 땅을 찍지 않는 쳐올리기 → 빛기둥은 0.27초 검 끝 바로 아래 땅. RMB = 0.2~1.0초 검을 든 채 유지 → 충전 이펙트를 거의 전체 구간
+- 촬영 파일은 타임스탬프·포즈로 PIE 화면만 골라 사용
+
+**결과**
+- PIE 에서 ASC `try_activate_ability_by_class` 로 실제 발동 → 두 스킬 모두 새 몽타주 재생 + 이펙트 확인 (이 커밋)
+
+![Kwang E·W 애니 교체](images/2026-10-30_KwangW_FX/KwangEW_anim_swap.jpg)
+
+- ⚠️ 시전 시간이 바뀜: W 0.97→**2.0초**(이동 시전이지만 그동안 `State.Casting` → 기본공격 불가·슈퍼아머), E 몽타주 1.87→**1.47초** (root 는 원래 장판 길이 3초 — 아래 Q 항목의 장판 조기 종료 수정 후 시전 상태도 3초)
+- **Q 검 던지기 조사 결과** (구현 전):
+  - 손의 검 숨기기 = **애니가 `weapon_r` 본 스케일을 0.01 로 키** — `Ability_Q_Throw`(2.5초)는 **0.50초**에 1→0.01, `Ability_Q_Catch`(1.17초)는 **0.27초**에 0→1(커브 `SwordHideAlpha` 1→0 동반), `Ability_RMB_NoSword`·`Ability_Q_SwordInWorld_Pose` 는 내내 0.01
+  - 검 없는 동안 쓸 클립 세트가 따로 있음: `Jog_*_noWep`, `Ability_RMB_NoSword`, `Recall_SwordInWorld`, `Ability_R_Intro_SwordInWorld` (+ 커브 `SwordInWorldCorrectiveOverride`·`DisableSwordSnappingToBack`)
+  - 날아가는 검·**바닥에 꽂힌 검 메시 모두 팩에 없음** — 이름에 sword/weapon 이 든 자산은 애니·머티리얼·텍스처·파티클뿐, StaticMesh 29개는 FX 용(번개·물·파편), SkeletalMesh 6개는 검 포함 전신 스킨. 팩은 캐릭터 자산만 담고 원작의 스킬 블루프린트·소품 액터는 빠져 있다. `Ability_Q_SwordInWorld_Pose` 도 검이 아니라 "검이 땅에 있을 때 Kwang 몸 포즈"(검 본 0.01)
+  - 대안: KwangRosewood 의 검이 **독립 머티리얼 슬롯 17 `M05_Weapon`** → 같은 메시로 검 섹션만 보이게 하거나(새 에셋 0), 검 부분만 떼어 StaticMesh 로 만들 수 있다(Blender, 또는 GeometryScripting 플러그인 — 현재 꺼짐)
+  - 원작 흐름(추정): 던짐 → 땅에 꽂히며 범위 피해 → 꽂혀 있는 동안 맨손(`*_noWep`·`RMB_NoSword`) → 회수(`Recall_SwordInWorld`) → `Ability_Q_Catch`
+  - 이펙트: `P_SwordThrow`(던질 때) · `P_Kwang_Sword_Falling_Trails`(떨어지는 궤적) · `P_Kwang_Sword_Impact`(꽂힐 때 물기둥·번개·파편) · `P_Kwang_Sword_Attach`/`Bolts`(꽂힌 검 전기, 추정) · `P_BoilWater`(물 위에 꽂혔을 때) · `P_SwordReturn1`·`P_SwordReturnToHand`(회수)
+
+---
+
+## 2026-11-01 — Kwang Q 검 던지기 (원작식 꽂힌 검) + 범위 피해 2배·장판 조기 종료 버그 수정
+
+**쉽게 보기**
+- **한 줄 요약**: Kwang 이 Q 로 검을 던지면 검이 포물선을 그리며 날아가 적 발밑에 꽂히고, 꽂히는 순간 주변 적이 피해를 입는다. 1.5초 뒤 검이 날아 돌아와 Kwang 이 받아 든다. 검이 없는 동안 Kwang 손은 비어 있고 공격·스킬도 못 쓴다. 테스트하다가 모든 범위 스킬 피해가 2배로 들어가던 버그와 E 장판이 중간에 끊기던 버그도 찾아 고쳤다
+
+**작업 내용**
+- C++ 신규 `AAOSThrownWeapon`(`Source/TDProject/AOS/GAS/Actors/`) — 서버 권한 투척 무기. 단계 `Flying → Stuck → Returning → Returned`
+  - 비행: 손 → 착지점 포물선(`ArcHeight` 200, 0.25~0.7초), 칼끝이 진행 방향 + 칼날 트레일
+  - 착지: 칼끝 25cm 박고 55° 이상 세워 꽂음 → 그 순간 반경 250 범위 피해(던진 GA 의 `BaseDamage`) + `P_Kwang_Sword_Impact` + 꽂힌 검에 `P_Kwang_Sword_Attach`
+  - 귀환: 1.5초 뒤 초속 2500 으로 주인 손 추적 → 회수 시 `P_SwordReturnToHand` + `AM_Kwang_Q_Catch`(0.2초부터, 서 있고 다른 몽타주 없을 때만)
+  - 안전장치: 8초 강제 회수, 주인 사망·라운드 종료 시 정리, 어떤 경로로 사라지든 `EndPlay` 에서 손 무기 복원
+- `UGA_SkillBase` "Thrown Weapon" 섹션(`ThrownWeaponClass`·`ThrowReleaseDelay`·`ThrowRange`) — 지정 시 즉시 데미지를 건너뛰고 타겟 쪽으로 돌아선 뒤 놓는 시점에 스폰. AoE 판정을 `ApplyAoEPulseAt(Origin, Radius)` 로 일반화
+- 손 무기: 복제 loose 태그 `State.WeaponThrown`(신규) → `AAOSCharacter` 가 `weapon_r` 본 숨김, `GA_Attack`·`GA_SkillBase` 활성화 차단
+- 자산: `AM_Kwang_Q` ← `Ability_Q_Throw`(트레일 0.27~0.49초, `BlendOutTriggerTime` 1.4 → 1.1초부터 블렌드아웃), `AM_Kwang_Q_Catch` ← `Ability_Q_Catch`(블렌드인 0.05), `BP_KwangThrownSword`, `BP_GA_Kwang_Q`(데미지 60 · 사거리 900 · root 1.0초 · 점프/버프 해제)
+- 문서: `SKILL_AUTHORING_GUIDE.md` 패턴 E, `KWANG_AI_STATETREE.md` Q 줄, `PROJECT_REFERENCE` GAS 섹션, `CLAUDE.md`
+
+**문제점**
+- Paragon 팩에 날아가는/꽂힌 검 메시가 없다 (스킬 블루프린트·소품 액터는 팩에서 빠짐)
+- DS 에서 위치 복제로 빠른 투사체를 움직이면 끊기고, DS 서버는 메시 포즈가 갱신되지 않아 손 위치를 믿을 수 없다
+- 던지는 애니가 놓는 프레임에 검 본 스케일을 0 으로 만들지만, 몽타주가 끝나면 Idle/Jog 가 검을 되살린다
+- 첫 PIE 검증에서 발견:
+  1. 상대 체력이 60 이 아니라 **120** 감소 — `OverlapMultiByChannel(ECC_Pawn)` 결과가 컴포넌트 단위라 캐릭터 하나가 **캡슐(Block) + HP바 위젯(Overlap)** 으로 2번 잡힘. 기존 `ApplyAoEPulse` 부터 있던 버그 → **E 장판 등 모든 AoE 가 2배**였다
+  2. 비행·귀환 중 지나가는 캐릭터가 파랗게 덮임 — `P_SwordThrow`/`P_SwordReturn1` 에 원작 순간이동용 **Kwang 실루엣 잔상 메시**(`SM_KwangTeleport`)가 들어 있음
+  3. E 장판이 6틱 중 **2틱**만 들어감 — `OnMontageCompleted` 가 남은 주기 피해와 무관하게 `EndAbility` → 타이머 정지. 몽타주(1.47초)가 장판(3초)보다 짧으면 잘림 (E 애니 교체 전 1.87초 몽타주도 3틱뿐이었음)
+- 강제 삭제(`delete_asset`) 중 에디터가 응답 없음 → 재시작 후 BP 의 Q 몽타주 연결이 비어 있었음
+
+![첫 검증 — 귀환(2.95초) 때 Kwang 이 파랗게 덮임](images/2026-11-01_KwangQ_SwordThrow/KwangQ_throw_first_pass.jpg)
+
+**해결 방법**
+- 검 메시: 주인 스켈레탈 메시를 그대로 복사해 검 머티리얼 슬롯(`M05_Weapon`)만 `ShowMaterialSection`. 레퍼런스 포즈의 `FX_weapon_tip`/`FX_weapon_base` 로 칼끝 = 원점, 칼날 = +X 정렬 → 같은 스켈레톤이라 트레일(`BeginTrails`)·이펙트 소켓도 그대로
+- 네트워크: 서버는 단계 + 단계 시작 서버 시각 + 시작/착지점만 복제(`ReplicateMovement` 끔), 각 머신이 위치를 직접 계산. 클라의 비행 시작점은 **자기 화면의 주인 손**. 데미지는 서버 착지 타이머에서 GA 의 `ApplyThrownWeaponImpact` 로
+- 손 무기: 태그가 있는 동안 `HideBoneByName(weapon_r)` 유지 (렌더 머신만)
+- 버그 1: `ApplyAoEPulseAt` 에서 액터 단위 중복 제거(`TSet`) → **60 정확히** 확인 / E 틱당 50 확인
+- 버그 2: `BP_KwangThrownSword` 의 `FlightFX`·`ReturnFX` 비움 + 귀환에도 칼날 트레일을 다시 켜도록 코드 수정
+- 버그 3: `OnMontageCompleted` 가 주기 피해가 남아 있으면 종료하지 않고 마지막 틱이 `EndAbility` (클래스 주석 흐름 7 "둘 중 늦은 쪽" 그대로)
+- 몽타주 재생성은 참조처가 없는지 먼저 확인한 뒤 삭제만 따로 실행
+
+![잔상 메시 — 비행 중 타겟 Kwang 이 파랗게 덮임](images/2026-11-01_KwangQ_SwordThrow/KwangQ_ghost_afterimage.jpg)
+
+**결과**
+- PIE(상대를 650 거리에 두고 ASC 로 실제 발동): 0.5초 손 검 숨김 + 태그 → 0.8초 비행 → 1.0초 착지 · 상대 HP 220→160 → 2.6초 귀환(트레일) → 2.9초 태그 해제 · 검 복원 · 받기 몽타주 → 3.9초 액터 정리 (이 커밋)
+- 버그 3 (Live Coding 후 PIE): 몽타주가 1.22초에 끝난 뒤에도 장판이 0.5초마다 50씩 계속 — 상대(HP 220)가 5틱째 사망. E 실제 피해 변화 = 이전 3틱×100(2배 버그) → 수정 중간 2틱×50 → **설계대로 6틱×50(3초)**
+- ⚠️ 밸런스: 검이 손에 없는 약 3초 동안 Kwang 은 공격·스킬 불가. AI 는 그동안 상대에게 다가가 맨손으로 서 있다 (옆걸음 등은 StateTree 후속)
+
+![Kwang Q 최종 — 비행 · 꽂힘(-60) · 귀환 · 받기](images/2026-11-01_KwangQ_SwordThrow/KwangQ_throw_final.jpg)

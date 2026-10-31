@@ -185,6 +185,31 @@ caster 위치 반경에 주기적 데미지 N회.
 
 타겟은 `TriggerEventData->Target` 우선, 없으면 `AIController->GetCurrentTargetCharacter()` → `FindNearestEnemy()` 순서로 fallback.
 
+### 패턴 E — 투척 무기 (Kwang Q: 검 던지기, 2026-11-01)
+
+무기를 던져 **땅에 꽂히는 순간 범위 피해**, 잠시 뒤 주인에게 돌아온다. 데미지가 발동 시점이 아니라 **착지 시점**에 들어간다.
+
+| Property (`BP_GA_*`) | 값 (Kwang Q) |
+|----------|-----|
+| `ThrownWeaponClass` | `BP_KwangThrownSword` (`AAOSThrownWeapon` 자식) — 지정하면 TargetType 즉시 데미지를 건너뛴다 |
+| `ThrowReleaseDelay` | 0.5 — 몽타주에서 무기 본이 사라지는 프레임 (`Ability_Q_Throw` = 0.50초) |
+| `ThrowRange` | 900 — 타겟이 더 멀면 그 방향 900 지점에 떨어짐 |
+| `TargetType` | `SingleEnemy` (타겟 결정용) |
+| `DamageGameplayEffectClass` / `BaseDamage` | `GE_Damage` / 60 (착지 반경 내 적 각각) |
+| `ExplicitRootDuration` | 1.0 (던지는 동안만 정지) |
+
+| Property (`BP_*ThrownSword`) | 값 |
+|----------|-----|
+| 비행 | `FlightSpeed` 2000 · `MinFlightTime` 0.25 · `MaxFlightTime` 0.7 · `ArcHeight` 200 |
+| 착지 | `ImpactRadius` 250 · `StuckDepth` 25 · `MinStuckPitch` 55° · `StuckDuration` 1.5 |
+| 귀환 | `ReturnSpeed` 2500 · `CatchDistance` 120 · `MaxLifetime` 8 (안전장치) |
+| 메시 | `WeaponMaterialSlotName` = `M05_Weapon` (주인 메시에서 이 섹션만 표시) · `TipSocketName`/`BaseSocketName` = `FX_weapon_tip`/`FX_weapon_base` |
+| 이펙트 | `FlightTrailFX` = `P_Kwang_Primary_Trail`(비행·귀환 궤적) · `ImpactFX` = `P_Kwang_Sword_Impact` · `StuckFX` = `P_Kwang_Sword_Attach` · `CatchFX` = `P_SwordReturnToHand` · `CatchMontage` = `AM_Kwang_Q_Catch`(0.2초부터) |
+
+- 무기가 손을 떠난 동안 주인 ASC 에 `State.WeaponThrown`(복제 loose 태그) → 손의 무기 본 숨김 + `GA_Attack`·모든 `GA_SkillBase` 활성화 차단. 무기가 어떤 경로로 사라지든(회수·주인 사망·타임아웃) `EndPlay` 에서 태그를 뗀다.
+- ⚠️ `FlightFX`/`ReturnFX` 에 `P_SwordThrow`/`P_SwordReturn1` 을 넣지 말 것 — 원작 순간이동용 **Kwang 실루엣 잔상 메시**가 들어 있어 검이 지나가는 캐릭터가 파랗게 덮인다.
+- 별도 무기 메시가 없는 Paragon 히어로 전제(무기 = 메시 내장 본 + 독립 머티리얼 슬롯). 무기 슬롯이 없으면 메시를 숨기고 경고 로그.
+
 ---
 
 ## 특이 로직: `Calculate Target Damage` override

@@ -15,6 +15,7 @@
 #include "Animation/AnimMontage.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -167,6 +168,30 @@ void AAOSCharacter::InitializeAbilitySystem()
 		{
 			CM->MaxWalkSpeed = AttributeSet->GetMoveSpeed();
 		}
+	}
+
+	// 무기 투척(State.WeaponThrown) 동안 손의 무기 본 숨김 — 복제 태그라 클라도 같은 이벤트를 받는다
+	if (!bWeaponThrownTagBound)
+	{
+		AbilitySystemComponent->RegisterGameplayTagEvent(
+			FGameplayTag::RequestGameplayTag(FName("State.WeaponThrown")), EGameplayTagEventType::NewOrRemoved
+		).AddUObject(this, &AAOSCharacter::OnWeaponThrownTagChanged);
+		bWeaponThrownTagBound = true;
+	}
+}
+
+void AAOSCharacter::OnWeaponThrownTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	// 비주얼 전용 — 무기는 메시에 내장된 본(WeaponSocketName = "weapon_r")이라 그 본을 통째로 숨긴다.
+	// 던지는 몽타주는 놓는 프레임에 이미 본 스케일을 0 으로 키하지만, 몽타주가 끝나면 로코모션이 되살리므로 여기서 유지.
+	if (GetNetMode() == NM_DedicatedServer || !GetMesh()) return;
+	if (NewCount > 0)
+	{
+		GetMesh()->HideBoneByName(WeaponSocketName, EPhysBodyOp::PBO_None);
+	}
+	else
+	{
+		GetMesh()->UnHideBoneByName(WeaponSocketName);
 	}
 }
 

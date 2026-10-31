@@ -4,6 +4,9 @@
 #include "AOS/AOSCharacter.h"
 #include "AOS/AOSGameMode.h"   // EAOSTeam
 #include "AOS/AOSAIController.h"
+#include "GAS/Actors/AOSThrownWeapon.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GAS/AOSAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
@@ -32,6 +35,10 @@ UGA_SkillBase::UGA_SkillBase()
 	// HitReact 중 스킬 차단 (Rule B 일관)
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.HitReact")));
+
+	// 무기를 던져 손에 없는 동안 스킬 차단 (AAOSThrownWeapon 이 스폰~회수 동안 부여)
+	ActivationBlockedTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName("State.WeaponThrown")));
 }
 
 void UGA_SkillBase::PostInitProperties()
@@ -114,8 +121,8 @@ void UGA_SkillBase::ActivateAbility(
 	// 3. Self GE 들 일괄 적용
 	ApplySelfEffects(SourceASC);
 
-	// 4. TargetType 별 타겟 처리
-	switch (TargetType)
+	// 4. TargetType 별 타겟 처리 (투척 무기는 데미지를 착지 시점으로 미룬다 → 아래 6 에서 예약)
+	switch (ThrownWeaponClass ? ESkillTargetType::Self : TargetType)
 	{
 	case ESkillTargetType::Self:
 		// no-op
@@ -189,7 +196,12 @@ void UGA_SkillBase::ActivateAbility(
 		}
 	}
 
-	// 6. 몽타주 재생 (있으면)
+	// 6. 몽타주 재생 (있으면) — 투척은 그 전에 타겟 방향으로 돌아서고 놓는 시점을 예약
+	if (ThrownWeaponClass && Char)
+	{
+		BeginThrow(Char, TriggerEventData, SkillMontage != nullptr);
+	}
+
 	if (SkillMontage)
 	{
 		UAbilityTask_PlayMontageAndWait* MontageTask =
@@ -235,7 +247,98 @@ void UGA_SkillBase::EndAbility(
 {
 	StopPeriodicTimer();
 	bMontagePlaying = false;
+	// 놓기 전에 끝나면(취소·사망) 던지지 않는다. 이미 던진 무기는 독립적으로 비행·회수.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowReleaseTimerHandle);
+	}
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+// ============================================================
+// Thrown Weapon — 타겟 고정 + 놓는 시점 예약 / 스폰 / 착지 피해
+// ============================================================
+
+void UGA_SkillBase::BeginThrow(AAOSCharacter* Char, const FGameplayEventData* TriggerEventData, bool bHasMontage)
+{
+	AActor* Target = ResolveSingleTarget(TriggerEventData);
+	PendingThrowTarget = Target;
+	PendingThrowLocation = Target
+		? Target->GetActorLocation()
+		: Char->GetActorLocation() + Char->GetActorForwardVector() * (ThrowRange * 0.5f);
+
+	// 던지는 모션이 정면을 향하므로 타겟 쪽으로 즉시 돌아선다 (root 중이라 이동으로 다시 돌지 않음)
+	FVector ToTarget = PendingThrowLocation - Char->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (!ToTarget.IsNearlyZero())
+	{
+		Char->SetActorRotation(FRotator(0.0f, ToTarget.Rotation().Yaw, 0.0f));
+	}
+
+	// 몽타주가 없으면 놓는 시점을 기다릴 근거가 없으니 즉시 던진다
+	UWorld* World = GetWorld();
+	if (!bHasMontage || ThrowReleaseDelay <= 0.0f || !World)
+	{
+		SpawnThrownWeapon();
+		return;
+	}
+	World->GetTimerManager().SetTimer(ThrowReleaseTimerHandle, this, &UGA_SkillBase::SpawnThrownWeapon, ThrowReleaseDelay, false);
+}
+
+void UGA_SkillBase::SpawnThrownWeapon()
+{
+	AAOSCharacter* Char = Cast<AAOSCharacter>(GetAvatarActorFromActorInfo());
+	UWorld* World = GetWorld();
+	if (!Char || !World || !ThrownWeaponClass || !Char->HasAuthority() || !Char->IsAlive()) return;
+
+	// 목표: 살아있는 타겟의 현재 위치 (죽었으면 활성화 시점 위치) → 수평 사거리 클램프 → 지면
+	FVector Aim = PendingThrowLocation;
+	if (AActor* Target = PendingThrowTarget.Get())
+	{
+		const AAOSCharacter* TargetChar = Cast<AAOSCharacter>(Target);
+		if (!TargetChar || TargetChar->IsAlive())
+		{
+			Aim = Target->GetActorLocation();
+		}
+	}
+	const FVector CharLocation = Char->GetActorLocation();
+	FVector Flat = Aim - CharLocation;
+	Flat.Z = 0.0f;
+	if (Flat.Size() > ThrowRange)
+	{
+		Aim = CharLocation + Flat.GetSafeNormal() * ThrowRange + FVector(0.0f, 0.0f, Aim.Z - CharLocation.Z);
+	}
+
+	const float FeetOffset = Char->GetCapsuleComponent() ? Char->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 88.0f;
+	FVector Impact(Aim.X, Aim.Y, CharLocation.Z - FeetOffset);
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ThrownWeaponGround), false, Char);
+	if (World->LineTraceSingleByObjectType(Hit, Aim + FVector(0.0f, 0.0f, 200.0f), Aim - FVector(0.0f, 0.0f, 600.0f),
+		FCollisionObjectQueryParams(ECC_WorldStatic), Params))
+	{
+		Impact = Hit.ImpactPoint;
+	}
+
+	// 시작: 손 소켓 (DS 는 포즈가 오래됐을 수 있으나 각 클라는 자기 화면의 손에서 비행을 시작한다)
+	const FVector Start = (Char->GetMesh() && Char->GetMesh()->DoesSocketExist(Char->WeaponSocketName))
+		? Char->GetMesh()->GetSocketLocation(Char->WeaponSocketName)
+		: CharLocation;
+
+	const FTransform SpawnTransform(FRotator::ZeroRotator, Start);
+	AAOSThrownWeapon* Weapon = World->SpawnActorDeferred<AAOSThrownWeapon>(
+		ThrownWeaponClass, SpawnTransform, Char, Char, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (Weapon)
+	{
+		Weapon->InitThrow(Char, this, Start, Impact);
+		Weapon->FinishSpawning(SpawnTransform);
+	}
+}
+
+void UGA_SkillBase::ApplyThrownWeaponImpact(const FVector& Origin, float Radius)
+{
+	// 무기는 GA 가 끝난 뒤에 착지할 수 있다 — InstancedPerActor 라 ActorInfo 는 계속 유효
+	if (!CurrentActorInfo || !CurrentActorInfo->AbilitySystemComponent.IsValid()) return;
+	ApplyAoEPulseAt(CurrentActorInfo->AbilitySystemComponent.Get(), Origin, Radius);
 }
 
 // ============================================================
@@ -362,6 +465,13 @@ void UGA_SkillBase::ApplyDamageAndEffectsToTarget(AActor* TargetActor, UAbilityS
 
 void UGA_SkillBase::ApplyAoEPulse(UAbilitySystemComponent* SourceASC)
 {
+	const AActor* Avatar = GetAvatarActorFromActorInfo();
+	if (!Avatar) return;
+	ApplyAoEPulseAt(SourceASC, Avatar->GetActorLocation(), AoERadius);
+}
+
+void UGA_SkillBase::ApplyAoEPulseAt(UAbilitySystemComponent* SourceASC, const FVector& Origin, float Radius)
+{
 	UWorld* World = GetWorld();
 	if (!World || !SourceASC) return;
 
@@ -369,17 +479,20 @@ void UGA_SkillBase::ApplyAoEPulse(UAbilitySystemComponent* SourceASC)
 	if (!SourceChar) return;
 
 	TArray<FOverlapResult> Overlaps;
-	const FCollisionShape Sphere = FCollisionShape::MakeSphere(AoERadius);
+	const FCollisionShape Sphere = FCollisionShape::MakeSphere(Radius);
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(SkillAoE), false);
 	Params.AddIgnoredActor(SourceChar);
 
-	const FVector Origin = SourceChar->GetActorLocation();
 	World->OverlapMultiByChannel(
 		Overlaps, Origin, FQuat::Identity,
 		ECollisionChannel::ECC_Pawn, Sphere, Params);
 
 	const EAOSTeam SourceTeam = SourceChar->GetTeam();
 	int32 HitsApplied = 0;
+
+	// 오버랩은 컴포넌트 단위 — 캐릭터 하나가 캡슐(Block)과 HP바 위젯(Overlap)으로 두 번 잡힌다.
+	// 액터당 1회만 적용 (안 그러면 범위 피해가 2배).
+	TSet<AActor*> AlreadyHit;
 
 	for (const FOverlapResult& R : Overlaps)
 	{
@@ -390,13 +503,17 @@ void UGA_SkillBase::ApplyAoEPulse(UAbilitySystemComponent* SourceASC)
 		if (!TC || !TC->IsAlive()) continue;
 		if (TC->GetTeam() == SourceTeam) continue;
 
+		bool bAlreadyHit = false;
+		AlreadyHit.Add(TC, &bAlreadyHit);
+		if (bAlreadyHit) continue;
+
 		ApplyDamageAndEffectsToTarget(TC, SourceASC);
 		HitsApplied++;
 	}
 
 	UE_LOG(LogTemp, Verbose,
 		TEXT("[%s] AoE Pulse — radius=%.0f, hits=%d"),
-		*GetName(), AoERadius, HitsApplied);
+		*GetName(), Radius, HitsApplied);
 }
 
 // ============================================================
@@ -475,6 +592,12 @@ float UGA_SkillBase::CalculateTargetDamage_Implementation(AActor* TargetActor) c
 void UGA_SkillBase::OnMontageCompleted()
 {
 	bMontagePlaying = false;
+	// Periodic 이 남아 있으면 마지막 tick 이 종료한다 (몽타주 종료 / 마지막 tick 중 늦은 쪽 — 흐름 7).
+	// 여기서 끝내면 EndAbility 가 타이머를 멈춰 몽타주보다 긴 장판이 잘린다 (Kwang E 1.47초 → 6틱 중 2틱).
+	if (PeriodicTickCount > 0 && PeriodicTickIndex < PeriodicTickCount)
+	{
+		return;
+	}
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 

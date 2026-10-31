@@ -93,7 +93,8 @@ AI 행동 결정은 **State Tree** (`Source/TDProject/AOS/AI/`). 이전 `UpdateA
 - 데미지/속성/공격 일원화: `UAOSAbilitySystemComponent` + `UAOSAttributeSet`(Health/MaxHealth/AttackPower/AttackRange/AttackSpeed/MoveSpeed/Damage(메타)). 캐릭터·구조물 모두 ASC 소유(PlayerState 미사용). 기본값 Health=100/AP=10/Range=500/AS=1.0/MS=600.
 - **단일 데미지 흐름**: 모든 데미지가 `GE_Damage` → `AOSAttributeSet::PostGameplayEffectExecute` 통과(Health 차감 + Owner 분기로 `OnCharacterDeath`/`OnStructureDestroyed`). HP바·데미지숫자 등 비주얼 훅은 여기 한 곳.
 - **기본 공격** = `UGA_Attack`(montage-driven, `Ability.Attack.Basic`, AttackSpeed 가 재생속도+쿨다운(1/AS)에 반영). 쿨다운 단일 진실 = `Cooldown.Attack.Basic` 태그.
-- **스킬 = 데이터 주도**: `UGA_SkillBase`(C++ abstract) + **BP child 자산**(`BP_GA_<Char>_<Slot>` + `BP_GE_Cooldown_*`). **새 캐릭터/스킬 = BP 자산만 작성(C++ 빌드 불필요).** 절차: [`Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`](Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md).
+- **스킬 = 데이터 주도**: `UGA_SkillBase`(C++ abstract) + **BP child 자산**(`BP_GA_<Char>_<Slot>` + `BP_GE_Cooldown_*`). **새 캐릭터/스킬 = BP 자산만 작성(C++ 빌드 불필요).** 절차: [`Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md`](Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md). 투척 무기(데미지를 착지 시점으로 미룸) = `ThrownWeaponClass` + `AAOSThrownWeapon` BP 자식(가이드 패턴 E, 첫 사례 Kwang Q) — 던진 동안 `State.WeaponThrown` 이 손 무기 본을 숨기고 공격·스킬을 막는다.
+- ⚠️ **범위 판정은 액터 단위로 중복 제거**: `OverlapMultiByChannel(ECC_Pawn)` 는 컴포넌트마다 결과를 준다 — 캐릭터 하나가 캡슐(Block)+HP바 위젯(Overlap)으로 2번 잡혀 피해 2배(2026-11-01 `ApplyAoEPulseAt` 에서 수정).
 - **속성 초기값** = DataTable (`DT_CharacterAttributes`/`DT_TowerAttributes`/`DT_CommandCenterAttributes`, row 타입 `FAOSAttributeInitRow`) → float 멤버 fallback. ⚠️ 생성자에서 `MaxWalkSpeed` 강제할당 금지(BP override 존중).
 
 **⚠️ UE 5.4+ GameplayEffect Component 패턴 (필수)** — cooldown/태그 부여 GE 는 이 패턴이 아니면 cooldown 시스템이 태그를 인식 못 함(`grants no tags` 경고 + 매 frame 활성화):

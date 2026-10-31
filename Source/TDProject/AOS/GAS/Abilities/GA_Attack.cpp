@@ -50,6 +50,10 @@ UGA_Attack::UGA_Attack()
 	// 호출 안 됨 → GA_Attack 인스턴스가 영구 active 로 stuck → 이후 일반 공격 영영 발동 X.
 	ActivationBlockedTags.AddTag(
 		FGameplayTag::RequestGameplayTag(FName("State.Casting")));
+
+	// 무기를 던져 손에 없는 동안 기본공격 차단 (AAOSThrownWeapon 이 스폰~회수 동안 부여)
+	ActivationBlockedTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName("State.WeaponThrown")));
 }
 
 void UGA_Attack::ActivateAbility(

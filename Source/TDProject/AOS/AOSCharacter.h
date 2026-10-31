@@ -304,6 +304,10 @@ protected:
 	// Phase 3: AttributeSet MoveSpeed 변경 콜백 (CharacterMovement->MaxWalkSpeed 동기화)
 	void OnMoveSpeedAttributeChanged(const FOnAttributeChangeData& Data);
 
+	// State.WeaponThrown 태그 변화 → 손의 무기 본(WeaponSocketName) 숨김/복원 (AAOSThrownWeapon, 렌더 머신만)
+	void OnWeaponThrownTagChanged(const FGameplayTag Tag, int32 NewCount);
+	bool bWeaponThrownTagBound = false;
+
 	// Phase 3B: 사망 시각 효과 멀티캐스트 (서버 → 모든 클라이언트)
 	UFUNCTION(NetMulticast, Reliable)
 	void Multicast_OnDeath();

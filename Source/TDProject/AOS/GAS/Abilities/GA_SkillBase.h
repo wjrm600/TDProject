@@ -13,6 +13,8 @@
 class UGameplayEffect;
 class UAnimMontage;
 class UAbilitySystemComponent;
+class AAOSThrownWeapon;
+class AAOSCharacter;
 
 /** 스킬 타겟팅 방식. */
 UENUM(BlueprintType)
@@ -34,6 +36,7 @@ enum class ESkillTargetType : uint8
  *   - DamageGameplayEffectClass + BaseDamage + MissingHpDamageScale
  *   - bAllowMovementDuringCast    (false 면 GE_Rooted 로 root, 끝까지 홀드)
  *   - PeriodicTickCount/Interval  (AoE 주기적 데미지 — E 패턴)
+ *   - ThrownWeaponClass           (투척 무기 — 데미지를 착지 시점으로 미룸, Kwang Q 패턴)
  *
  * 특수 데미지식(R 의 처형)은 BlueprintNativeEvent CalculateTargetDamage 를 BP 에서 override.
  *
@@ -45,6 +48,8 @@ enum class ESkillTargetType : uint8
  *      Self        : skip
  *      SingleEnemy : TriggerEventData->Target → AIController fallback → 데미지 + TargetAppliedEffects
  *      AoE_Sphere  : PeriodicTickCount>0 → timer × Interval, 아니면 즉발 1회
+ *      (ThrownWeaponClass 가 있으면 위 대신: 타겟을 향해 돌아서고 ThrowReleaseDelay 뒤 무기 스폰 →
+ *       무기가 착지할 때 ApplyThrownWeaponImpact 로 반경 피해)
  *   5. !bAllowMovementDuringCast → ApplyCastRoot(ExplicitRootDuration > 0 ? :
  *                                                Periodic > 0 ? Count*Interval :
  *                                                Montage 길이)
@@ -56,6 +61,7 @@ enum class ESkillTargetType : uint8
  *   - NetExecutionPolicy = ServerInitiated
  *   - ActivationOwnedTags += State.Casting (ABP 상하체 분리 트리거)
  *   - ActivationBlockedTags += State.HitReact (HitReact 중 스킬 차단)
+ *   - ActivationBlockedTags += State.WeaponThrown (무기를 던져 손에 없는 동안 스킬 차단)
  */
 UCLASS(Abstract)
 class TDPROJECT_API UGA_SkillBase : public UGameplayAbility
@@ -170,6 +176,28 @@ public:
 	float PeriodicTickInterval = 0.5f;
 
 	// ============================================================
+	// Thrown Weapon (투척 무기 — Kwang Q 검 던지기)
+	// ============================================================
+
+	/** 지정하면 TargetType 데미지 대신 ThrowReleaseDelay 뒤 이 액터를 타겟 발밑으로 던진다.
+	 *  데미지(BaseDamage · TargetAppliedEffects)는 무기가 착지할 때 반경 내 적팀에게 들어간다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Thrown Weapon")
+	TSubclassOf<AAOSThrownWeapon> ThrownWeaponClass;
+
+	/** 활성화 → 손에서 놓는 시점(초). 몽타주에서 무기 본이 사라지는 프레임에 맞춘다 (Ability_Q_Throw = 0.50). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Thrown Weapon",
+		meta = (EditCondition = "ThrownWeaponClass != nullptr", ClampMin = "0.0"))
+	float ThrowReleaseDelay = 0.5f;
+
+	/** 최대 투척 거리 (수평 cm). 타겟이 더 멀면 그 방향으로 이 거리에 떨어진다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AOS Skill|Thrown Weapon",
+		meta = (EditCondition = "ThrownWeaponClass != nullptr", ClampMin = "100.0"))
+	float ThrowRange = 900.0f;
+
+	/** 투척 무기 착지 — Origin 반경 내 적팀에게 데미지 + 부수효과. AAOSThrownWeapon 이 서버에서 호출. */
+	void ApplyThrownWeaponImpact(const FVector& Origin, float Radius);
+
+	// ============================================================
 	// UObject / GameplayAbility override
 	// ============================================================
 
@@ -215,14 +243,23 @@ protected:
 		UAbilitySystemComponent* SourceASC, bool& bOutCommitOk);
 	void ApplySelfEffects(UAbilitySystemComponent* SourceASC);
 	void ApplyAoEPulse(UAbilitySystemComponent* SourceASC);
+	void ApplyAoEPulseAt(UAbilitySystemComponent* SourceASC, const FVector& Origin, float Radius);
 	void ApplyDamageAndEffectsToTarget(AActor* TargetActor, UAbilitySystemComponent* SourceASC);
 	AActor* ResolveSingleTarget(const FGameplayEventData* TriggerEventData) const;
 	float ResolveRootDuration(UAnimMontage* SkillMontage) const;
 
 	void EnsureIdentityTags();
 
+	// Thrown Weapon
+	void BeginThrow(AAOSCharacter* Char, const FGameplayEventData* TriggerEventData, bool bHasMontage);
+	void SpawnThrownWeapon();
+
 	// 상태
 	FTimerHandle PeriodicTimerHandle;
 	int32 PeriodicTickIndex = 0;
 	bool bMontagePlaying = false;
+
+	FTimerHandle ThrowReleaseTimerHandle;
+	TWeakObjectPtr<AActor> PendingThrowTarget;
+	FVector PendingThrowLocation = FVector::ZeroVector;
 };

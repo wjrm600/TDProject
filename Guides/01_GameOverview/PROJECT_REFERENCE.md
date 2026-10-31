@@ -640,6 +640,14 @@ LoL 식 **캐릭터당 3스킬 + 1궁극기** 구성. 첫 캐릭터 **Alex** 는
 
 이제부터 새 캐릭터/스킬 추가는 **BP 자산만 작성** (C++ 빌드 불필요). `Guides/03_Implementation/SKILL_AUTHORING_GUIDE.md` 참고.
 
+**투척 무기 (2026-11-01, Kwang Q 검 던지기)** — `UGA_SkillBase` 의 "Thrown Weapon" 섹션 + `AAOSThrownWeapon`(`Source/TDProject/AOS/GAS/Actors/`)
+- `ThrownWeaponClass` 를 지정하면 4단계 TargetType 즉시 데미지를 건너뛰고, 타겟 쪽으로 돌아선 뒤 `ThrowReleaseDelay` 에 서버가 무기를 스폰(`SpawnActorDeferred` → `InitThrow` → `FinishSpawning`). 착지점 = 타겟 위치를 `ThrowRange` 로 클램프 후 WorldStatic 지면 트레이스.
+- 무기 단계 `Flying → Stuck → Returning → Returned` 는 **서버만 진행**하고 `Phase` + `PhaseStartServerTime`(GameState 서버 시각) + 시작/착지점만 복제(`ReplicateMovement` 끔). 각 머신이 위치를 직접 계산: 비행 = 포물선(칼끝 진행 방향), 귀환 = 주인 손 추적. 클라의 비행 시작점은 **자기 화면의 주인 손 소켓**(DS 는 포즈가 갱신 안 될 수 있어 서버 시작점에 의존하지 않음).
+- 착지 순간 `UGA_SkillBase::ApplyThrownWeaponImpact` → `ApplyAoEPulseAt` — 데미지·팀 판정·부수효과는 GA 한 곳(InstancedPerActor 라 GA 종료 후에도 호출 가능).
+- 손의 무기: 스폰~회수 동안 `State.WeaponThrown` 복제 loose 태그(`AddLooseGameplayTag(..., TagOnly)`) → `AAOSCharacter::OnWeaponThrownTagChanged` 가 `HideBoneByName(WeaponSocketName)` (렌더 머신만). 던지는 애니가 놓는 프레임에 이미 본 스케일 0 이지만 몽타주가 끝나면 로코모션이 되살리므로 태그로 유지. `GA_Attack`·`GA_SkillBase` 의 `ActivationBlockedTags` 가 같은 태그로 차단.
+- 무기 메시: 별도 메시가 없는 Paragon 히어로 → 주인 스켈레탈 메시를 복사해 `WeaponMaterialSlotName` 섹션만 `ShowMaterialSection` (SectionIndex=`INDEX_NONE` → 머티리얼 인덱스 직접). 레퍼런스 포즈 소켓(`FAnimationRuntime::GetComponentSpaceTransformRefPose` × 소켓 로컬)으로 칼끝 = Pivot 원점, 칼날 = +X 정렬. 같은 스켈레톤이라 `FX_weapon_*` 소켓에 트레일(`BeginTrails`)·이펙트를 그대로 붙일 수 있다.
+- 범위 판정 중복 제거: `OverlapMultiByChannel` 결과가 컴포넌트 단위라 캐릭터당 캡슐+HP바 위젯 2건 → `ApplyAoEPulseAt` 에서 액터 dedupe (그 전까지 E 장판 등 모든 AoE 가 2배 피해).
+
 ### StateTree 스킬 통합 — "Design B" (재선택 패턴)
 
 스킬을 StateTree 에 통합할 때 핵심 함정과 채택한 패턴:
